@@ -6,7 +6,6 @@ Usage:
 from __future__ import annotations
 import json
 import re
-import sys
 from pathlib import Path
 from collections import defaultdict
 import click
@@ -49,6 +48,9 @@ def parse_edgecuts(gbr_path: Path) -> list[tuple[float, float]]:
             segments.append((cur, (x, y)))
             cur = (x, y)
 
+    if re.search(r"G0[23]\*", text):
+        raise ValueError("arc segments detected; this parser handles linear segments only")
+
     if not segments:
         raise ValueError("no segments parsed from gerber")
 
@@ -74,7 +76,24 @@ def parse_edgecuts(gbr_path: Path) -> list[tuple[float, float]]:
         if len(loop) > len(segments) + 2:
             raise ValueError("loop walk exceeded segment count")
 
-    return loop
+    return _remove_collinear(loop)
+
+
+def _remove_collinear(pts: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Remove collinear mid-points; preserve start==end closing duplicate."""
+    n = len(pts) - 1  # exclude closing duplicate
+    if n < 3:
+        return pts
+    result = []
+    for i in range(n):
+        a = pts[(i - 1) % n]
+        b = pts[i]
+        c = pts[(i + 1) % n]
+        cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+        if abs(cross) > 1e-6:
+            result.append(b)
+    result.append(result[0])  # re-close
+    return result
 
 
 # ---------- Excellon drill ----------
@@ -89,9 +108,9 @@ def parse_pth_holes(drl_path: Path, target_dia_mm: float = 4.1) -> list[tuple[fl
 
     The drill file may use INCH units; this function auto-detects and converts.
     """
-    # Detect units from header
-    header = drl_path.read_text()
-    inch_mode = bool(re.search(r"^\s*INCH\b", header, re.MULTILINE))
+    # Detect units from text
+    text = drl_path.read_text()
+    inch_mode = bool(re.search(r"^\s*INCH\b", text, re.MULTILINE))
     unit_mult = 25.4 if inch_mode else 1.0  # convert to mm
 
     target_tool: str | None = None
@@ -99,7 +118,7 @@ def parse_pth_holes(drl_path: Path, target_dia_mm: float = 4.1) -> list[tuple[fl
     holes: list[tuple[float, float]] = []
     cur_tool: str | None = None
 
-    for line in header.splitlines():
+    for line in text.splitlines():
         line = line.strip()
         m = _TOOL_RE.match(line)
         if m:
@@ -131,8 +150,9 @@ def parse_pth_holes(drl_path: Path, target_dia_mm: float = 4.1) -> list[tuple[fl
               default=Path("data"), show_default=True)
 def main(gbr: Path, drl: Path, out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
+    target_dia_mm = 4.1
     polygon = parse_edgecuts(gbr)
-    holes = parse_pth_holes(drl, target_dia_mm=4.1)
+    holes = parse_pth_holes(drl, target_dia_mm=target_dia_mm)
 
     (out_dir / "pcb_outline.json").write_text(json.dumps(polygon, indent=2))
     (out_dir / "mounting_holes.json").write_text(json.dumps(holes, indent=2))
@@ -140,7 +160,7 @@ def main(gbr: Path, drl: Path, out_dir: Path) -> None:
     bbox = (min(p[0] for p in polygon), min(p[1] for p in polygon),
             max(p[0] for p in polygon), max(p[1] for p in polygon))
     click.echo(f"polygon: {len(polygon)} vertices, bbox={bbox}")
-    click.echo(f"holes:   {len(holes)} @ Ø{4.1}mm")
+    click.echo(f"holes:   {len(holes)} @ Ø{target_dia_mm}mm")
 
 
 if __name__ == "__main__":
