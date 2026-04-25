@@ -27,6 +27,8 @@ def parse_cpl(csv_path: Path) -> dict[str, dict]:
 
         for row in reader:
             des = row[c_des].strip()
+            if not des:
+                continue  # skip blank-designator rows
             try:
                 out[des] = {
                     "x": float(row[c_x]),
