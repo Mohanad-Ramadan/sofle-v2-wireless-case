@@ -16,7 +16,7 @@ PLATE_TOP_Z     = 8.0   # PLATE_SEAT_Z + 1.5 mm plate thickness
 # Derived thicknesses — computed from the authoritative Z positions so that
 # (TOP_Z - SEAT_Z == THICKNESS) holds exactly in floating-point arithmetic.
 PCB_THICKNESS   = PCB_TOP_Z   - PCB_SEAT_Z    # ≈ 1.6 mm
-PLATE_THICKNESS = PLATE_TOP_Z - PLATE_SEAT_Z  # 1.5 mm
+PLATE_THICKNESS = PLATE_TOP_Z - PLATE_SEAT_Z  # = 1.5 mm
 
 # ---------- Outer envelope ----------
 OUTER_WIDTH     = 162.0
@@ -48,7 +48,7 @@ USB_C_W, USB_C_H = 9.0, 4.0
 USB_C_Z_CENTER   = 14.0
 
 SLIDE_SWITCH_W, SLIDE_SWITCH_H = 6.0, 3.5
-SLIDE_SWITCH_Z_RANGE = (1.0, 4.5)
+SLIDE_SWITCH_Z_RANGE: tuple[float, float] = (1.0, 4.5)
 
 RESET_PIN_DIA  = 2.0
 RESET_Z_CENTER = 7.5
@@ -65,13 +65,13 @@ SW_ENCODER_POS = (9.47,  -65.95)
 J_OLED_POS     = (5.22,  -33.69)
 
 # ---------- PTH mounting holes (PCB coords, mm); from SofleKeyboard-PTH.drl T9 Ø4.1 ----------
-MOUNTING_HOLES = [
+MOUNTING_HOLES: tuple[tuple[float, float], ...] = (
     (14.07,  -80.26),
     (39.57,  -19.05),
     (39.57,  -56.96),
     (116.07, -25.66),
     (116.07, -63.96),
-]
+)
 
 # ---------- PCB → case coordinate transform ----------
 # PCB X range: -8.5 .. 135.0 (width 143.5); Y range: -110.5 .. 5.0 (depth 115.5).
