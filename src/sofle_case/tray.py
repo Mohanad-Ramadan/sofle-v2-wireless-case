@@ -11,7 +11,7 @@ from .pcb_geometry import polygon_in_case_coords
 def _outer_shell() -> Part:
     """Solid rounded-rect prism in case coords; lower-left at (0,0,0)."""
     with BuildPart() as bp:
-        with BuildSketch(Plane.XY.offset(0)):
+        with BuildSketch(Plane.XY):
             with Locations((C.OUTER_WIDTH / 2, C.OUTER_DEPTH / 2)):
                 RectangleRounded(C.OUTER_WIDTH, C.OUTER_DEPTH, C.CORNER_RADIUS)
         extrude(amount=C.MAIN_RIM_Z)
@@ -33,7 +33,7 @@ def _cavity_solid() -> Part:
         with BuildSketch(Plane.XY):
             face = make_face(wire)
             face = offset(face, amount=C.PCB_XY_CLEARANCE, kind=Kind.INTERSECTION)
-        extrude(amount=C.MAIN_RIM_Z + 1.0)
+        extrude(amount=C.MAIN_RIM_Z + 0.01)
     # Translate so the cavity starts at Z=FLOOR_THICKNESS (extrude went up from Z=0).
     return Pos(0, 0, C.FLOOR_THICKNESS) * bp.part
 
