@@ -1,4 +1,3 @@
-from typing import get_args
 from build123d import Part
 from sofle_case import constants as C
 from sofle_case.case import build_case_half
