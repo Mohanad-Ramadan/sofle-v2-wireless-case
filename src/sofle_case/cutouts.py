@@ -24,8 +24,9 @@ def slide_switch_cutout() -> Part:
     _, cy = C.pcb_to_case(*C.SW_SLIDE_POS)
     z_lo, z_hi = C.SLIDE_SWITCH_Z_RANGE
     cz = (z_lo + z_hi) / 2
+    slot_h = z_hi - z_lo
     return Pos(0.0, cy, cz) * Box(
-        C.WALL_THICKNESS + _PIERCE, C.SLIDE_SWITCH_W, C.SLIDE_SWITCH_H,
+        C.WALL_THICKNESS + _PIERCE, C.SLIDE_SWITCH_W, slot_h,
         align=(Align.CENTER, Align.CENTER, Align.CENTER),
     )
 
@@ -45,8 +46,9 @@ def reset_pin_cutout() -> Part:
 def floor_recess() -> Part:
     """Rectangular pocket in floor under slide switch body."""
     cx, cy = C.pcb_to_case(*C.SW_SLIDE_POS)
-    cz = C.FLOOR_THICKNESS - C.SLIDE_SWITCH_RECESS_DEPTH / 2
+    recess_depth_pierced = C.SLIDE_SWITCH_RECESS_DEPTH + 0.01
+    cz = C.FLOOR_THICKNESS - recess_depth_pierced / 2
     return Pos(cx, cy, cz) * Box(
-        C.SLIDE_SWITCH_RECESS_W, C.SLIDE_SWITCH_RECESS_D, C.SLIDE_SWITCH_RECESS_DEPTH,
+        C.SLIDE_SWITCH_RECESS_W, C.SLIDE_SWITCH_RECESS_D, recess_depth_pierced,
         align=(Align.CENTER, Align.CENTER, Align.CENTER),
     )
