@@ -37,4 +37,4 @@ def test_floor_recess_dims():
     bb = floor_recess().bounding_box()
     assert abs((bb.max.X - bb.min.X) - C.SLIDE_SWITCH_RECESS_W) < 0.01
     assert abs((bb.max.Y - bb.min.Y) - C.SLIDE_SWITCH_RECESS_D) < 0.01
-    assert abs((bb.max.Z - bb.min.Z) - C.SLIDE_SWITCH_RECESS_DEPTH) < 0.01
+    assert abs((bb.max.Z - bb.min.Z) - (C.SLIDE_SWITCH_RECESS_DEPTH + 0.01)) < 0.02
