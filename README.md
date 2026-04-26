@@ -26,3 +26,13 @@ pytest
 ```
 
 See `docs/superpowers/specs/2026-04-25-sofle-v2-wireless-case-design.md` for full spec.
+
+## Status
+
+Last verified: 2026-04-26
+
+- Tests: 43 passed, 0 failed
+- `output/sofle_case_left.stl`: 472,184 bytes
+- `output/sofle_case_left.step`: 347,187 bytes
+- `output/sofle_case_right.stl`: 472,184 bytes
+- `output/sofle_case_right.step`: 359,298 bytes
