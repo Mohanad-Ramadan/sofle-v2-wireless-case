@@ -33,4 +33,12 @@ def stepped_standoff(at: tuple[float, float]) -> Part:
                 mode=Mode.SUBTRACT,
             )
 
+    assert bp.part is not None
     return bp.part
+
+
+# %%
+if __name__ == "__main__":
+    from ocp_vscode import show
+    from sofle_case.standoffs import stepped_standoff
+    show(stepped_standoff(at=(0.0, 0.0)))

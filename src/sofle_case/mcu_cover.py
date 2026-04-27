@@ -25,4 +25,12 @@ def build_mcu_cover() -> Part:
         with Locations((cx, cy, z_low + inner_h / 2)):
             Box(inner_w, inner_d, inner_h, mode=Mode.SUBTRACT)
 
+    assert bp.part is not None
     return bp.part
+
+
+# %%
+if __name__ == "__main__":
+    from ocp_vscode import show
+    from sofle_case.mcu_cover import build_mcu_cover
+    show(build_mcu_cover())

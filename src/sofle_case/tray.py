@@ -1,7 +1,8 @@
 """Outer shell + inner cavity (PCB polygon offset by PCB_XY_CLEARANCE) + top chamfer."""
 from __future__ import annotations
+from typing import cast
 from build123d import (
-    Part, Pos, RectangleRounded, Polyline, make_face, extrude, offset, Kind,
+    Part, Wire, Pos, RectangleRounded, Polyline, make_face, extrude, offset, Kind,
     Plane, BuildPart, BuildSketch, BuildLine, Locations, Axis, chamfer,
 )
 from . import constants as C
@@ -15,6 +16,7 @@ def _outer_shell() -> Part:
             with Locations((C.OUTER_WIDTH / 2, C.OUTER_DEPTH / 2)):
                 RectangleRounded(C.OUTER_WIDTH, C.OUTER_DEPTH, C.CORNER_RADIUS)
         extrude(amount=C.MAIN_RIM_Z)
+    assert bp.part is not None
     return bp.part
 
 
@@ -27,15 +29,17 @@ def _cavity_solid() -> Part:
     # Polyline must be built inside BuildLine, then used as a wire for make_face.
     with BuildLine() as bl:
         Polyline(*pts, close=True)
-    wire = bl.line
+    assert bl.line is not None
+    wire = cast(Wire, bl.line)
 
     with BuildPart() as bp:
         with BuildSketch(Plane.XY):
-            face = make_face(wire)
+            face = make_face(wire)  # type: ignore[arg-type]
             face = offset(face, amount=C.PCB_XY_CLEARANCE, kind=Kind.INTERSECTION)
         extrude(amount=C.MAIN_RIM_Z + 0.01)
+    assert bp.part is not None
     # Translate so the cavity starts at Z=FLOOR_THICKNESS (extrude went up from Z=0).
-    return Pos(0, 0, C.FLOOR_THICKNESS) * bp.part
+    return cast(Part, Pos(0, 0, C.FLOOR_THICKNESS) * bp.part)
 
 
 def _chamfer_top_edges(part: Part) -> Part:
@@ -45,11 +49,18 @@ def _chamfer_top_edges(part: Part) -> Part:
     )
     if not top_edges:
         return part
-    return chamfer(top_edges, length=C.TOP_CHAMFER)
+    return cast(Part, chamfer(top_edges, length=C.TOP_CHAMFER))
 
 
 def build_tray() -> Part:
     shell = _outer_shell()
     cavity = _cavity_solid()
-    hollow = shell - cavity
+    hollow = cast(Part, shell - cavity)
     return _chamfer_top_edges(hollow)
+
+
+# %%
+if __name__ == "__main__":
+    from ocp_vscode import show
+    from sofle_case.tray import build_tray
+    show(build_tray())

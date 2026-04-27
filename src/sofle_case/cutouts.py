@@ -1,6 +1,7 @@
 """Subtractive cutouts: USB-C (in MCU cover +Y face), slide-switch slot (-X wall),
 reset pinhole (-X wall), floor recess for slide-switch body."""
 from __future__ import annotations
+from typing import cast
 from build123d import Part, Pos, Rot, Box, Cylinder, Align
 from . import constants as C
 
@@ -13,10 +14,10 @@ def usb_c_cutout() -> Part:
     cx, _ = C.pcb_to_case(*C.MCU_POS)
     cy = C.OUTER_DEPTH  # the +Y wall plane
     cz = C.USB_C_Z_CENTER
-    return Pos(cx, cy, cz) * Box(
+    return cast(Part, Pos(cx, cy, cz) * Box(
         C.USB_C_W, C.WALL_THICKNESS + _PIERCE, C.USB_C_H,
         align=(Align.CENTER, Align.CENTER, Align.CENTER),
-    )
+    ))
 
 
 def slide_switch_cutout() -> Part:
@@ -25,10 +26,10 @@ def slide_switch_cutout() -> Part:
     z_lo, z_hi = C.SLIDE_SWITCH_Z_RANGE
     cz = (z_lo + z_hi) / 2
     slot_h = z_hi - z_lo
-    return Pos(0.0, cy, cz) * Box(
+    return cast(Part, Pos(0.0, cy, cz) * Box(
         C.WALL_THICKNESS + _PIERCE, C.SLIDE_SWITCH_W, slot_h,
         align=(Align.CENTER, Align.CENTER, Align.CENTER),
-    )
+    ))
 
 
 def reset_pin_cutout() -> Part:
@@ -40,7 +41,11 @@ def reset_pin_cutout() -> Part:
         height=C.WALL_THICKNESS + _PIERCE,
     )
     # Default cylinder axis is Z; rotate to X.
-    return Pos(0.0, cy, cz) * Rot(0, 90, 0) * cyl
+    return cast(Part, Pos(0.0, cy, cz) * Rot(0, 90, 0) * cyl)
+
+
+def all_cutouts() -> list[Part]:
+    return [usb_c_cutout(), slide_switch_cutout(), reset_pin_cutout(), floor_recess()]
 
 
 def floor_recess() -> Part:
@@ -48,7 +53,17 @@ def floor_recess() -> Part:
     cx, cy = C.pcb_to_case(*C.SW_SLIDE_POS)
     recess_depth_pierced = C.SLIDE_SWITCH_RECESS_DEPTH + 0.01
     cz = C.FLOOR_THICKNESS - recess_depth_pierced / 2
-    return Pos(cx, cy, cz) * Box(
+    return cast(Part, Pos(cx, cy, cz) * Box(
         C.SLIDE_SWITCH_RECESS_W, C.SLIDE_SWITCH_RECESS_D, recess_depth_pierced,
         align=(Align.CENTER, Align.CENTER, Align.CENTER),
+    ))
+
+
+# %%
+if __name__ == "__main__":
+    from ocp_vscode import show
+    from sofle_case.cutouts import usb_c_cutout, slide_switch_cutout, reset_pin_cutout, floor_recess
+    show(
+        usb_c_cutout(), slide_switch_cutout(), reset_pin_cutout(), floor_recess(),
+        names=["usb_c", "slide_switch", "reset_pin", "floor_recess"],
     )

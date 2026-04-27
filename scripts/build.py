@@ -16,7 +16,9 @@ from sofle_case.case import build_case_half, Side
 @click.argument("side", type=click.Choice(["left", "right"]))
 @click.option("--out", "out_dir", type=click.Path(path_type=Path),
               default=Path("output"), show_default=True)
-def main(side: str, out_dir: Path) -> None:
+@click.option("--show", "show_viewer", is_flag=True, default=False,
+              help="Open result in OCP CAD Viewer after building.")
+def main(side: str, out_dir: Path, show_viewer: bool) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     click.echo(f"building {side} half...")
     part = build_case_half(cast(Side, side))
@@ -30,6 +32,10 @@ def main(side: str, out_dir: Path) -> None:
 
     click.echo(f"  wrote {stl_path} ({stl_path.stat().st_size} bytes)")
     click.echo(f"  wrote {step_path} ({step_path.stat().st_size} bytes)")
+
+    if show_viewer:
+        from ocp_vscode import show
+        show(part, name=f"sofle_case_{side}")
 
 
 if __name__ == "__main__":
