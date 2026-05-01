@@ -1,52 +1,49 @@
-"""Compose the full case half from tray + standoffs + MCU cover, minus cutouts."""
+"""Compose the full case half from tray + standoffs, minus cutouts."""
 from __future__ import annotations
 from typing import Literal, cast
-from build123d import Part, mirror, Plane, Pos
+from build123d import Part, fillet, Axis
 from . import constants as C
 from .tray import build_tray
 from .standoffs import stepped_standoff
-from .mcu_cover import build_mcu_cover
-from .cutouts import (
-    usb_c_cutout, slide_switch_cutout, reset_pin_cutout, floor_recess,
-)
+from .cutouts import usb_c_cutout, slide_switch_cutout
 
 
 Side = Literal["left", "right"]
 
 
 def build_case_half(side: Side) -> Part:
+    """Build a single case half.
+
+    The Sofle PCB is reversible — both halves share one case STL. ``side`` is
+    accepted for CLI symmetry / export naming but produces identical geometry.
+    """
     if side not in ("left", "right"):
         raise ValueError(f"side must be 'left' or 'right', got {side!r}")
 
     shell = build_tray()
 
-    # 5 standoffs at PCB-coord mounting holes, translated to case coords.
     for hx, hy in C.MOUNTING_HOLES:
         cx, cy = C.pcb_to_case(hx, hy)
         shell += stepped_standoff(at=(cx, cy))
 
-    # MCU cover (union)
-    shell += build_mcu_cover()
     shell = cast(Part, shell)
 
-    # Cutouts (subtract)
     shell -= usb_c_cutout()
     shell -= slide_switch_cutout()
-    shell -= reset_pin_cutout()
-    shell -= floor_recess()
 
-    # Boolean ops return Shape; cast back to Part for type checker.
     shell = cast(Part, shell)
 
-    if side == "right":
-        # Mirror about the YZ plane through case centre X = OUTER_WIDTH/2.
-        # build123d's mirror() reflects about a plane through the origin, so we
-        # shift by -OUTER_WIDTH/2, mirror about YZ, then shift back.
-        shell = cast(Part, Pos(-C.OUTER_WIDTH / 2, 0, 0) * shell)
-        shell = cast(Part, mirror(shell, about=Plane.YZ))
-        shell = cast(Part, Pos(C.OUTER_WIDTH / 2, 0, 0) * shell)
+    # Round the outer rim corners of the slide switch slot
+    z_hi = C.SLIDE_SWITCH_Z_RANGE[1]
+    slot_rim_edges = (
+        shell.edges()
+             .filter_by_position(Axis.X, minimum=-0.1, maximum=C.WALL_THICKNESS + 0.1)
+             .filter_by_position(Axis.Z, minimum=z_hi - 0.5, maximum=z_hi + 0.1)
+    )
+    if slot_rim_edges:
+        shell = fillet(slot_rim_edges, radius=C.SLIDE_SWITCH_CORNER_R)
+        shell = cast(Part, shell)
 
-    # Boolean ops (+= / -=) return Solid; wrap as Part to satisfy callers.
     if not isinstance(shell, Part):
         shell = Part(children=[shell])
 
@@ -57,4 +54,14 @@ def build_case_half(side: Side) -> Part:
 if __name__ == "__main__":
     from ocp_vscode import show
     from sofle_case.case import build_case_half
-    show(build_case_half("left"), build_case_half("right"), names=["left", "right"])
+    from sofle_case import constants as C
+
+    parts = [build_case_half("right")]
+    names = ["case"]
+
+    if C.SHOW_PCB_PHANTOM:
+        from sofle_case.pcb_phantom import build_pcb_phantom
+        parts.append(build_pcb_phantom())
+        names.append("pcb_phantom")
+
+    show(*parts, names=names)

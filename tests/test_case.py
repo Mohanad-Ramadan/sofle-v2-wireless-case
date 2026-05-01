@@ -14,14 +14,21 @@ def test_left_outer_bbox():
     assert abs((bb.max.X - bb.min.X) - C.OUTER_WIDTH) < 0.01
     assert abs((bb.max.Y - bb.min.Y) - C.OUTER_DEPTH) < 0.01
     assert abs(bb.min.Z - 0.0) < 0.01
-    assert abs(bb.max.Z - C.MCU_COVER_Z) < 0.01
+    assert abs(bb.max.Z - C.MAIN_RIM_Z) < 0.01
 
 
-def test_right_is_mirror_of_left():
+def test_left_equals_right():
+    """Reversible PCB → single STL serves both halves; geometry is identical."""
     left = build_case_half("left")
     right = build_case_half("right")
-    # Volumes equal within float tolerance
-    assert abs(left.volume - right.volume) / left.volume < 1e-3
+    assert abs(left.volume - right.volume) / left.volume < 1e-6
+    lbb, rbb = left.bounding_box(), right.bounding_box()
+    for a, b in (
+        (lbb.min.X, rbb.min.X), (lbb.max.X, rbb.max.X),
+        (lbb.min.Y, rbb.min.Y), (lbb.max.Y, rbb.max.Y),
+        (lbb.min.Z, rbb.min.Z), (lbb.max.Z, rbb.max.Z),
+    ):
+        assert abs(a - b) < 1e-6
 
 
 def test_invalid_side_raises():

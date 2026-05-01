@@ -1,14 +1,10 @@
-"""All dimensions in mm. Single source of truth for the case geometry.
-
-See docs/superpowers/specs/2026-04-25-sofle-v2-wireless-case-design.md.
-"""
+"""All dimensions in mm. Single source of truth for the case geometry."""
 
 # ---------- Heights (Z = 0 at case bottom) ----------
 FLOOR_THICKNESS = 2.0
 PCB_SEAT_Z      = 4.5
 PLATE_SEAT_Z    = 6.5
-MAIN_RIM_Z      = 10.0
-MCU_COVER_Z     = 17.0
+MAIN_RIM_Z      = 12.0
 
 PCB_TOP_Z       = 6.1   # PCB_SEAT_Z + 1.6 mm PCB thickness
 PLATE_TOP_Z     = 8.0   # PLATE_SEAT_Z + 1.5 mm plate thickness
@@ -39,23 +35,38 @@ PCB_HOLE_DIA     = 4.1
 PCB_LEDGE_ENABLED = False
 PCB_LEDGE_WIDTH   = 1.0   # mm; ring width if enabled
 
-# ---------- MCU cover ----------
-MCU_COVER_W = 23.0
-MCU_COVER_D = 40.0
-
 # ---------- Cutouts (W = horizontal width along wall, H = vertical height) ----------
-USB_C_W, USB_C_H = 9.0, 4.0
-USB_C_Z_CENTER   = 14.0
+# USB-C slot in +Y wall: open-top (top edge punches past wall rim) so a single case
+# STL fits both halves regardless of which MCU footprint is populated.
+#   Z stack at MCU: main-PCB top 6.1, nice!nano PCB top 7.7, USB-C jack body 7.7→10.3.
+#   Bottom Z 7.5 sits just below the jack lower lip; top punches past the rim.
+#   USB_C_Y_DEPTH must reach the MCU's +Y edge (case Y ≈ 118.5) — there is ~12 mm of
+#   solid case between the wall outer face (Y=131) and the cavity edge, so a 31 mm
+#   inward extrusion clears past the MCU into the empty cavity beyond.
+USB_C_W = 9.0
+USB_C_Z_RANGE: tuple[float, float] = (7.5, MAIN_RIM_Z + 0.5)
+USB_C_Y_DEPTH = 31.0
+USB_C_SIDE_BULGE = 1.5   # mm outward arc bulge at midpoint of each X-side
 
-SLIDE_SWITCH_W = 6.0
-SLIDE_SWITCH_Z_RANGE: tuple[float, float] = (1.0, 4.5)
+SLIDE_SWITCH_W     = 6.0
+SLIDE_SWITCH_TOP_W = 14.0
+SLIDE_SWITCH_Z_RANGE: tuple[float, float] = (6.1, MAIN_RIM_Z + 0.5)   # top edge punches past wall rim so slot is open to air
+SLIDE_SWITCH_CORNER_R = 0.1   # fillet radius at slot-rim junction on outer wall face
 
-RESET_PIN_DIA  = 2.0
-RESET_Z_CENTER = 7.5
-
-SLIDE_SWITCH_RECESS_W     = 10.0
-SLIDE_SWITCH_RECESS_D     = 5.0
-SLIDE_SWITCH_RECESS_DEPTH = 1.5
+# Spline tangent scalars passed to Spline(...) for the two side profiles.
+# Each tuple is (start_scalar, end_scalar) following the spline's traversal direction.
+#   Right spline traverses bottom → top: (bottom, top)
+#   Left  (ramp) spline traverses top → bottom: (top, bottom)
+# Larger scalar stretches the OCC interpolated tangent further → longer, more gradual
+# arc with bigger outward sweep. The ramp's top scalar 32.2851 is empirically solved
+# so the cutout's bb.min.Y lands exactly on Y=32.9306 — the case-Y of the tray
+# cavity's min-X vertex (thumb-cluster innermost cavity wall). At that Y the ramp's
+# outermost point fades into the cavity edge, hiding the slot's flare seam in print.
+# If the PCB outline / clearance / switch position changes, re-solve with a binary
+# search over slide_switch_cutout().bounding_box().min.Y against the cavity min-X
+# vertex Y from tray._cavity_solid().vertices().
+SLIDE_SWITCH_RIGHT_TANGENT_SCALARS: tuple[float, float] = (1.0, 1.0)
+SLIDE_SWITCH_RAMP_TANGENT_SCALARS:  tuple[float, float] = (32.2851, 2.5)
 
 # ---------- Component positions (PCB coords, mm) ----------
 MCU_POS        = (10.27, -16.16)
@@ -86,3 +97,11 @@ PCB_OFFSET_Y = (OUTER_DEPTH - (PCB_Y_MAX - PCB_Y_MIN)) / 2 - PCB_Y_MIN
 def pcb_to_case(x: float, y: float) -> tuple[float, float]:
     """Translate a PCB-coordinate point into case (outer-rect) coordinates."""
     return (x + PCB_OFFSET_X, y + PCB_OFFSET_Y)
+
+
+# ---------- Phantom (visual fit-check; default off) ----------
+SHOW_PCB_PHANTOM = False   # True: adds PCB phantom to case.py __main__ viewer
+
+# MCU vertical stack — structural heights that also drive the USB-C cutout design
+MCU_PCB_TOP_Z    = 7.7    # nice!nano daughter-board top surface (PCB_TOP_Z + 1.6 mm nice!nano PCB layer)
+USB_C_BODY_TOP_Z = 10.3   # USB-C jack body top surface

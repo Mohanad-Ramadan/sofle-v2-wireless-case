@@ -3,7 +3,7 @@ from sofle_case import constants as C
 
 
 def test_z_stack_monotonic():
-    """Z layers must increase: floor < pcb_seat < pcb_top < plate_seat < plate_top < rim < mcu_cover."""
+    """Z layers must increase: floor < pcb_seat < pcb_top < plate_seat < plate_top < rim."""
     z = [
         C.FLOOR_THICKNESS,
         C.PCB_SEAT_Z,
@@ -11,7 +11,6 @@ def test_z_stack_monotonic():
         C.PLATE_SEAT_Z,
         C.PLATE_TOP_Z,
         C.MAIN_RIM_Z,
-        C.MCU_COVER_Z,
     ]
     assert z == sorted(z), f"Z stack not monotonic: {z}"
 
@@ -37,3 +36,13 @@ def test_standoff_passes_pcb_hole():
 
 def test_five_mounting_holes():
     assert len(C.MOUNTING_HOLES) == 5
+
+
+def test_show_pcb_phantom_defaults_false():
+    assert C.SHOW_PCB_PHANTOM is False
+
+
+def test_mcu_stack_order():
+    """MCU stack Z values must be ordered and below the wall rim."""
+    assert C.PCB_TOP_Z < C.MCU_PCB_TOP_Z < C.USB_C_BODY_TOP_Z
+    assert C.USB_C_BODY_TOP_Z < C.MAIN_RIM_Z

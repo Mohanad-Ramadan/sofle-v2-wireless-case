@@ -25,8 +25,6 @@ Outputs: `output/sofle_case_{left,right}.{stl,step}`
 pytest
 ```
 
-See `docs/superpowers/specs/2026-04-25-sofle-v2-wireless-case-design.md` for full spec.
-
 ## Status
 
 Last verified: 2026-04-26
