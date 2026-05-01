@@ -64,4 +64,14 @@ if __name__ == "__main__":
         parts.append(build_pcb_phantom())
         names.append("pcb_phantom")
 
+    if C.SHOW_PLATE_PHANTOM:
+        from sofle_case.plate_phantom import build_plate_phantom
+        parts.append(build_plate_phantom())
+        names.append("plate_phantom")
+
+    if C.SHOW_SWITCH_PHANTOM:
+        from sofle_case.switch_phantom import build_switch_phantom
+        parts.append(build_switch_phantom())
+        names.append("switch_phantom")
+
     show(*parts, names=names)

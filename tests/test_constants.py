@@ -46,3 +46,7 @@ def test_mcu_stack_order():
     """MCU stack Z values must be ordered and below the wall rim."""
     assert C.PCB_TOP_Z < C.MCU_PCB_TOP_Z < C.USB_C_BODY_TOP_Z
     assert C.USB_C_BODY_TOP_Z < C.MAIN_RIM_Z
+
+
+def test_show_switch_phantom_defaults_false():
+    assert C.SHOW_SWITCH_PHANTOM is False

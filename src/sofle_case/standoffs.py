@@ -15,7 +15,7 @@ def stepped_standoff(at: tuple[float, float]) -> Part:
     x, y = at
 
     lower_h = C.PCB_SEAT_Z - C.FLOOR_THICKNESS       # 2.5 mm
-    upper_h = C.PLATE_SEAT_Z - C.PCB_SEAT_Z           # 2.0 mm
+    upper_h = C.PLATE_SEAT_Z - C.PCB_SEAT_Z           # 4.6 mm (passes through PCB + spans MX body gap)
     lower_z = C.FLOOR_THICKNESS + lower_h / 2         # cylinder centre Z = 3.25
     upper_z = C.PCB_SEAT_Z + upper_h / 2              # cylinder centre Z = 5.5
 

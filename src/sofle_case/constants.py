@@ -3,11 +3,11 @@
 # ---------- Heights (Z = 0 at case bottom) ----------
 FLOOR_THICKNESS = 2.0
 PCB_SEAT_Z      = 4.5
-PLATE_SEAT_Z    = 6.5
+PLATE_SEAT_Z    = 9.1   # PCB_TOP_Z + 3.0 mm measured MX switch body clearance
 MAIN_RIM_Z      = 12.0
 
 PCB_TOP_Z       = 6.1   # PCB_SEAT_Z + 1.6 mm PCB thickness
-PLATE_TOP_Z     = 8.0   # PLATE_SEAT_Z + 1.5 mm plate thickness
+PLATE_TOP_Z     = 10.7  # PLATE_SEAT_Z + 1.6 mm plate thickness
 
 # Derived thicknesses — computed from the authoritative Z positions so that
 # (TOP_Z - SEAT_Z == THICKNESS) holds exactly in floating-point arithmetic.
@@ -100,7 +100,9 @@ def pcb_to_case(x: float, y: float) -> tuple[float, float]:
 
 
 # ---------- Phantom (visual fit-check; default off) ----------
-SHOW_PCB_PHANTOM = False   # True: adds PCB phantom to case.py __main__ viewer
+SHOW_PCB_PHANTOM    = False  # True: adds PCB phantom to case.py __main__ viewer
+SHOW_PLATE_PHANTOM  = False  # True: adds switch plate phantom to case.py __main__ viewer
+SHOW_SWITCH_PHANTOM = False  # True: adds MX switch phantom to case.py __main__ viewer
 
 # MCU vertical stack — structural heights that also drive the USB-C cutout design
 MCU_PCB_TOP_Z    = 7.7    # nice!nano daughter-board top surface (PCB_TOP_Z + 1.6 mm nice!nano PCB layer)
