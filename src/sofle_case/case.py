@@ -35,9 +35,10 @@ def build_case_half(side: Side) -> Part:
 
     # Round the outer rim corners of the slide switch slot
     z_hi = C.SLIDE_SWITCH_Z_RANGE[1]
+    slide_outer_x = C.PCB_OFFSET_X - (C.WALL_THICKNESS + C.PCB_XY_CLEARANCE)  # 8.5
     slot_rim_edges = (
         shell.edges()
-             .filter_by_position(Axis.X, minimum=-0.1, maximum=C.WALL_THICKNESS + 0.1)
+             .filter_by_position(Axis.X, minimum=slide_outer_x - 0.1, maximum=slide_outer_x + C.WALL_THICKNESS + 0.1)
              .filter_by_position(Axis.Z, minimum=z_hi - 0.5, maximum=z_hi + 0.1)
     )
     if slot_rim_edges:

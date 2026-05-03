@@ -29,7 +29,7 @@ def usb_c_cutout() -> Part:
     half_w = C.USB_C_W / 2
     bulge  = C.USB_C_SIDE_BULGE
     total_depth = C.USB_C_Y_DEPTH + _PIERCE
-    outer_y     = C.OUTER_DEPTH + _PIERCE   # sketch at overshoot face; extrude goes −Y
+    outer_y     = C.USB_C_OUTER_Y + _PIERCE  # outer +Y face at MCU X (PCB Y=0 + border); extrude goes −Y
 
     # Midpoint of each 90° corner arc (at 45° along the arc from each end).
     # Arc center for right corner: (cx+half_w+bulge, z_lo); midpoint at 135° from +X.
@@ -67,7 +67,7 @@ def slide_switch_cutout() -> Part:
     depth = C.PCB_OFFSET_X + C.SW_SLIDE_POS[0] + 5.0  # ≈ 25.7 mm
 
     with BuildPart() as bp:
-        with BuildSketch(Plane.YZ):  # outer wall face at X=0
+        with BuildSketch(Plane.YZ):  # sketch at X=0; outer wall face is at X=8.5, subtraction still cuts wall
             with BuildLine():
                 Line((cy - half_narrow, z_lo), (cy + half_narrow, z_lo))
                 Spline(

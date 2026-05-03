@@ -105,9 +105,9 @@ Z = 14.0  ─── case wall rim (MAIN_RIM_Z)
 - `MCU_COVER_Z = 17.0`
 
 ### Outer Envelope
-- `OUTER_WIDTH = 162.0` (PCB 143.5 + 9.25 mm border each side)
-- `OUTER_DEPTH = 131.0` (PCB 115.5 + 7.75 mm border each side)
-- `WALL_THICKNESS = 3.0`
+- `OUTER_WIDTH = 149.5` (PCB 143.5 + 3.0 mm border each side)
+- `OUTER_DEPTH = 121.5` (PCB 115.5 + 3.0 mm border each side)
+- `WALL_THICKNESS = 2.5`
 - `CORNER_RADIUS = 3.5`
 - `TOP_CHAMFER = 1.5`
 

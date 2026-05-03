@@ -15,11 +15,11 @@ PCB_THICKNESS   = PCB_TOP_Z   - PCB_SEAT_Z    # ≈ 1.6 mm
 PLATE_THICKNESS = PLATE_TOP_Z - PLATE_SEAT_Z  # = 1.5 mm
 
 # ---------- Outer envelope ----------
-OUTER_WIDTH     = 162.0
-OUTER_DEPTH     = 131.0
-WALL_THICKNESS  = 3.0
+OUTER_WIDTH     = 149.5
+OUTER_DEPTH     = 121.5
+WALL_THICKNESS  = 2.5
 CORNER_RADIUS   = 3.5
-TOP_CHAMFER     = 1.5
+TOP_CHAMFER     = 0.8
 
 # ---------- Standoff geometry ----------
 STANDOFF_OD_LOWER  = 5.5   # PCB-seat shoulder OD
@@ -40,9 +40,9 @@ PCB_LEDGE_WIDTH   = 1.0   # mm; ring width if enabled
 # STL fits both halves regardless of which MCU footprint is populated.
 #   Z stack at MCU: main-PCB top 6.1, nice!nano PCB top 7.7, USB-C jack body 7.7→10.3.
 #   Bottom Z 7.5 sits just below the jack lower lip; top punches past the rim.
-#   USB_C_Y_DEPTH must reach the MCU's +Y edge (case Y ≈ 118.5) — there is ~12 mm of
-#   solid case between the wall outer face (Y=131) and the cavity edge, so a 31 mm
-#   inward extrusion clears past the MCU into the empty cavity beyond.
+#   USB_C_Y_DEPTH must reach the MCU's +Y edge (case Y ≈ 113.8) — there is ~2.5 mm of
+#   solid case between the wall outer face (Y=116.5, USB_C_OUTER_Y) and the cavity edge,
+#   so a 31 mm inward extrusion clears past the MCU into the empty cavity beyond.
 USB_C_W = 9.0
 USB_C_Z_RANGE: tuple[float, float] = (7.5, MAIN_RIM_Z + 0.5)
 USB_C_Y_DEPTH = 31.0
@@ -94,15 +94,19 @@ PCB_OFFSET_X = (OUTER_WIDTH - (PCB_X_MAX - PCB_X_MIN)) / 2 - PCB_X_MIN
 PCB_OFFSET_Y = (OUTER_DEPTH - (PCB_Y_MAX - PCB_Y_MIN)) / 2 - PCB_Y_MIN
 
 
+# Outer wall face positions (polygon-derived; PCB top boundary at MCU X column = PCB Y=0)
+USB_C_OUTER_Y = PCB_OFFSET_Y + WALL_THICKNESS + PCB_XY_CLEARANCE  # +Y outer face at MCU X = 116.5
+
+
 def pcb_to_case(x: float, y: float) -> tuple[float, float]:
     """Translate a PCB-coordinate point into case (outer-rect) coordinates."""
     return (x + PCB_OFFSET_X, y + PCB_OFFSET_Y)
 
 
 # ---------- Phantom (visual fit-check; default off) ----------
-SHOW_PCB_PHANTOM    = False  # True: adds PCB phantom to case.py __main__ viewer
-SHOW_PLATE_PHANTOM  = False  # True: adds switch plate phantom to case.py __main__ viewer
-SHOW_SWITCH_PHANTOM = False  # True: adds MX switch phantom to case.py __main__ viewer
+SHOW_PCB_PHANTOM    = True # True: adds PCB phantom to case.py __main__ viewer
+SHOW_PLATE_PHANTOM  = True # True: adds switch plate phantom to case.py __main__ viewer
+SHOW_SWITCH_PHANTOM = True # True: adds MX switch phantom to case.py __main__ viewer
 
 # MCU vertical stack — structural heights that also drive the USB-C cutout design
 MCU_PCB_TOP_Z    = 7.7    # nice!nano daughter-board top surface (PCB_TOP_Z + 1.6 mm nice!nano PCB layer)
