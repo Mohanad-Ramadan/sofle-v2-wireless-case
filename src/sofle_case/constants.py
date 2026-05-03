@@ -4,7 +4,7 @@
 FLOOR_THICKNESS = 2.0
 PCB_SEAT_Z      = 4.5
 PLATE_SEAT_Z    = 9.1   # PCB_TOP_Z + 3.0 mm measured MX switch body clearance
-MAIN_RIM_Z      = 12.0
+MAIN_RIM_Z      = 14.0
 
 PCB_TOP_Z       = 6.1   # PCB_SEAT_Z + 1.6 mm PCB thickness
 PLATE_TOP_Z     = 10.7  # PLATE_SEAT_Z + 1.6 mm plate thickness

@@ -18,10 +18,9 @@ Z (mm)
  17.3 ╌╌╌╌╌╌╌┴────────────┴╌╌╌╌╌╌╌╌  upper housing top
          ╔══════════════════════════╗
          ║                          ║
+ 14.0 ━━━╬══════════════════════════╬━━━━  case rim top  ← midpoint of upper housing
          ║    U P P E R             ║  15.6 × 15.6 mm
          ║    H O U S I N G         ║  6.6 mm tall
-         ║                          ║
- 12.0 ━━━╬══════════════════════════╬━━━━  case rim top
          ║                          ║
  10.7 ╌╌╌╩══════════════════════════╩╌╌╌  plate top · upper housing bottom
       │  ╔══════════════════════════╗  │
@@ -56,7 +55,7 @@ Z (mm)
 |-------:|-----------------------|----------:|---------------------------------|
 |   20.8 | MX stem top           | 3.5 mm    | `switch_phantom._STEM_H`        |
 |   17.3 | MX upper housing top  | 6.6 mm    | `switch_phantom._UPPER_H`       |
-|   12.0 | Case rim top          | —         | `MAIN_RIM_Z`                    |
+|   14.0 | Case rim top          | —         | `MAIN_RIM_Z`                    |
 |   10.7 | Plate top / MX upper housing bottom | 1.6 mm | `PLATE_TOP_Z`    |
 |    9.1 | Plate seat / MX lower housing top   | —      | `PLATE_SEAT_Z`   |
 |    6.1 | PCB top / MX lower housing bottom   | 3.0 mm | `PCB_TOP_Z`      |
@@ -94,8 +93,8 @@ Cherry MX upper body sits directly on the plate top surface. Footprint 15.6 × 1
 ### MX switch stem — Z = 17.3 → 20.8 (phantom only)
 The stem cylinder (Ø4.5 mm, 3.5 mm tall) rises above the upper housing. Keycaps press-fit onto the stem above this point. The stem top at Z≈20.8 is the highest point in the switch phantom.
 
-### Case rim top — Z = 12.0 (`MAIN_RIM_Z = 12.0`)
-Top edge of the case wall. Sits 1.3 mm above the plate top, which is enough to shroud the plate edge and the lower part of the MX switch body without interfering with keycap travel. The USB-C and slide-switch wall cutouts punch past this rim (their top Z = `MAIN_RIM_Z + 0.5`) to make them open-top slots, ensuring one case STL fits both left and right halves regardless of MCU footprint orientation.
+### Case rim top — Z = 14.0 (`MAIN_RIM_Z = 14.0`)
+Top edge of the case wall. Sits 3.3 mm above the plate top — exactly at the midpoint of the MX upper housing (10.7 → 17.3 mm). The rim bisects the upper housing: the lower half is enclosed by the case wall, the upper half and stem protrude above it for keycap clearance. The USB-C and slide-switch wall cutouts punch past this rim (their top Z = `MAIN_RIM_Z + 0.5`) to make them open-top slots, ensuring one case STL fits both left and right halves regardless of MCU footprint orientation.
 
 ---
 

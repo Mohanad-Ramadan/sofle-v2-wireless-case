@@ -88,7 +88,7 @@ Z = 4.5   ─── PCB bottom (PCB_SEAT_Z)
 Z = 6.1   ─── PCB top  (PCB = 1.6mm)
 Z = 6.5   ─── switch plate bottom (PLATE_SEAT_Z)
 Z = 8.0   ─── switch plate top (plate = 1.5mm)
-Z = 12.0  ─── case wall rim (MAIN_RIM_Z)
+Z = 14.0  ─── case wall rim (MAIN_RIM_Z)
 ```
 
 ---
@@ -99,7 +99,7 @@ Z = 12.0  ─── case wall rim (MAIN_RIM_Z)
 - `FLOOR_THICKNESS = 2.0`
 - `PCB_SEAT_Z = 4.5`
 - `PLATE_SEAT_Z = 6.5`
-- `MAIN_RIM_Z = 12.0`
+- `MAIN_RIM_Z = 14.0`
 - `PCB_TOP_Z = 6.1` (PCB_SEAT_Z + 1.6 mm PCB thickness)
 - `PLATE_TOP_Z = 8.0` (PLATE_SEAT_Z + 1.5 mm plate thickness)
 - `MCU_COVER_Z = 17.0`
