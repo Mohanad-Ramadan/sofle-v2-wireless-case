@@ -58,15 +58,15 @@ SLIDE_SWITCH_CORNER_R = 0.1   # fillet radius at slot-rim junction on outer wall
 #   Right spline traverses bottom → top: (bottom, top)
 #   Left  (ramp) spline traverses top → bottom: (top, bottom)
 # Larger scalar stretches the OCC interpolated tangent further → longer, more gradual
-# arc with bigger outward sweep. The ramp's top scalar 32.2851 is empirically solved
-# so the cutout's bb.min.Y lands exactly on Y=32.9306 — the case-Y of the tray
+# arc with bigger outward sweep. The ramp's top scalar 44.1641 is empirically solved
+# so the cutout's bb.min.Y lands exactly on Y=28.1806 — the case-Y of the tray
 # cavity's min-X vertex (thumb-cluster innermost cavity wall). At that Y the ramp's
 # outermost point fades into the cavity edge, hiding the slot's flare seam in print.
-# If the PCB outline / clearance / switch position changes, re-solve with a binary
-# search over slide_switch_cutout().bounding_box().min.Y against the cavity min-X
-# vertex Y from tray._cavity_solid().vertices().
+# Ramp spline now runs from z_hi down to PLATE_TOP_Z only (shortened); re-solve with
+# binary search over slide_switch_cutout().bounding_box().min.Y against the cavity
+# min-X vertex Y from tray._cavity_solid().vertices().
 SLIDE_SWITCH_RIGHT_TANGENT_SCALARS: tuple[float, float] = (1.0, 1.0)
-SLIDE_SWITCH_RAMP_TANGENT_SCALARS:  tuple[float, float] = (32.2851, 2.5)
+SLIDE_SWITCH_RAMP_TANGENT_SCALARS:  tuple[float, float] = (44.1641, 2.5)
 
 # ---------- Component positions (PCB coords, mm) ----------
 MCU_POS        = (10.27, -16.16)

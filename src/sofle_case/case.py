@@ -35,15 +35,21 @@ def build_case_half(side: Side) -> Part:
 
     # Round the outer rim corners of the slide switch slot
     z_hi = C.SLIDE_SWITCH_Z_RANGE[1]
-    slide_outer_x = C.PCB_OFFSET_X - (C.WALL_THICKNESS + C.PCB_XY_CLEARANCE)  # 8.5
+    slide_outer_x = C.PCB_OFFSET_X - (C.WALL_THICKNESS + C.PCB_XY_CLEARANCE)  # 8.5 = outer wall face at slot Y
+    _, slot_cy = C.pcb_to_case(*C.SW_SLIDE_POS)
+    half_wide = C.SLIDE_SWITCH_TOP_W / 2
     slot_rim_edges = (
         shell.edges()
              .filter_by_position(Axis.X, minimum=slide_outer_x - 0.1, maximum=slide_outer_x + C.WALL_THICKNESS + 0.1)
-             .filter_by_position(Axis.Z, minimum=z_hi - 0.5, maximum=z_hi + 0.1)
+             .filter_by_position(Axis.Y, minimum=slot_cy - half_wide - 0.5, maximum=slot_cy + half_wide + 0.5)
+             .filter_by_position(Axis.Z, minimum=C.MAIN_RIM_Z - 0.5, maximum=z_hi + 0.1)
     )
     if slot_rim_edges:
-        shell = fillet(slot_rim_edges, radius=C.SLIDE_SWITCH_CORNER_R)
-        shell = cast(Part, shell)
+        try:
+            shell = fillet(slot_rim_edges, radius=C.SLIDE_SWITCH_CORNER_R)
+            shell = cast(Part, shell)
+        except ValueError:
+            pass
 
     if not isinstance(shell, Part):
         shell = Part(children=[shell])

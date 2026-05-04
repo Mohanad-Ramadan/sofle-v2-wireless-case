@@ -79,10 +79,11 @@ def slide_switch_cutout() -> Part:
                 Line((cy + half_wide, z_hi), (cy - half_wide, z_hi))
                 Spline(
                     (cy - half_wide,   z_hi),
-                    (cy - half_narrow, z_lo),
+                    (cy - half_narrow, C.PLATE_TOP_Z),  # ramp only above plate — hides plate edge
                     tangents=[(-1, 0), (0, -1)],
                     tangent_scalars=list(C.SLIDE_SWITCH_RAMP_TANGENT_SCALARS),
                 )
+                Line((cy - half_narrow, C.PLATE_TOP_Z), (cy - half_narrow, z_lo))
             make_face()
         extrude(amount=depth)  # spans outer face → inner cavity at switch Y
         # Fillet the two bottom long edges (parallel to X, at z_lo) → semicircle arch at bottom
