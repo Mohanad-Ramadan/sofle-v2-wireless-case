@@ -81,15 +81,22 @@ Standoffs pass through with 0.30 mm radial clearance.
 ## Vertical Layer Stack (bottom → top)
 
 ```
-Z = 0.0   ─── case bottom
-Z = 2.0   ─── floor interior top (FLOOR_THICKNESS)
-Z = 2.0–4.5  ─── air gap
-Z = 4.5   ─── PCB bottom (PCB_SEAT_Z)
-Z = 6.1   ─── PCB top  (PCB = 1.6mm)
-Z = 6.5   ─── switch plate bottom (PLATE_SEAT_Z)
-Z = 8.0   ─── switch plate top (plate = 1.5mm)
-Z = 14.0  ─── case wall rim (MAIN_RIM_Z)
+Z =  0.0  ─── case bottom
+Z =  2.0  ─── floor interior top       (FLOOR_THICKNESS)
+Z =  2.0–4.5 ─── air gap
+Z =  4.5  ─── PCB bottom               (PCB_SEAT_Z)
+Z =  6.1  ─── PCB top                  (PCB = 1.6 mm)
+Z =  7.7  ─── nice!nano PCB top        (MCU_PCB_TOP_Z)
+Z =  9.1  ─── switch plate bottom      (PLATE_SEAT_Z)
+Z = 10.3  ─── USB-C jack body top      (USB_C_BODY_TOP_Z)
+Z = 10.7  ─── switch plate top         (PLATE_TOP_Z, plate = 1.6 mm)
+Z = 14.0  ─── main case wall rim       (MAIN_RIM_Z)
+Z = 17.1  ─── MCU wall plateau top     (MCU_HILL_Z = PCB_TOP_Z + 11 mm)
 ```
+
+The −X wall has a variable-height profile above the MCU region: flat plateau at
+`MCU_HILL_Z` from the +Y case end to the MCU body −Y edge, then a spline descent
+landing at `MAIN_RIM_Z` at the slide-switch Y centre.
 
 ---
 
@@ -98,18 +105,22 @@ Z = 14.0  ─── case wall rim (MAIN_RIM_Z)
 ### Heights
 - `FLOOR_THICKNESS = 2.0`
 - `PCB_SEAT_Z = 4.5`
-- `PLATE_SEAT_Z = 6.5`
+- `PLATE_SEAT_Z = 9.1`
 - `MAIN_RIM_Z = 14.0`
 - `PCB_TOP_Z = 6.1` (PCB_SEAT_Z + 1.6 mm PCB thickness)
-- `PLATE_TOP_Z = 8.0` (PLATE_SEAT_Z + 1.5 mm plate thickness)
-- `MCU_COVER_Z = 17.0`
+- `PLATE_TOP_Z = 10.7` (PLATE_SEAT_Z + 1.6 mm plate thickness)
+- `MCU_PCB_TOP_Z = 7.7` (nice!nano daughter-board top)
+- `USB_C_BODY_TOP_Z = 10.3`
+- `MCU_HILL_Z = 17.1` (PCB_TOP_Z + 11 mm — −X wall plateau height above MCU)
+- `MCU_BODY_L = 33.0` (nice!nano body length in Y, drives plateau extent)
+- `PLATE_RAMP_CLEARANCE = 3.0` (mm; MCU wall descent lands ≥ this above PLATE_TOP_Z)
 
 ### Outer Envelope
 - `OUTER_WIDTH = 149.5` (PCB 143.5 + 3.0 mm border each side)
 - `OUTER_DEPTH = 121.5` (PCB 115.5 + 3.0 mm border each side)
 - `WALL_THICKNESS = 2.5`
 - `CORNER_RADIUS = 3.5`
-- `TOP_CHAMFER = 1.5`
+- `TOP_CHAMFER = 0.8`
 
 ### Standoffs
 - `STANDOFF_OD_LOWER = 5.5` (PCB seat shoulder)
@@ -146,14 +157,16 @@ Z = 14.0  ─── case wall rim (MAIN_RIM_Z)
 
 ## Build Sequence (`case.py::build_case_half`)
 
-1. Build outer rounded-rect shell, extrude to main rim
-2. Subtract inner cavity (PCB outline + 0.5 mm clearance) from Z=2 up
-3. Add 5 stepped standoffs at mounting-hole positions
-4. Subtract cutouts:
+1. `tray.py::build_tray`:
+   a. Build outer shell (PCB polygon offset by WALL_THICKNESS + PCB_XY_CLEARANCE), extrude to MAIN_RIM_Z
+   b. Subtract inner cavity (PCB polygon + PCB_XY_CLEARANCE), extruded from FLOOR_THICKNESS upward
+   c. Fuse MCU wall cap (−X wall plateau from MAIN_RIM_Z → MCU_HILL_Z above MCU region)
+   d. Fillet top rim edges (TOP_CHAMFER = 0.8 mm)
+2. Add 5 stepped standoffs at mounting-hole positions
+3. Subtract cutouts:
    - USB-C open-top slot in +Y wall (punches past rim)
-   - Slide-switch slot in −X wall (top-mount, punches past rim)
-5. Chamfer top outer edges
-6. Single STL serves both halves — PCB is reversible. `build_case_half("left")` and `build_case_half("right")` return identical geometry; the parameter only affects export filename.
+   - Slide-switch arched-trapezoid slot in −X wall (top-mount, punches past rim)
+4. Single STL serves both halves — PCB is reversible. `build_case_half("left")` and `build_case_half("right")` return identical geometry; the parameter only affects export filename.
 
 ---
 
