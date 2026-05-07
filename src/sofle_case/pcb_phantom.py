@@ -11,7 +11,6 @@ from .pcb_geometry import polygon_in_case_coords
 
 # Phantom-only body dimensions (not structural — not in constants.py)
 _MCU_W         = 18.0  # nice!nano width along case X
-_MCU_L         = 33.0  # nice!nano length along case Y; USB-C exits the +Y face
 _USB_C_STUB_Y  =  7.0  # depth of USB-C jack stub extending from MCU +Y face
 _SW_BODY_X     =  8.0  # slide-switch body extent in -X from switch centre
 _SW_BODY_Y     =  4.0  # slide-switch body width in Y
@@ -45,14 +44,14 @@ def _pcb_plate() -> Part:
 
 
 def _mcu_block() -> Part:
-    """nice!nano daughter-board block above the main PCB plate."""
+    """nice!nano + header legs block above the main PCB plate."""
     cx, cy = C.pcb_to_case(*C.MCU_POS)
-    block_h = C.MCU_PCB_TOP_Z - C.PCB_TOP_Z
+    block_h  = C.MCU_HILL_Z - C.PCB_TOP_Z   # 11.0 mm: full MCU + header legs
     center_z = C.PCB_TOP_Z + block_h / 2
 
     with BuildPart() as bp:
         with Locations((cx, cy, center_z)):
-            Box(_MCU_W, _MCU_L, block_h)
+            Box(_MCU_W, C.MCU_BODY_L, block_h)
 
     assert bp.part is not None
     return bp.part
@@ -61,7 +60,7 @@ def _mcu_block() -> Part:
 def _usb_c_stub() -> Part:
     """USB-C jack body stub at the +Y face of the MCU block."""
     cx, cy = C.pcb_to_case(*C.MCU_POS)
-    mcu_y_face = cy + _MCU_L / 2          # +Y face of MCU block (≈ 118.59 case-Y)
+    mcu_y_face = cy + C.MCU_BODY_L / 2    # +Y face of MCU block (≈ 118.59 case-Y)
     stub_center_y = mcu_y_face + _USB_C_STUB_Y / 2
     stub_h = C.USB_C_BODY_TOP_Z - C.MCU_PCB_TOP_Z
     center_z = C.MCU_PCB_TOP_Z + stub_h / 2

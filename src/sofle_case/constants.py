@@ -111,3 +111,11 @@ SHOW_SWITCH_PHANTOM = True # True: adds MX switch phantom to case.py __main__ vi
 # MCU vertical stack — structural heights that also drive the USB-C cutout design
 MCU_PCB_TOP_Z    = 7.7    # nice!nano daughter-board top surface (PCB_TOP_Z + 1.6 mm nice!nano PCB layer)
 USB_C_BODY_TOP_Z = 10.3   # USB-C jack body top surface
+
+# ---------- MCU wall cap on −X wall ----------
+MCU_HILL_Z                              = PCB_TOP_Z + 11.0          # 17.1 mm — top of MCU + header legs
+MCU_BODY_L                              = 33.0                       # MCU body length in Y (mm)
+MCU_HILL_DESCENT_SCALARS: tuple[float, float] = (1.5, 1.5)          # spline descent tuning (larger = gentler curve)
+
+# Minimum clearance from switch-plate top to the −Y ramp of the slide switch slot
+PLATE_RAMP_CLEARANCE = 3.0   # mm  → floor at PLATE_TOP_Z + 3.0 = 13.7 mm

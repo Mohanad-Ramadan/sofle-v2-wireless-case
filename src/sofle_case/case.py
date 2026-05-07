@@ -52,7 +52,8 @@ def build_case_half(side: Side) -> Part:
             pass
 
     if not isinstance(shell, Part):
-        shell = Part(children=[shell])
+        solids = shell.solids()
+        shell = Part(children=list(solids)) if solids else Part(children=[shell])
 
     return shell
 
