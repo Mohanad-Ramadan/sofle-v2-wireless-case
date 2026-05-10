@@ -12,9 +12,11 @@ from .pcb_geometry import polygon_in_case_coords
 # Phantom-only body dimensions (not structural — not in constants.py)
 _MCU_W         = 18.0  # nice!nano width along case X
 _USB_C_STUB_Y  =  7.0  # depth of USB-C jack stub extending from MCU +Y face
-_SW_BODY_X     =  8.0  # slide-switch body extent in -X from switch centre
-_SW_BODY_Y     =  4.0  # slide-switch body width in Y
-_SW_BODY_H     =  3.6  # slide-switch body height above PCB top
+_SW_BODY_X     =  8.0  # slide-switch metal-can extent in -X from switch centre
+_SW_BODY_Y     =  4.0  # slide-switch metal-can width in Y (= stem toggle space)
+_SW_BODY_H     =  1.5  # metal-can height above PCB top (stem starts at top of can)
+_SW_STEM_X     =  2.0  # actuator stem width in X
+_SW_STEM_H     =  1.0  # stem height above metal can (top reaches PCB_TOP_Z + 2.5 mm)
 
 
 def _pcb_plate() -> Part:
@@ -74,14 +76,21 @@ def _usb_c_stub() -> Part:
 
 
 def _slide_switch_body() -> Part:
-    """Slide-switch body block, extending -X from the switch centre."""
+    """Slide-switch metal-can body + actuator stem, extending -X from switch centre.
+
+    Lower block = metal can (hidden by case wall via SLIDE_SWITCH_Z_RANGE z_lo).
+    Upper block = stem toggle envelope (must protrude through the slot for finger access).
+    """
     cx, cy = C.pcb_to_case(*C.SW_SLIDE_POS)
     body_center_x = cx - _SW_BODY_X / 2
-    center_z = C.PCB_TOP_Z + _SW_BODY_H / 2
+    body_z = C.PCB_TOP_Z + _SW_BODY_H / 2
+    stem_z = C.PCB_TOP_Z + _SW_BODY_H + _SW_STEM_H / 2
 
     with BuildPart() as bp:
-        with Locations((body_center_x, cy, center_z)):
+        with Locations((body_center_x, cy, body_z)):
             Box(_SW_BODY_X, _SW_BODY_Y, _SW_BODY_H)
+        with Locations((body_center_x, cy, stem_z)):
+            Box(_SW_STEM_X, _SW_BODY_Y, _SW_STEM_H)
 
     assert bp.part is not None
     return bp.part

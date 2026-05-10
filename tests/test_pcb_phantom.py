@@ -15,7 +15,7 @@ def test_z_min_at_pcb_seat():
 
 def test_z_max_at_usb_c_body_top():
     bb = build_pcb_phantom().bounding_box()
-    assert abs(bb.max.Z - C.MCU_HILL_Z) < 0.1
+    assert abs(bb.max.Z - C.USB_C_BODY_TOP_Z) < 0.1
 
 
 def test_volume_less_than_bbox():
