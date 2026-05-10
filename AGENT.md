@@ -91,12 +91,14 @@ Z =  9.1  ─── switch plate bottom      (PLATE_SEAT_Z)
 Z = 10.3  ─── USB-C jack body top      (USB_C_BODY_TOP_Z)
 Z = 10.7  ─── switch plate top         (PLATE_TOP_Z, plate = 1.6 mm)
 Z = 14.0  ─── main case wall rim       (MAIN_RIM_Z)
-Z = 17.1  ─── MCU wall plateau top     (MCU_HILL_Z = PCB_TOP_Z + 11 mm)
+Z = 17.1  ─── MCU wall plateau top on −X and +Y walls at MCU corner (MCU_HILL_Z = PCB_TOP_Z + 11 mm)
 ```
 
-The −X wall has a variable-height profile above the MCU region: flat plateau at
-`MCU_HILL_Z` from the +Y case end to the MCU body −Y edge, then a spline descent
-landing at `MAIN_RIM_Z` at the slide-switch Y centre.
+The −X and +Y walls share a variable-height plateau above the MCU region.
+On the −X wall: flat at `MCU_HILL_Z` from the +Y case end to the MCU body −Y edge,
+then a spline descent landing at `MAIN_RIM_Z` at the slide-switch Y centre.
+On the +Y wall: flat at `MCU_HILL_Z` from the −X wall face to the MCU +X edge,
+then a spline descent back to `MAIN_RIM_Z` beyond the MCU footprint.
 
 ---
 
@@ -111,8 +113,14 @@ landing at `MAIN_RIM_Z` at the slide-switch Y centre.
 - `PLATE_TOP_Z = 10.7` (PLATE_SEAT_Z + 1.6 mm plate thickness)
 - `MCU_PCB_TOP_Z = 7.7` (nice!nano daughter-board top)
 - `USB_C_BODY_TOP_Z = 10.3`
-- `MCU_HILL_Z = 17.1` (PCB_TOP_Z + 11 mm — −X wall plateau height above MCU)
-- `MCU_BODY_L = 33.0` (nice!nano body length in Y, drives plateau extent)
+- `MCU_HILL_Z = 17.1` (PCB_TOP_Z + 11 mm — wall plateau height above MCU)
+- `MCU_BODY_L = 33.0` (nice!nano body length in Y, drives −X wall plateau extent)
+- `MCU_BODY_W = 18.0` (nice!nano body width in X, drives +Y wall plateau extent)
+- `MCU_HILL_PLUS_Y_REACH_X ≈ 30.77` (case X of MCU +X edge; +Y wall hill ends here)
+- `MCU_HILL_PLUS_Y_RAMP_RUN = 8.0` (mm; +Y wall linear descent run from MCU +X edge to MAIN_RIM_Z)
+- `MCU_HILL_NEG_X_INNER_BOUND_X = 13.0` (L-mask: keep hill ring at X ≤ this on −X wall)
+- `MCU_HILL_PLUS_Y_INNER_BOUND_Y = 112.5` (L-mask: keep hill ring at Y ≥ this on +Y wall)
+- `MCU_HILL_DESCENT_SCALARS = (1.5, 1.5)` (−X wall spline descent tuning)
 - `PLATE_RAMP_CLEARANCE = 3.0` (mm; MCU wall descent lands ≥ this above PLATE_TOP_Z)
 
 ### Outer Envelope
@@ -160,11 +168,11 @@ landing at `MAIN_RIM_Z` at the slide-switch Y centre.
 1. `tray.py::build_tray`:
    a. Build outer shell (PCB polygon offset by WALL_THICKNESS + PCB_XY_CLEARANCE), extrude to MAIN_RIM_Z
    b. Subtract inner cavity (PCB polygon + PCB_XY_CLEARANCE), extruded from FLOOR_THICKNESS upward
-   c. Fuse MCU wall cap (−X wall plateau from MAIN_RIM_Z → MCU_HILL_Z above MCU region)
+   c. Fuse MCU hill solid (`_mcu_hill_solid()` — wall ring extension over MCU corner from MAIN_RIM_Z → MCU_HILL_Z; outer/inner faces share the polygon-offset shell faces, so the hill is one continuous solid with the shell)
    d. Fillet top rim edges (TOP_CHAMFER = 0.8 mm)
 2. Add 5 stepped standoffs at mounting-hole positions
 3. Subtract cutouts:
-   - USB-C open-top slot in +Y wall (punches past rim)
+   - USB-C open-top slot in +Y wall (punches through raised hill past rim)
    - Slide-switch arched-trapezoid slot in −X wall (top-mount, punches past rim)
 4. Single STL serves both halves — PCB is reversible. `build_case_half("left")` and `build_case_half("right")` return identical geometry; the parameter only affects export filename.
 
@@ -187,6 +195,8 @@ landing at `MAIN_RIM_Z` at the slide-switch Y centre.
 - **Width (X):** 9.0 mm
 - **Z range:** 7.5 mm → past rim (open-top slot). Bottom sits just below the nice!nano USB-C jack lower lip (jack body spans Z ≈ 7.9–10.3); top punches past `MAIN_RIM_Z` so cable always has clearance.
 - **Y depth:** 31 mm inward from outer wall face. The PCB outline does not extend to the outer wall — ~12 mm of solid case lies between the wall and the cavity edge at MCU X. The slot must reach past the MCU's +Y body edge (case Y ≈ 118.5) into the empty cavity so the cable path is unobstructed.
+
+**Note:** Because the +Y wall is raised to `MCU_HILL_Z` (17.1 mm) above the MCU footprint, the USB-C slot punches through the raised hill. The slot is still open-top; the hill material above the slot is removed by the same subtraction that creates the slot.
 
 ### Reset Pinhole
 - **Wall:** −X outer wall
