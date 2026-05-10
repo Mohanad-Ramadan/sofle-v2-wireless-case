@@ -44,7 +44,7 @@ PCB_LEDGE_WIDTH   = 1.0   # mm; ring width if enabled
 #   solid case between the wall outer face (Y=116.5, USB_C_OUTER_Y) and the cavity edge,
 #   so a 31 mm inward extrusion clears past the MCU into the empty cavity beyond.
 USB_C_W = 9.0
-USB_C_Z_RANGE: tuple[float, float] = (7.5, MAIN_RIM_Z + 0.5)
+USB_C_Z_RANGE: tuple[float, float] = (7.5, PCB_TOP_Z + 11.5)   # top = MCU_HILL_Z + 0.5; clears raised +Y wall
 USB_C_Y_DEPTH = 31.0
 USB_C_SIDE_BULGE = 1.5   # mm outward arc bulge at midpoint of each X-side
 
@@ -115,7 +115,22 @@ USB_C_BODY_TOP_Z = 10.3   # USB-C jack body top surface
 # ---------- MCU wall cap on −X wall ----------
 MCU_HILL_Z                              = PCB_TOP_Z + 11.0          # 17.1 mm — top of MCU + header legs
 MCU_BODY_L                              = 33.0                       # MCU body length in Y (mm)
+MCU_BODY_W                              = 18.0                       # MCU body width in X (mm)
 MCU_HILL_DESCENT_SCALARS: tuple[float, float] = (1.5, 1.5)          # spline descent tuning (larger = gentler curve)
 
-# Minimum clearance from switch-plate top to the −Y ramp of the slide switch slot
+# ---------- Integrated MCU hill covering −X and +Y walls at MCU corner ----------
+# +X extent of the MCU hill on the +Y wall (case coords): MCU +X edge = MCU_POS + half width in PCB coords
+MCU_HILL_PLUS_Y_REACH_X: float         = pcb_to_case(MCU_POS[0] + MCU_BODY_W / 2, 0)[0]  # ≈ 30.77 mm
+# +Y wall linear ramp run (mm) from MCU +X edge down to MAIN_RIM_Z
+MCU_HILL_PLUS_Y_RAMP_RUN: float        = 8.0
+# L-corner XY mask bounds (case coords). Hill ring is kept where:
+#   X ≤ MCU_HILL_NEG_X_INNER_BOUND_X (covers −X wall ring at MCU Y range)
+#   Y ≥ MCU_HILL_PLUS_Y_INNER_BOUND_Y (covers +Y wall ring at MCU X column)
+# Polygon at MCU column: outer −X face X=8.5, inner X=12.0; outer +Y face Y=116.5, inner Y=113.0.
+MCU_HILL_NEG_X_INNER_BOUND_X: float    = 13.0
+MCU_HILL_PLUS_Y_INNER_BOUND_Y: float   = OUTER_DEPTH - 9.0   # = 112.5
+
+# ---------- S-curve ramp on −X wall ----------
 PLATE_RAMP_CLEARANCE = 3.0   # mm  → floor at PLATE_TOP_Z + 3.0 = 13.7 mm
+S_CURVE_RAMP_Y_RANGE: tuple[float, float] = (30.0, 65.0)           # approximate start/end Y in case coords
+S_CURVE_RAMP_Z_FLOOR: float             = PLATE_TOP_Z + PLATE_RAMP_CLEARANCE  # = 13.7 mm

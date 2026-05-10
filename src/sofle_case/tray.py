@@ -1,113 +1,191 @@
-"""Outer shell + inner cavity (PCB polygon offset by PCB_XY_CLEARANCE) + top fillet."""
+"""Outer shell + inner cavity + integrated MCU hill (−X and +Y walls)."""
 from __future__ import annotations
 from typing import cast
 from build123d import (
-    Part, Wire, Pos, Polyline, make_face, extrude, offset, Kind,
+    Part, Wire, Pos, Polyline, make_face, extrude, offset, Kind, Solid,
     Plane, BuildPart, BuildSketch, BuildLine, Axis, fillet, Line, Spline,
 )
 from . import constants as C
 from .pcb_geometry import polygon_in_case_coords
 
 
-def _outer_shell() -> Part:
-    """PCB polygon offset outward by (WALL_THICKNESS + PCB_XY_CLEARANCE) with ARC corners."""
+# ---------------------------------------------------------------------------
+# Shared 2D faces — used by shell, cavity, AND hill ring so all share the
+# same outer/inner XY profile. This is what guarantees the hill is flush.
+# ---------------------------------------------------------------------------
+
+def _polygon_wire() -> Wire:
     poly = polygon_in_case_coords()
     pts = poly[:-1] if poly[0] == poly[-1] else poly
     with BuildLine() as bl:
         Polyline(*pts, close=True)
     assert bl.line is not None
-    wire = cast(Wire, bl.line)
+    return cast(Wire, bl.line)
+
+
+def _outer_extruded(z_lo: float, z_hi: float) -> Part:
+    """PCB polygon offset OUTWARD by (WALL_THICKNESS + PCB_XY_CLEARANCE), Kind.ARC,
+    extruded from z_lo to z_hi."""
+    wire = _polygon_wire()
     with BuildPart() as bp:
         with BuildSketch(Plane.XY):
             face = make_face(wire)  # type: ignore[arg-type]
             face = offset(face, amount=C.WALL_THICKNESS + C.PCB_XY_CLEARANCE, kind=Kind.ARC)
-        extrude(amount=C.MAIN_RIM_Z)
+        extrude(amount=z_hi - z_lo)
     assert bp.part is not None
-    return bp.part
+    return cast(Part, Pos(0, 0, z_lo) * bp.part)
 
 
-def _cavity_solid() -> Part:
-    """PCB polygon offset by +PCB_XY_CLEARANCE, extruded from floor to over-rim."""
-    poly = polygon_in_case_coords()
-    # Drop closing duplicate for Polyline.
-    pts = poly[:-1] if poly[0] == poly[-1] else poly
-
-    # Polyline must be built inside BuildLine, then used as a wire for make_face.
-    with BuildLine() as bl:
-        Polyline(*pts, close=True)
-    assert bl.line is not None
-    wire = cast(Wire, bl.line)
-
+def _inner_extruded(z_lo: float, z_hi: float) -> Part:
+    """PCB polygon offset by +PCB_XY_CLEARANCE, Kind.INTERSECTION, extruded z_lo→z_hi."""
+    wire = _polygon_wire()
     with BuildPart() as bp:
         with BuildSketch(Plane.XY):
             face = make_face(wire)  # type: ignore[arg-type]
             face = offset(face, amount=C.PCB_XY_CLEARANCE, kind=Kind.INTERSECTION)
-        extrude(amount=C.MAIN_RIM_Z + 0.01)
+        extrude(amount=z_hi - z_lo)
     assert bp.part is not None
-    # Translate so the cavity starts at Z=FLOOR_THICKNESS (extrude went up from Z=0).
-    return cast(Part, Pos(0, 0, C.FLOOR_THICKNESS) * bp.part)
+    return cast(Part, Pos(0, 0, z_lo) * bp.part)
 
 
-def _fillet_top_edges(part: Part) -> Part:
-    """Fillet all top edges (Z == MAIN_RIM_Z) by TOP_CHAMFER radius."""
-    top_edges = part.edges().filter_by_position(
-        Axis.Z, minimum=C.MAIN_RIM_Z - 0.001, maximum=C.MAIN_RIM_Z + 0.001
-    )
-    if not top_edges:
-        return part
-    return cast(Part, fillet(top_edges, radius=C.TOP_CHAMFER))
+# ---------------------------------------------------------------------------
+# Shell + cavity
+# ---------------------------------------------------------------------------
+
+def _outer_shell() -> Part:
+    return _outer_extruded(0.0, C.MAIN_RIM_Z)
 
 
-def _mcu_wall_cap() -> Part:
-    """Plateau cap above MAIN_RIM_Z on the −X wall, covering the MCU region.
+def _cavity_solid() -> Part:
+    return _inner_extruded(C.FLOOR_THICKNESS, C.FLOOR_THICKNESS + C.MAIN_RIM_Z + 0.01)
 
-    Profile (Y-Z plane, clockwise):
-      bottom : flat at MAIN_RIM_Z  from y_low → y_end
-      +Y side: vertical rise at y_end  MAIN_RIM_Z → MCU_HILL_Z
-      top    : flat at MCU_HILL_Z  from y_end → y_mcu_bot
-      descent: spline from (y_mcu_bot, MCU_HILL_Z) → (y_low, MAIN_RIM_Z)
-    Extruded in +X across the −X outer wall thickness.
-    """
-    _, sw_cy  = C.pcb_to_case(*C.SW_SLIDE_POS)
-    _, mcu_cy = C.pcb_to_case(*C.MCU_POS)
 
-    mcu_half_l = C.MCU_BODY_L / 2
-    y_mcu_bot  = mcu_cy - mcu_half_l                    # MCU −Y body edge ≈ 80.8 mm
-    y_low      = sw_cy                                   # descent lands at switch centre Y
-    y_end      = C.OUTER_DEPTH - C.WALL_THICKNESS        # flush with +Y inner wall face
+# ---------------------------------------------------------------------------
+# MCU hill — wall-ring extension over the −X / +Y corner above MCU
+# ---------------------------------------------------------------------------
 
-    x_pcb_left = C.PCB_X_MIN + C.PCB_OFFSET_X           # left PCB edge in case coords = 3.0 mm
-    x_outer    = x_pcb_left - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE   # ≈ 0.0 mm
-    x_inner    = x_pcb_left + C.PCB_XY_CLEARANCE                      # ≈ 3.5 mm
-    cap_depth  = x_inner - x_outer
+def _axis_box(x0: float, x1: float, y0: float, y1: float, z0: float, z1: float) -> Part:
+    """Axis-aligned box from (x0,y0,z0) to (x1,y1,z1)."""
+    return cast(Part, Solid.make_box(x1 - x0, y1 - y0, z1 - z0).translate((x0, y0, z0)))
+
+
+def _hill_discard_outside_L() -> Part:
+    """Three boxes covering everything outside the MCU L-corner over hill Z range.
+    Subtracted from the full hill ring to keep only the −X-above-slide-switch
+    strip and the +Y-up-to-MCU-east strip."""
+    sw_cy = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
+    inner_x = C.MCU_HILL_NEG_X_INNER_BOUND_X
+    inner_y = C.MCU_HILL_PLUS_Y_INNER_BOUND_Y
+    plus_y_x_end = C.MCU_HILL_PLUS_Y_REACH_X + C.MCU_HILL_PLUS_Y_RAMP_RUN
+    bx_min, bx_max = -1.0, C.OUTER_WIDTH + 1.0
+    by_min, by_max = -1.0, C.OUTER_DEPTH + 1.0
+    z_lo, z_hi = C.MAIN_RIM_Z, C.MCU_HILL_Z + 0.01
+
+    south  = _axis_box(bx_min,         bx_max, by_min,  sw_cy,   z_lo, z_hi)
+    middle = _axis_box(inner_x,        bx_max, sw_cy,   inner_y, z_lo, z_hi)
+    top_e  = _axis_box(plus_y_x_end,   bx_max, inner_y, by_max,  z_lo, z_hi)
+    return cast(Part, south + middle + top_e)
+
+
+def _neg_x_descent_cutter() -> Part:
+    """Region ABOVE the −X wall descent spline (YZ profile). Subtract to sculpt
+    the spline transition from MCU_HILL_Z down to MAIN_RIM_Z at slide-switch Y."""
+    sw_cy  = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
+    mcu_cy = C.pcb_to_case(*C.MCU_POS)[1]
+    y_low      = sw_cy
+    y_mcu_bot  = mcu_cy - C.MCU_BODY_L / 2
+    z_top      = C.MCU_HILL_Z + 5.0
+    y_safety   = 5.0
 
     with BuildPart() as bp:
         with BuildSketch(Plane.YZ):
             with BuildLine():
-                # Full-height profile from Z=0 so the cap has genuine volume
-                # overlap with the hollow wall — ensures OCC fuse produces one solid.
-                Line((y_low,     0),              (y_end,     0))
-                Line((y_end,     0),              (y_end,     C.MCU_HILL_Z))
-                Line((y_end,     C.MCU_HILL_Z),   (y_mcu_bot, C.MCU_HILL_Z))
                 Spline(
-                    (y_mcu_bot, C.MCU_HILL_Z),
                     (y_low,     C.MAIN_RIM_Z),
-                    tangents=[(-1, 0), (-1, 0)],
+                    (y_mcu_bot, C.MCU_HILL_Z),
+                    tangents=[(1, 0), (1, 0)],
                     tangent_scalars=list(C.MCU_HILL_DESCENT_SCALARS),
                 )
-                Line((y_low,     C.MAIN_RIM_Z),   (y_low,     0))
+                Line((y_mcu_bot,        C.MCU_HILL_Z), (y_mcu_bot,        z_top))
+                Line((y_mcu_bot,        z_top),        (y_low - y_safety, z_top))
+                Line((y_low - y_safety, z_top),        (y_low - y_safety, C.MAIN_RIM_Z))
+                Line((y_low - y_safety, C.MAIN_RIM_Z), (y_low,             C.MAIN_RIM_Z))
             make_face()
-        extrude(amount=cap_depth)
-
+        # Plane.YZ extrudes in +X. Span enough X to cover the −X wall ring with margin.
+        extrude(amount=C.MCU_HILL_NEG_X_INNER_BOUND_X + 2.0)
     assert bp.part is not None
-    return cast(Part, Pos(x_outer, 0, 0) * bp.part)
+    return cast(Part, Pos(-1.0, 0, 0) * bp.part)
 
+
+def _plus_y_descent_cutter() -> Part:
+    """Region ABOVE the +Y wall linear ramp (XZ profile). Subtract to sculpt
+    the descent from MCU_HILL_Z down to MAIN_RIM_Z east of the MCU footprint."""
+    x_mcu_right = C.MCU_HILL_PLUS_Y_REACH_X
+    x_ramp_end  = x_mcu_right + C.MCU_HILL_PLUS_Y_RAMP_RUN
+    z_top       = C.MCU_HILL_Z + 5.0
+    x_safety    = 5.0
+    y_thickness = 6.0   # covers wall Y ∈ [INNER_Y_BOUND, INNER_Y_BOUND + 6]
+
+    with BuildPart() as bp:
+        with BuildSketch(Plane.XZ):
+            with BuildLine():
+                Line((x_mcu_right,            C.MCU_HILL_Z), (x_ramp_end,            C.MAIN_RIM_Z))
+                Line((x_ramp_end,             C.MAIN_RIM_Z), (x_ramp_end + x_safety, C.MAIN_RIM_Z))
+                Line((x_ramp_end + x_safety,  C.MAIN_RIM_Z), (x_ramp_end + x_safety, z_top))
+                Line((x_ramp_end + x_safety,  z_top),        (x_mcu_right,           z_top))
+                Line((x_mcu_right,            z_top),        (x_mcu_right,           C.MCU_HILL_Z))
+            make_face()
+        extrude(amount=y_thickness)
+    assert bp.part is not None
+    # Plane.XZ extrudes in −Y; translate so cutter covers Y ∈ [inner_y_bound, inner_y_bound+thickness].
+    return cast(Part, Pos(0, C.MCU_HILL_PLUS_Y_INNER_BOUND_Y + y_thickness, 0) * bp.part)
+
+
+def _mcu_hill_solid() -> Part:
+    """Hill = wall ring extruded from MAIN_RIM_Z to MCU_HILL_Z, restricted to the
+    L-corner over MCU, with descent cutters sculpting both top transitions.
+
+    Outer face is the polygon-offset shell face; inner face is the cavity face.
+    Both faces are shared with the rest of the case → boolean union with the
+    shell produces a single continuous solid (no floating slab)."""
+    z_lo, z_hi = C.MAIN_RIM_Z, C.MCU_HILL_Z
+
+    outer = _outer_extruded(z_lo, z_hi)
+    inner = _inner_extruded(z_lo, z_hi)
+    ring = cast(Part, outer - inner)
+
+    ring = cast(Part, ring - _hill_discard_outside_L())
+    ring = cast(Part, ring - _neg_x_descent_cutter())
+    ring = cast(Part, ring - _plus_y_descent_cutter())
+    return ring
+
+
+# ---------------------------------------------------------------------------
+# Top fillet
+# ---------------------------------------------------------------------------
+
+def _fillet_top_edges(part: Part) -> Part:
+    """Fillet outer top edges (MAIN_RIM_Z through MCU_HILL_Z) by TOP_CHAMFER radius."""
+    top_edges = part.edges().filter_by_position(
+        Axis.Z, minimum=C.MAIN_RIM_Z - 0.5, maximum=C.MCU_HILL_Z + 0.5
+    )
+    if not top_edges:
+        return part
+    try:
+        return cast(Part, fillet(top_edges, radius=C.TOP_CHAMFER))
+    except ValueError:
+        return part
+
+
+# ---------------------------------------------------------------------------
+# Public entry
+# ---------------------------------------------------------------------------
 
 def build_tray() -> Part:
-    shell = _outer_shell()
+    shell  = _outer_shell()
     cavity = _cavity_solid()
-    hollow = cast(Part, shell - cavity)
-    hollow = cast(Part, hollow + _mcu_wall_cap())
+    hill   = _mcu_hill_solid()
+    hollow = cast(Part, (shell - cavity) + hill)
     return _fillet_top_edges(hollow)
 
 
