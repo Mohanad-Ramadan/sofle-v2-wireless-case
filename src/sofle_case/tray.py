@@ -57,7 +57,7 @@ def _outer_shell() -> Part:
 
 
 def _cavity_solid() -> Part:
-    return _inner_extruded(C.FLOOR_THICKNESS, C.FLOOR_THICKNESS + C.MAIN_RIM_Z + 0.01)
+    return _inner_extruded(C.FLOOR_THICKNESS, C.MCU_HILL_Z + 0.01)
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +185,7 @@ def build_tray() -> Part:
     shell  = _outer_shell()
     cavity = _cavity_solid()
     hill   = _mcu_hill_solid()
-    hollow = cast(Part, (shell - cavity) + hill)
+    hollow = cast(Part, (shell + hill) - cavity)
     return _fillet_top_edges(hollow)
 
 
