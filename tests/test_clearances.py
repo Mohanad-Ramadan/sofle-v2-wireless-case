@@ -37,14 +37,15 @@ def test_usb_c_clearance_above_pcb_top():
 
 
 def test_mcu_plateau_z():
-    """−X wall plateau must reach MCU_HILL_Z above the MCU body Y range."""
+    """−X wall plateau must reach MCU_HILL_Z above the MCU body Y range.
+    Wall ring spans X≈8.5..12.0 (polygon-offset), so probe X up to inner bound."""
     from sofle_case.tray import build_tray
     tray = build_tray()
     _, mcu_cy = C.pcb_to_case(*C.MCU_POS)
     edges_at_mcu = (
         tray.edges()
             .filter_by_position(Axis.Y, minimum=mcu_cy - 5, maximum=mcu_cy + 5)
-            .filter_by_position(Axis.X, minimum=0, maximum=6)
+            .filter_by_position(Axis.X, minimum=0, maximum=C.MCU_HILL_NEG_X_INNER_BOUND_X)
     )
     max_z = max((e.bounding_box().max.Z for e in edges_at_mcu), default=0.0)
     assert max_z >= C.MCU_HILL_Z - 0.2, (
@@ -53,22 +54,34 @@ def test_mcu_plateau_z():
 
 
 def test_mcu_hill_not_on_other_walls():
-    """All walls except −X must remain at or below MAIN_RIM_Z."""
+    """−Y and +X walls stay at MAIN_RIM_Z; +Y wall raised only in MCU footprint region."""
     from sofle_case.tray import build_tray
     tray = build_tray()
-    high_py = (
+    threshold = C.MAIN_RIM_Z + 1.0
+
+    high_ny = (
         tray.edges()
-            .filter_by_position(Axis.Y, minimum=C.OUTER_DEPTH - 1.0, maximum=C.OUTER_DEPTH + 1.0)
-            .filter_by_position(Axis.Z, minimum=C.MAIN_RIM_Z + 1.0, maximum=999)
+            .filter_by_position(Axis.Y, minimum=-1.0, maximum=1.0)
+            .filter_by_position(Axis.Z, minimum=threshold, maximum=999)
     )
-    assert len(high_py) == 0, "+Y wall has edges above MAIN_RIM_Z"
+    assert len(high_ny) == 0, "−Y wall has unexpected edges above MAIN_RIM_Z"
 
     high_px = (
         tray.edges()
             .filter_by_position(Axis.X, minimum=C.OUTER_WIDTH - 1.0, maximum=C.OUTER_WIDTH + 1.0)
-            .filter_by_position(Axis.Z, minimum=C.MAIN_RIM_Z + 1.0, maximum=999)
+            .filter_by_position(Axis.Z, minimum=threshold, maximum=999)
     )
-    assert len(high_px) == 0, "+X wall has edges above MAIN_RIM_Z"
+    assert len(high_px) == 0, "+X wall has unexpected edges above MAIN_RIM_Z"
+
+    # Outer +Y face at MCU X column sits at Y≈116.5 (polygon-offset of stepped top edge),
+    # not OUTER_DEPTH=121.5 — probe from inner bound up to OUTER_DEPTH.
+    high_py_mcu = (
+        tray.edges()
+            .filter_by_position(Axis.Y, minimum=C.MCU_HILL_PLUS_Y_INNER_BOUND_Y, maximum=C.OUTER_DEPTH + 1.0)
+            .filter_by_position(Axis.X, minimum=0.0, maximum=C.MCU_HILL_PLUS_Y_REACH_X + 2.0)
+            .filter_by_position(Axis.Z, minimum=threshold, maximum=999)
+    )
+    assert len(high_py_mcu) > 0, "+Y wall MCU region has no edges above MAIN_RIM_Z — hill missing"
 
 
 def test_mcu_cap_descent_clears_plate():
