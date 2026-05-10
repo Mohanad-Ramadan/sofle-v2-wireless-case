@@ -44,7 +44,7 @@ PCB_LEDGE_WIDTH   = 1.0   # mm; ring width if enabled
 #   solid case between the wall outer face (Y=116.5, USB_C_OUTER_Y) and the cavity edge,
 #   so a 31 mm inward extrusion clears past the MCU into the empty cavity beyond.
 USB_C_W = 9.0
-USB_C_Z_RANGE: tuple[float, float] = (7.5, PCB_TOP_Z + 11.5)   # top = MCU_HILL_Z + 0.5; clears raised +Y wall
+USB_C_Z_RANGE: tuple[float, float] = (11, PCB_TOP_Z + 11.5)   # top = MCU_HILL_Z + 0.5; clears raised +Y wall
 USB_C_Y_DEPTH = 31.0
 USB_C_SIDE_BULGE = 1.5   # mm outward arc bulge at midpoint of each X-side
 
