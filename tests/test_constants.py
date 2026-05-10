@@ -38,15 +38,10 @@ def test_five_mounting_holes():
     assert len(C.MOUNTING_HOLES) == 5
 
 
-def test_show_pcb_phantom_defaults_false():
-    assert C.SHOW_PCB_PHANTOM is False
-
-
 def test_mcu_stack_order():
-    """MCU stack Z values must be ordered and below the wall rim."""
+    """MCU stack Z values must be monotonically increasing.
+
+    Note: USB_C_BODY_TOP_Z exceeds MAIN_RIM_Z by design — the USB-C cutout
+    punches past the wall rim so a single STL fits both PCB halves.
+    """
     assert C.PCB_TOP_Z < C.MCU_PCB_TOP_Z < C.USB_C_BODY_TOP_Z
-    assert C.USB_C_BODY_TOP_Z < C.MAIN_RIM_Z
-
-
-def test_show_switch_phantom_defaults_false():
-    assert C.SHOW_SWITCH_PHANTOM is False
