@@ -1,7 +1,7 @@
 """Compose the full case half from tray + standoffs, minus cutouts."""
 from __future__ import annotations
 from typing import Literal, cast
-from build123d import Part, fillet, Axis
+from build123d import Part, fillet, Axis, BuildPart, Locations, Cylinder, Sphere
 from . import constants as C
 from .tray import build_tray
 from .standoffs import stepped_standoff
@@ -59,6 +59,18 @@ def build_case_half(side: Side) -> Part:
 
 
 # %%
+def _corner_markers() -> Part:
+    coords = (
+        # add here the markers coordinates  
+    )
+    with BuildPart() as bp:
+        for x, y in coords: # type: ignore
+            with Locations((x, y, 0)):
+                Cylinder(radius=0.8, height=50.0)
+    return bp.part # type: ignore
+
+
+# %%
 if __name__ == "__main__":
     from ocp_vscode import show
     from sofle_case.case import build_case_half
@@ -81,5 +93,8 @@ if __name__ == "__main__":
         from sofle_case.switch_phantom import build_switch_phantom
         parts.append(build_switch_phantom())
         names.append("switch_phantom")
+
+    parts.append(_corner_markers())
+    names.append("corner_markers")
 
     show(*parts, names=names)
