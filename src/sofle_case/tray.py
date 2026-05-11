@@ -189,7 +189,11 @@ def build_tray() -> Part:
     cavity = _cavity_solid()
     hill   = _mcu_hill_solid()
     hollow = cast(Part, (shell + hill) - cavity)
-    return _fillet_top_edges(hollow)
+    filleted = _fillet_top_edges(hollow)
+    if isinstance(filleted, Part):
+        return filleted
+    solids = filleted.solids()
+    return Part(children=list(solids)) if solids else Part(children=[filleted])
 
 
 # %%
