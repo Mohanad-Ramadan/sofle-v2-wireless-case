@@ -72,8 +72,10 @@ def _axis_box(x0: float, x1: float, y0: float, y1: float, z0: float, z1: float) 
 def _hill_discard_outside_L() -> Part:
     """Three boxes covering everything outside the MCU L-corner over hill Z range.
     Subtracted from the full hill ring to keep only the −X-above-slide-switch
-    strip and the +Y-up-to-MCU-east strip."""
+    strip and the +Y-up-to-MCU-east strip. South bound sits at the slide-switch
+    slot's +Y flare endpoint so the hill ring meets the slot top with no sliver."""
     sw_cy = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
+    hill_y_start = sw_cy + C.SLIDE_SWITCH_TOP_W / 2     # slot's +Y flare top corner Y
     inner_x = C.MCU_HILL_NEG_X_INNER_BOUND_X
     inner_y = C.MCU_HILL_PLUS_Y_INNER_BOUND_Y
     plus_y_x_end = C.MCU_HILL_PLUS_Y_REACH_X + C.MCU_HILL_PLUS_Y_RAMP_RUN
@@ -81,18 +83,19 @@ def _hill_discard_outside_L() -> Part:
     by_min, by_max = -1.0, C.OUTER_DEPTH + 1.0
     z_lo, z_hi = C.MAIN_RIM_Z, C.MCU_HILL_Z + 0.01
 
-    south  = _axis_box(bx_min,         bx_max, by_min,  sw_cy,   z_lo, z_hi)
-    middle = _axis_box(inner_x,        bx_max, sw_cy,   inner_y, z_lo, z_hi)
-    top_e  = _axis_box(plus_y_x_end,   bx_max, inner_y, by_max,  z_lo, z_hi)
+    south  = _axis_box(bx_min,         bx_max, by_min,       hill_y_start, z_lo, z_hi)
+    middle = _axis_box(inner_x,        bx_max, hill_y_start, inner_y,      z_lo, z_hi)
+    top_e  = _axis_box(plus_y_x_end,   bx_max, inner_y,      by_max,       z_lo, z_hi)
     return cast(Part, south + middle + top_e)
 
 
 def _neg_x_descent_cutter() -> Part:
-    """Region ABOVE the −X wall descent spline (YZ profile). Subtract to sculpt
-    the spline transition from MCU_HILL_Z down to MAIN_RIM_Z at slide-switch Y."""
+    """Region ABOVE the −X wall descent spline (YZ profile). Spline starts at
+    (sw_cy + SLIDE_SWITCH_TOP_W/2, MAIN_RIM_Z) — just past the slide-switch slot's
+    +Y flare end — so hill ring grows seamlessly from the rim with no Z step."""
     sw_cy  = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
     mcu_cy = C.pcb_to_case(*C.MCU_POS)[1]
-    y_low      = sw_cy
+    y_low      = sw_cy + C.SLIDE_SWITCH_TOP_W / 2
     y_mcu_bot  = mcu_cy - C.MCU_BODY_L / 2
     z_top      = C.MCU_HILL_Z + 5.0
     y_safety   = 5.0
