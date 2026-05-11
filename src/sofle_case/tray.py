@@ -171,6 +171,44 @@ def _mcu_hill_solid() -> Part:
 
 
 # ---------------------------------------------------------------------------
+# Outer concave corner fillets
+# ---------------------------------------------------------------------------
+
+def _fillet_outer_concave_corners(part: Part) -> Part:
+    """Round outer-wall notch edges at the four user-selected concave polygon vertices.
+
+    Kind.ARC offset leaves concave vertices as sharp V-notches on the exterior face.
+    Each entry: (xlo, ylo, xhi, yhi, radius_mm).  Windows are sized to the outer-face
+    notch edge (Z-start ≈ 0), not the inner cavity edge (Z-start = FLOOR_THICKNESS).
+    Per-corner try/except: one failure doesn't abort the others.
+    """
+    targets: list[tuple[float, float, float, float, float]] = [
+        ( 6.0, 33.0,  9.0, 35.5, 0.5),   # [0] (9, 31.5)   — nearly-flat, tiny notch
+        (34.5,  9.0, 37.5, 11.5, 0.8),   # [3] (34.5, 13)  — ~5° turn, short segments
+        (51.5, 16.5, 54.0, 19.5, 2.0),   # [4] (52, 21)    — ~24° turn
+        (107.5,16.5,110.5, 19.5, 2.0),   # [5] (108.5, 21) — convex; try, may be no-op
+    ]
+    for xlo, ylo, xhi, yhi, r in targets:
+        z_edges = [
+            e for e in (
+                part.edges()
+                .filter_by_position(Axis.X, minimum=xlo, maximum=xhi)
+                .filter_by_position(Axis.Y, minimum=ylo, maximum=yhi)
+            )
+            if (abs(e.tangent_at(0.5).X) < 0.01
+                and abs(e.tangent_at(0.5).Y) < 0.01
+                and e.bounding_box().min.Z < 0.01)   # outer face: starts at Z≈0
+        ]
+        if not z_edges:
+            continue
+        try:
+            part = cast(Part, fillet(z_edges, radius=r))
+        except ValueError:
+            pass
+    return part
+
+
+# ---------------------------------------------------------------------------
 # Top fillet
 # ---------------------------------------------------------------------------
 
@@ -196,6 +234,7 @@ def build_tray() -> Part:
     cavity = _cavity_solid()
     hill   = _mcu_hill_solid()
     hollow = cast(Part, (shell + hill) - cavity)
+    hollow = _fillet_outer_concave_corners(hollow)
     filleted = _fillet_top_edges(hollow)
     if isinstance(filleted, Part):
         return filleted
