@@ -121,8 +121,10 @@ def _neg_x_descent_cutter() -> Part:
 
 
 def _plus_y_descent_cutter() -> Part:
-    """Region ABOVE the +Y wall linear ramp (XZ profile). Subtract to sculpt
-    the descent from MCU_HILL_Z down to MAIN_RIM_Z east of the MCU footprint."""
+    """Region ABOVE the +Y wall descent (XZ profile). Lower boundary is a
+    Spline with horizontal tangents at both ends so the wall surface tilts
+    out of the hill plateau and into the flat rim via smooth arcs instead
+    of two sharp kinks."""
     x_mcu_right = C.MCU_HILL_PLUS_Y_REACH_X
     x_ramp_end  = x_mcu_right + C.MCU_HILL_PLUS_Y_RAMP_RUN
     z_top       = C.MCU_HILL_Z + 5.0
@@ -132,7 +134,12 @@ def _plus_y_descent_cutter() -> Part:
     with BuildPart() as bp:
         with BuildSketch(Plane.XZ):
             with BuildLine():
-                Line((x_mcu_right,            C.MCU_HILL_Z), (x_ramp_end,            C.MAIN_RIM_Z))
+                Spline(
+                    (x_mcu_right, C.MCU_HILL_Z),
+                    (x_ramp_end,  C.MAIN_RIM_Z),
+                    tangents=[(1, 0), (1, 0)],
+                    tangent_scalars=list(C.MCU_HILL_DESCENT_SCALARS),
+                )
                 Line((x_ramp_end,             C.MAIN_RIM_Z), (x_ramp_end + x_safety, C.MAIN_RIM_Z))
                 Line((x_ramp_end + x_safety,  C.MAIN_RIM_Z), (x_ramp_end + x_safety, z_top))
                 Line((x_ramp_end + x_safety,  z_top),        (x_mcu_right,           z_top))
