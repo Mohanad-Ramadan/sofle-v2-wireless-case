@@ -1,9 +1,11 @@
 """Outer shell + inner cavity + integrated MCU hill (−X and +Y walls)."""
 from __future__ import annotations
+import math
 from typing import cast
 from build123d import (
     Part, Wire, Pos, Polyline, make_face, extrude, offset, Kind, Solid,
     Plane, BuildPart, BuildSketch, BuildLine, Axis, fillet, Line, Spline,
+    ThreePointArc,
 )
 from . import constants as C
 from .pcb_geometry import polygon_in_case_coords
@@ -89,32 +91,72 @@ def _hill_discard_outside_L() -> Part:
     return cast(Part, south + middle + top_e)
 
 
-def _neg_x_descent_cutter() -> Part:
-    """Region ABOVE the −X wall descent spline (YZ profile). Spline starts at
-    (sw_cy + SLIDE_SWITCH_TOP_W/2, MAIN_RIM_Z) — just past the slide-switch slot's
-    +Y flare end — so hill ring grows seamlessly from the rim with no Z step."""
+def _neg_x_wall_cutter_plus_y() -> Part:
     sw_cy  = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
     mcu_cy = C.pcb_to_case(*C.MCU_POS)[1]
-    y_low      = sw_cy + C.SLIDE_SWITCH_TOP_W / 2
-    y_mcu_bot  = mcu_cy - C.MCU_BODY_L / 2
-    z_top      = C.MCU_HILL_Z + 5.0
-    y_safety   = 5.0
+    hn     = C.SLIDE_SWITCH_W / 2
+    hw     = C.SLIDE_SWITCH_TOP_W / 2
+    z_lo   = C.SLIDE_SWITCH_Z_RANGE[0]
+    z_bot  = z_lo - hn
+    z_plat = C.MCU_HILL_Z + 0.01
+    z_top  = z_plat + 5.0
+    y_mcu  = mcu_cy - C.MCU_BODY_L / 2
+    y_far  = C.OUTER_DEPTH + 5.0
+
+    _q = math.sqrt(2) / 2
+    arc_mid = (sw_cy + hn * _q, z_lo - hn * _q)
 
     with BuildPart() as bp:
         with BuildSketch(Plane.YZ):
             with BuildLine():
+                Line((sw_cy, z_top), (sw_cy, z_bot))
+                ThreePointArc((sw_cy, z_bot), arc_mid, (sw_cy + hn, z_lo))
                 Spline(
-                    (y_low,     C.MAIN_RIM_Z),
-                    (y_mcu_bot, C.MCU_HILL_Z),
-                    tangents=[(1, 0), (1, 0)],
-                    tangent_scalars=list(C.MCU_HILL_DESCENT_SCALARS),
+                    (sw_cy + hn, z_lo),
+                    (sw_cy + hw, C.S_CURVE_RAMP_Z_FLOOR),
+                    (y_mcu, z_plat),
+                    tangents=[(0, 1), (1, 0)],
+                    tangent_scalars=list(C.SLIDE_SWITCH_RIGHT_TANGENT_SCALARS),
                 )
-                Line((y_mcu_bot,        C.MCU_HILL_Z), (y_mcu_bot,        z_top))
-                Line((y_mcu_bot,        z_top),        (y_low - y_safety, z_top))
-                Line((y_low - y_safety, z_top),        (y_low - y_safety, C.MAIN_RIM_Z))
-                Line((y_low - y_safety, C.MAIN_RIM_Z), (y_low,             C.MAIN_RIM_Z))
+                Line((y_mcu, z_plat), (y_far, z_plat))
+                Line((y_far, z_plat), (y_far, z_top))
+                Line((y_far, z_top), (sw_cy, z_top))
             make_face()
-        # Plane.YZ extrudes in +X. Span enough X to cover the −X wall ring with margin.
+        extrude(amount=C.MCU_HILL_NEG_X_INNER_BOUND_X + 2.0)
+    assert bp.part is not None
+    return cast(Part, Pos(-1.0, 0, 0) * bp.part)
+
+
+def _neg_x_wall_cutter_minus_y() -> Part:
+    sw_cy  = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
+    hn     = C.SLIDE_SWITCH_W / 2
+    hw     = C.SLIDE_SWITCH_TOP_W / 2
+    z_lo   = C.SLIDE_SWITCH_Z_RANGE[0]
+    z_bot  = z_lo - hn
+    z_rim  = C.MAIN_RIM_Z + 0.01
+    z_top  = C.MCU_HILL_Z + 5.01
+    y_ramp = C.S_CURVE_RAMP_Y_RANGE[0]
+    y_far  = -5.0
+
+    _q = math.sqrt(2) / 2
+    arc_mid = (sw_cy - hn * _q, z_lo - hn * _q)
+
+    with BuildPart() as bp:
+        with BuildSketch(Plane.YZ):
+            with BuildLine():
+                Line((sw_cy, z_top), (y_far, z_top))
+                Line((y_far, z_top), (y_far, z_rim))
+                Line((y_far, z_rim), (y_ramp, z_rim))
+                Spline(
+                    (y_ramp, z_rim),
+                    (sw_cy - hw, C.S_CURVE_RAMP_Z_FLOOR),
+                    (sw_cy - hn, z_lo),
+                    tangents=[(1, 0), (0, -1)],
+                    tangent_scalars=[2.0, 2.0],
+                )
+                ThreePointArc((sw_cy - hn, z_lo), arc_mid, (sw_cy, z_bot))
+                Line((sw_cy, z_bot), (sw_cy, z_top))
+            make_face()
         extrude(amount=C.MCU_HILL_NEG_X_INNER_BOUND_X + 2.0)
     assert bp.part is not None
     return cast(Part, Pos(-1.0, 0, 0) * bp.part)
@@ -165,7 +207,6 @@ def _mcu_hill_solid() -> Part:
     ring = cast(Part, outer - inner)
 
     ring = cast(Part, ring - _hill_discard_outside_L())
-    ring = cast(Part, ring - _neg_x_descent_cutter())
     ring = cast(Part, ring - _plus_y_descent_cutter())
     return ring
 
@@ -234,6 +275,8 @@ def build_tray() -> Part:
     cavity = _cavity_solid()
     hill   = _mcu_hill_solid()
     hollow = cast(Part, (shell + hill) - cavity)
+    hollow = cast(Part, hollow - _neg_x_wall_cutter_plus_y())
+    hollow = cast(Part, hollow - _neg_x_wall_cutter_minus_y())
     hollow = _fillet_outer_concave_corners(hollow)
     filleted = _fillet_top_edges(hollow)
     if isinstance(filleted, Part):

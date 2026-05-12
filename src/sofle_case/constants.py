@@ -116,7 +116,7 @@ USB_C_BODY_TOP_Z = 18   # USB-C jack body top surface
 MCU_HILL_Z                              = PCB_TOP_Z + 11.0          # 17.1 mm — top of MCU + header legs
 MCU_BODY_L                              = 33.0                       # MCU body length in Y (mm)
 MCU_BODY_W                              = 18.0                       # MCU body width in X (mm)
-MCU_HILL_DESCENT_SCALARS: tuple[float, float] = (1.5, 1.5)          # spline descent tuning (larger = gentler curve)
+MCU_HILL_DESCENT_SCALARS: tuple[float, float] = (1.5, 1.5)          # +Y wall spline descent tuning (larger = gentler curve)
 
 # ---------- Integrated MCU hill covering −X and +Y walls at MCU corner ----------
 # +X extent of the MCU hill on the +Y wall (case coords): MCU +X edge = MCU_POS + half width in PCB coords
