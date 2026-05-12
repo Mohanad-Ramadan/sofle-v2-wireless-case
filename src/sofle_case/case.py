@@ -5,7 +5,7 @@ from build123d import Part, fillet, Axis, BuildPart, Locations, Cylinder, Sphere
 from . import constants as C
 from .tray import build_tray
 from .standoffs import stepped_standoff
-from .cutouts import usb_c_cutout, slide_switch_cutout
+from .cutouts import usb_c_cutout
 
 
 Side = Literal["left", "right"]
@@ -29,27 +29,8 @@ def build_case_half(side: Side) -> Part:
     shell = cast(Part, shell)
 
     shell -= usb_c_cutout()
-    shell -= slide_switch_cutout()
 
     shell = cast(Part, shell)
-
-    # Round the outer rim corners of the slide switch slot
-    z_hi = C.SLIDE_SWITCH_Z_RANGE[1]
-    slide_outer_x = C.PCB_OFFSET_X - (C.WALL_THICKNESS + C.PCB_XY_CLEARANCE)  # 8.5 = outer wall face at slot Y
-    _, slot_cy = C.pcb_to_case(*C.SW_SLIDE_POS)
-    half_wide = C.SLIDE_SWITCH_TOP_W / 2
-    slot_rim_edges = (
-        shell.edges()
-             .filter_by_position(Axis.X, minimum=slide_outer_x - 0.1, maximum=slide_outer_x + C.WALL_THICKNESS + 0.1)
-             .filter_by_position(Axis.Y, minimum=slot_cy - half_wide - 0.5, maximum=slot_cy + half_wide + 0.5)
-             .filter_by_position(Axis.Z, minimum=C.MAIN_RIM_Z - 0.5, maximum=z_hi + 0.1)
-    )
-    if slot_rim_edges:
-        try:
-            shell = fillet(slot_rim_edges, radius=C.SLIDE_SWITCH_CORNER_R)
-            shell = cast(Part, shell)
-        except ValueError:
-            pass
 
     if not isinstance(shell, Part):
         solids = shell.solids()
@@ -60,13 +41,36 @@ def build_case_half(side: Side) -> Part:
 
 # %%
 def _corner_markers() -> Part:
-    coords = (
-        # add here the markers coordinates  
+    """Spheres at the wall-TOP transition kinks (P1–P2), the slot-cutout polygon
+    corners (A1, A3 −Y interior, B1–B2 +Y rim spline endpoints), and the ramp
+    south start (C1) where the TOP_CHAMFER fillet visibly stops on the outer
+    wall edge next to the rotary-encoder area.
+    """
+    x_inner   = C.PCB_OFFSET_X - C.PCB_XY_CLEARANCE                       # 11.000
+    x_outer   = C.PCB_OFFSET_X - (C.WALL_THICKNESS + C.PCB_XY_CLEARANCE)  # 8.500
+    sw_cy     = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
+    mcu_cy    = C.pcb_to_case(*C.MCU_POS)[1]
+    half_narrow = C.SLIDE_SWITCH_W / 2                                    # 3.0
+    half_wide   = C.SLIDE_SWITCH_TOP_W / 2                                # 7.0
+    y_slot_n  = sw_cy + half_wide                                         # 77.270
+    y_mcu_bot = mcu_cy - C.MCU_BODY_L / 2                                 # 80.840
+    z_slot_lo = C.SLIDE_SWITCH_Z_RANGE[0]                                 # 7.200
+    y_spline_hits_wall_top = 75.780   # numerically solved; slot +Y spline @ z=13.7
+    coords: tuple[tuple[float, float, float], ...] = (
+        # −X wall TOP kinks (inner wall face, x_inner = 11.0)
+        # (x_inner, y_slot_n,               C.S_CURVE_RAMP_Z_FLOOR),  # P1 (11.00, 77.27, 13.70)
+        # (x_inner, y_mcu_bot,              C.MCU_HILL_Z),            # P2 (11.00, 80.84, 17.10)
+        # # Slot polygon: two cutout points (−Y interior side, outer wall face x_outer = 8.5)
+        # (x_outer, sw_cy - half_narrow,    z_slot_lo),               # A1 (8.50, 67.27, 7.20)  −Y narrow bottom
+        # (x_outer, sw_cy - half_wide,      C.S_CURVE_RAMP_Z_FLOOR),  # A3 (8.50, 63.27, 13.70) −Y wide top corner
+        # # Slot polygon: +Y rim spline endpoints (right side of switch rim)
+        # (x_outer, sw_cy + half_narrow,    z_slot_lo),               # B1 (8.50, 73.27, 7.20)  +Y narrow bottom
+        # (x_outer, sw_cy + half_wide,      C.S_CURVE_RAMP_Z_FLOOR),  # B2 (8.50, 77.27, 13.70) +Y wide top corner
     )
     with BuildPart() as bp:
-        for x, y in coords: # type: ignore
-            with Locations((x, y, 0)):
-                Cylinder(radius=0.8, height=50.0)
+        for x, y, z in coords:
+            with Locations((x, y, z)):
+                Sphere(radius=1.0)
     return bp.part # type: ignore
 
 
