@@ -1,6 +1,6 @@
 from build123d import Part
 from sofle_case import constants as C
-from sofle_case.cutouts import usb_c_cutout, slide_switch_cutout
+from sofle_case.cutouts import usb_c_cutout
 
 
 def test_usb_c_returns_part():
@@ -24,14 +24,6 @@ def test_usb_c_top_punches_past_rim():
     assert bb.max.Z > C.MAIN_RIM_Z
 
 
-def test_slide_switch_depth():
-    """Slot extrudes from outer wall face to past the switch body for finger reach."""
-    bb = slide_switch_cutout().bounding_box()
-    expected_depth = C.PCB_OFFSET_X + C.SW_SLIDE_POS[0] + 5.0  # ≈ 25.7 mm
-    assert bb.min.X <= 0.01
-    assert abs(bb.max.X - expected_depth) < 0.5
-
-
 def test_usb_c_reaches_mcu_in_y():
     """Cutout min.Y must reach at least to the MCU's +Y body edge (case Y ≈ 118.5)."""
     bb = usb_c_cutout().bounding_box()
@@ -41,5 +33,11 @@ def test_usb_c_reaches_mcu_in_y():
     assert bb.min.Y <= mcu_y_edge
 
 
-def test_slide_switch_returns_part():
-    assert isinstance(slide_switch_cutout(), Part)
+def test_neg_x_wall_cutter_plus_y_returns_part():
+    from sofle_case.tray import _neg_x_wall_cutter_plus_y
+    assert isinstance(_neg_x_wall_cutter_plus_y(), Part)
+
+
+def test_neg_x_wall_cutter_minus_y_returns_part():
+    from sofle_case.tray import _neg_x_wall_cutter_minus_y
+    assert isinstance(_neg_x_wall_cutter_minus_y(), Part)

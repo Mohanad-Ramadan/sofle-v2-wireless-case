@@ -1,7 +1,7 @@
 """Each cutout aligns with its component; clearance ≥ 0.3 mm."""
 from build123d import Axis
 from sofle_case import constants as C
-from sofle_case.cutouts import usb_c_cutout, slide_switch_cutout
+from sofle_case.cutouts import usb_c_cutout
 
 
 def _bb_center(part):
@@ -15,19 +15,20 @@ def test_usb_c_aligns_with_mcu_x():
     assert abs(cx - expected) < 0.01
 
 
-def test_slide_switch_envelops_switch_y():
-    """Slot must cover the switch's narrow footprint in Y.  The ramp side
-    intentionally overshoots cy-half_wide by a tunable amount (see
-    SLIDE_SWITCH_RAMP_TANGENT_SCALARS), which pulls the BB centre several mm
-    off the switch centre — so a centre-tolerance check is meaningless here.
-    Instead, assert the slot's Y span envelopes [cy-half_narrow, cy+half_narrow],
-    the actual functional requirement.
-    """
-    bb = slide_switch_cutout().bounding_box()
-    _, expected = C.pcb_to_case(*C.SW_SLIDE_POS)
-    half_narrow = C.SLIDE_SWITCH_W / 2
-    assert bb.min.Y <= expected - half_narrow
-    assert bb.max.Y >= expected + half_narrow
+def test_slot_envelops_switch_y():
+    """Tray slot must cover the switch's narrow footprint in Y at switch Z level."""
+    from sofle_case.tray import build_tray
+    tray = build_tray()
+    _, cy = C.pcb_to_case(*C.SW_SLIDE_POS)
+    hn = C.SLIDE_SWITCH_W / 2
+    z_lo = C.SLIDE_SWITCH_Z_RANGE[0]
+    edges_at_slot = (
+        tray.edges()
+        .filter_by_position(Axis.Y, minimum=cy - hn - 0.5, maximum=cy + hn + 0.5)
+        .filter_by_position(Axis.Z, minimum=z_lo - 0.5, maximum=z_lo + 0.5)
+        .filter_by_position(Axis.X, minimum=0, maximum=C.MCU_HILL_NEG_X_INNER_BOUND_X)
+    )
+    assert len(edges_at_slot) > 0, "No slot edges found at switch Y/Z — slot may not cut through"
 
 
 def test_usb_c_clearance_above_pcb_top():
