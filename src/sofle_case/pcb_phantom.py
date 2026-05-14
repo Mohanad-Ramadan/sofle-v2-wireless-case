@@ -1,22 +1,32 @@
 """PCB phantom for visual fit-check in the OCP viewer. Gate with SHOW_PCB_PHANTOM."""
 from __future__ import annotations
+import json
+import math
+from pathlib import Path
 from typing import cast
 from build123d import (
     Part, Wire, Pos, Polyline, make_face, extrude,
-    Plane, BuildPart, BuildSketch, BuildLine, Locations,
+    Plane, BuildPart, BuildSketch, BuildLine, Locations, Location,
     Box, Cylinder, Mode,
 )
 from . import constants as C
 from .pcb_geometry import polygon_in_case_coords
 
+_DATA = Path(__file__).resolve().parents[2] / "data"
+
 # Phantom-only body dimensions (not structural — not in constants.py)
 _MCU_W         = 18.0  # nice!nano width along case X
 _USB_C_STUB_Y  =  7.0  # depth of USB-C jack stub extending from MCU +Y face
-_SW_BODY_X     =  8.0  # slide-switch metal-can extent in -X from switch centre
-_SW_BODY_Y     =  4.0  # slide-switch metal-can width in Y (= stem toggle space)
-_SW_BODY_H     =  1.5  # metal-can height above PCB top (stem starts at top of can)
-_SW_STEM_X     =  2.0  # actuator stem width in X
-_SW_STEM_H     =  1.0  # stem height above metal can (top reaches PCB_TOP_Z + 2.5 mm)
+
+# SK12D07VG3 slide switch geometry (local frame: pins along local X)
+# Pin span from drill data: local X = -2.1 .. +6.1 → center at +2.0
+_SK12_BODY_L   =  8.7  # metal can length along pin row (local X)
+_SK12_BODY_W   =  4.4  # metal can width perpendicular to pins (local Y)
+_SK12_BODY_H   =  4.3  # metal can height above PCB
+_SK12_NUB_L    =  3.5  # actuator nub length along pin row (local X)
+_SK12_NUB_D    =  3.0  # actuator protrusion beyond body edge (local -Y)
+_SK12_NUB_H    =  2.0  # actuator height above metal can
+_SK12_PIN_CENTER_X = 2.0  # body center offset from footprint origin (local X)
 
 # SW31 pin holes from SofleKeyboard-PTH.drl (inch→mm). All at PCB X≈2.944.
 _SW31_PIN_HOLES: tuple[tuple[float, float, float], ...] = (
@@ -96,22 +106,38 @@ def _usb_c_stub() -> Part:
     return bp.part
 
 
-def _slide_switch_body() -> Part:
-    """Slide-switch metal-can body + actuator stem, extending -X from switch centre.
+def _rotate_2d(lx: float, ly: float, deg: float) -> tuple[float, float]:
+    """Rotate a local (x, y) offset by *deg* degrees CCW."""
+    r = math.radians(deg)
+    return lx * math.cos(r) - ly * math.sin(r), lx * math.sin(r) + ly * math.cos(r)
 
-    Lower block = metal can (hidden by case wall via SLIDE_SWITCH_Z_RANGE z_lo).
-    Upper block = stem toggle envelope (must protrude through the slot for finger access).
+
+def _slide_switch_body() -> Part:
+    """SK12D07VG3 metal can + actuator nub, placed via components.json rotation.
+
+    Local frame: pins along local X, body centered over pin span.
+    Actuator nub extends in local -Y (toward -X wall after 270° rotation).
     """
-    cx, cy = C.pcb_to_case(*C.SW_SLIDE_POS)
-    body_center_x = cx - _SW_BODY_X / 2
-    body_z = C.PCB_TOP_Z + _SW_BODY_H / 2
-    stem_z = C.PCB_TOP_Z + _SW_BODY_H + _SW_STEM_H / 2
+    raw = json.loads((_DATA / "components.json").read_text())
+    sw = raw["SW31"]
+    cx, cy = C.pcb_to_case(sw["x"], sw["y"])
+    rot = sw["rotation"]
+
+    body_z = C.PCB_TOP_Z + _SK12_BODY_H / 2
+    nub_z = C.PCB_TOP_Z + 1.5 + _SK12_NUB_H / 2
+
+    bdx, bdy = _rotate_2d(_SK12_PIN_CENTER_X, 0.0, rot)
+    ndx, ndy = _rotate_2d(
+        _SK12_PIN_CENTER_X,
+        -(_SK12_BODY_W / 2 + _SK12_NUB_D / 2),
+        rot,
+    )
 
     with BuildPart() as bp:
-        with Locations((body_center_x, cy, body_z)):
-            Box(_SW_BODY_X, _SW_BODY_Y, _SW_BODY_H)
-        with Locations((body_center_x, cy, stem_z)):
-            Box(_SW_STEM_X, _SW_BODY_Y, _SW_STEM_H)
+        with Locations(Location((cx + bdx, cy + bdy, body_z), (0, 0, rot))):
+            Box(_SK12_BODY_L, _SK12_BODY_W, _SK12_BODY_H)
+        with Locations(Location((cx + ndx, cy + ndy, nub_z), (0, 0, rot))):
+            Box(_SK12_NUB_L, _SK12_NUB_D, _SK12_NUB_H)
 
     assert bp.part is not None
     return bp.part
