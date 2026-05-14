@@ -135,7 +135,9 @@ def _neg_x_wall_cutter_minus_y() -> Part:
     z_rim  = C.MAIN_RIM_Z + 0.01
     z_top  = C.MCU_HILL_Z + 5.01
     y_ramp = C.S_CURVE_RAMP_Y_START
-    y_mid  = 45.0
+    y_mid  = C.S_CURVE_RAMP_Y_MID
+    y_mid2 = C.S_CURVE_RAMP_Y_MID2
+    z_mid2 = C.S_CURVE_RAMP_Z_MID2
     y_far  = -5.0
 
     with BuildPart() as bp:
@@ -147,6 +149,7 @@ def _neg_x_wall_cutter_minus_y() -> Part:
                 Spline(
                     (y_ramp, z_rim),
                     (y_mid, C.S_CURVE_RAMP_Z_FLOOR_MINUS_Y),
+                    (y_mid2, z_mid2),
                     (sw_cy, z_bot),
                     tangents=[(1, 0), (1, 0)],
                     tangent_scalars=[2.0, 2.5],

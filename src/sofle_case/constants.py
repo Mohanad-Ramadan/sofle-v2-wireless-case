@@ -132,6 +132,10 @@ MCU_HILL_PLUS_Y_INNER_BOUND_Y: float   = OUTER_DEPTH - 9.0   # = 112.5
 
 # ---------- S-curve ramp on −X wall ----------
 PLATE_RAMP_CLEARANCE = 3.0   # mm  → +Y side floor at PLATE_TOP_Z + 3.0 = 13.7 mm
-S_CURVE_RAMP_Y_START: float             = 35.0                      # −Y ramp start Y in case coords
 S_CURVE_RAMP_Z_FLOOR_PLUS_Y: float      = PLATE_TOP_Z + PLATE_RAMP_CLEARANCE  # = 13.7 mm (+Y side)
-S_CURVE_RAMP_Z_FLOOR_MINUS_Y: float     = 11.0                      # 0.3 mm above PLATE_TOP_Z (−Y side)
+
+S_CURVE_RAMP_Y_START: float             = 31.0                      # −Y ramp start Y in case coords
+S_CURVE_RAMP_Y_MID: float              = 63.65                      # −Y spline first midpoint Y in case coords
+S_CURVE_RAMP_Z_FLOOR_MINUS_Y: float     = 6.0                      # −Y spline first midpoint Z
+S_CURVE_RAMP_Y_MID2: float             = 65.0                      # −Y spline second midpoint Y in case coords
+S_CURVE_RAMP_Z_MID2: float             = 5.0                       # −Y spline second midpoint Z
