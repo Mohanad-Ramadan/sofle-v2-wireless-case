@@ -18,6 +18,27 @@ _SW_BODY_H     =  1.5  # metal-can height above PCB top (stem starts at top of c
 _SW_STEM_X     =  2.0  # actuator stem width in X
 _SW_STEM_H     =  1.0  # stem height above metal can (top reaches PCB_TOP_Z + 2.5 mm)
 
+# SW31 pin holes from SofleKeyboard-PTH.drl (inch→mm). All at PCB X≈2.944.
+_SW31_PIN_HOLES: tuple[tuple[float, float, float], ...] = (
+    # (pcb_x_mm, pcb_y_mm, drill_dia_mm)
+    (0.1159 * 25.4, -1.6192 * 25.4, 0.0591 * 25.4),  # mounting
+    (0.1159 * 25.4, -1.7019 * 25.4, 0.0315 * 25.4),  # signal (ref point)
+    (0.1159 * 25.4, -1.7806 * 25.4, 0.0315 * 25.4),  # signal
+    (0.1159 * 25.4, -1.8594 * 25.4, 0.0315 * 25.4),  # signal
+    (0.1159 * 25.4, -1.9420 * 25.4, 0.0591 * 25.4),  # mounting
+)
+
+
+def _slide_switch_pin_holes() -> Part:
+    """SW31 PTH pin holes as cylinders through PCB thickness for visual confirmation."""
+    with BuildPart() as bp:
+        for pcb_x, pcb_y, dia in _SW31_PIN_HOLES:
+            cx, cy = C.pcb_to_case(pcb_x, pcb_y)
+            with Locations((cx, cy, C.PCB_SEAT_Z + C.PCB_THICKNESS / 2)):
+                Cylinder(radius=dia / 2, height=C.PCB_THICKNESS + 0.02)
+    assert bp.part is not None
+    return bp.part
+
 
 def _pcb_plate() -> Part:
     """PCB polygon extruded from PCB_SEAT_Z to PCB_TOP_Z, M2 holes subtracted."""
@@ -97,8 +118,11 @@ def _slide_switch_body() -> Part:
 
 
 def build_pcb_phantom() -> Part:
-    """PCB plate + MCU daughter board + USB-C jack stub + slide-switch body."""
-    return Part(children=[_pcb_plate(), _mcu_block(), _usb_c_stub(), _slide_switch_body()])
+    """PCB plate + MCU daughter board + USB-C jack stub + slide-switch body + pin holes."""
+    return Part(children=[
+        _pcb_plate(), _mcu_block(), _usb_c_stub(),
+        _slide_switch_body(), _slide_switch_pin_holes(),
+    ])
 
 
 if __name__ == "__main__":
