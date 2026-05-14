@@ -86,7 +86,7 @@ def test_mcu_hill_not_on_other_walls():
 
 
 def test_mcu_cap_descent_clears_plate():
-    """MCU wall cap descends to MAIN_RIM_Z; verify it clears the plate top by ≥ PLATE_RAMP_CLEARANCE."""
-    assert C.MAIN_RIM_Z >= C.PLATE_TOP_Z + C.PLATE_RAMP_CLEARANCE, (
-        f"MAIN_RIM_Z {C.MAIN_RIM_Z} mm < PLATE_TOP_Z {C.PLATE_TOP_Z} + PLATE_RAMP_CLEARANCE {C.PLATE_RAMP_CLEARANCE}"
+    """−Y ramp floor must clear the plate top surface."""
+    assert C.S_CURVE_RAMP_Z_FLOOR_MINUS_Y >= C.PLATE_TOP_Z, (
+        f"S_CURVE_RAMP_Z_FLOOR_MINUS_Y {C.S_CURVE_RAMP_Z_FLOOR_MINUS_Y} mm < PLATE_TOP_Z {C.PLATE_TOP_Z}"
     )

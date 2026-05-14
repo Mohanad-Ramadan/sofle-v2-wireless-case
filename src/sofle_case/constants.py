@@ -131,6 +131,7 @@ MCU_HILL_NEG_X_INNER_BOUND_X: float    = 13.0
 MCU_HILL_PLUS_Y_INNER_BOUND_Y: float   = OUTER_DEPTH - 9.0   # = 112.5
 
 # ---------- S-curve ramp on −X wall ----------
-PLATE_RAMP_CLEARANCE = 3.0   # mm  → floor at PLATE_TOP_Z + 3.0 = 13.7 mm
-S_CURVE_RAMP_Y_RANGE: tuple[float, float] = (30.0, 65.0)           # approximate start/end Y in case coords
-S_CURVE_RAMP_Z_FLOOR: float             = PLATE_TOP_Z + PLATE_RAMP_CLEARANCE  # = 13.7 mm
+PLATE_RAMP_CLEARANCE = 3.0   # mm  → +Y side floor at PLATE_TOP_Z + 3.0 = 13.7 mm
+S_CURVE_RAMP_Y_START: float             = 35.0                      # −Y ramp start Y in case coords
+S_CURVE_RAMP_Z_FLOOR_PLUS_Y: float      = PLATE_TOP_Z + PLATE_RAMP_CLEARANCE  # = 13.7 mm (+Y side)
+S_CURVE_RAMP_Z_FLOOR_MINUS_Y: float     = 11.0                      # 0.3 mm above PLATE_TOP_Z (−Y side)

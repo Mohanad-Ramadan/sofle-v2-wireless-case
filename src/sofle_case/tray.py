@@ -113,7 +113,7 @@ def _neg_x_wall_cutter_plus_y() -> Part:
                 ThreePointArc((sw_cy, z_bot), arc_mid, (sw_cy + hn, z_lo))
                 Spline(
                     (sw_cy + hn, z_lo),
-                    (sw_cy + hw, C.S_CURVE_RAMP_Z_FLOOR),
+                    (sw_cy + hw, C.S_CURVE_RAMP_Z_FLOOR_PLUS_Y),
                     (y_mcu, z_plat),
                     tangents=[(0, 1), (1, 0)],
                     tangent_scalars=list(C.SLIDE_SWITCH_RIGHT_TANGENT_SCALARS),
@@ -130,16 +130,13 @@ def _neg_x_wall_cutter_plus_y() -> Part:
 def _neg_x_wall_cutter_minus_y() -> Part:
     sw_cy  = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
     hn     = C.SLIDE_SWITCH_W / 2
-    hw     = C.SLIDE_SWITCH_TOP_W / 2
     z_lo   = C.SLIDE_SWITCH_Z_RANGE[0]
     z_bot  = z_lo - hn
     z_rim  = C.MAIN_RIM_Z + 0.01
     z_top  = C.MCU_HILL_Z + 5.01
-    y_ramp = C.S_CURVE_RAMP_Y_RANGE[0]
+    y_ramp = C.S_CURVE_RAMP_Y_START
+    y_mid  = 45.0
     y_far  = -5.0
-
-    _q = math.sqrt(2) / 2
-    arc_mid = (sw_cy - hn * _q, z_lo - hn * _q)
 
     with BuildPart() as bp:
         with BuildSketch(Plane.YZ):
@@ -149,12 +146,11 @@ def _neg_x_wall_cutter_minus_y() -> Part:
                 Line((y_far, z_rim), (y_ramp, z_rim))
                 Spline(
                     (y_ramp, z_rim),
-                    (sw_cy - hw, C.S_CURVE_RAMP_Z_FLOOR),
-                    (sw_cy - hn, z_lo),
-                    tangents=[(1, 0), (0, -1)],
-                    tangent_scalars=[2.0, 2.0],
+                    (y_mid, C.S_CURVE_RAMP_Z_FLOOR_MINUS_Y),
+                    (sw_cy, z_bot),
+                    tangents=[(1, 0), (1, 0)],
+                    tangent_scalars=[2.0, 2.5],
                 )
-                ThreePointArc((sw_cy - hn, z_lo), arc_mid, (sw_cy, z_bot))
                 Line((sw_cy, z_bot), (sw_cy, z_top))
             make_face()
         extrude(amount=C.MCU_HILL_NEG_X_INNER_BOUND_X + 2.0)
