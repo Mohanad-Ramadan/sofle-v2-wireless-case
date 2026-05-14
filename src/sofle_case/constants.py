@@ -65,7 +65,6 @@ SLIDE_SWITCH_CORNER_R = 0.1   # fillet radius at slot-rim junction on outer wall
 # Ramp spline now runs from z_hi down to PLATE_TOP_Z only (shortened); re-solve with
 # binary search over slide_switch_cutout().bounding_box().min.Y against the cavity
 # min-X vertex Y from tray._cavity_solid().vertices().
-SLIDE_SWITCH_RIGHT_TANGENT_SCALARS: tuple[float, float] = (1.0, 1.0)
 SLIDE_SWITCH_RAMP_TANGENT_SCALARS:  tuple[float, float] = (44.1641, 2.5)
 
 # ---------- Component positions (PCB coords, mm) ----------
@@ -128,14 +127,14 @@ MCU_HILL_PLUS_Y_RAMP_RUN: float        = 8.0
 #   Y ≥ MCU_HILL_PLUS_Y_INNER_BOUND_Y (covers +Y wall ring at MCU X column)
 # Polygon at MCU column: outer −X face X=8.5, inner X=12.0; outer +Y face Y=116.5, inner Y=113.0.
 MCU_HILL_NEG_X_INNER_BOUND_X: float    = 13.0
+MCU_HILL_NEG_X_SOUTH_Y: float          = 75.0                       # hill −X strip south boundary (below spline's rim-Z crossing)
 MCU_HILL_PLUS_Y_INNER_BOUND_Y: float   = OUTER_DEPTH - 9.0   # = 112.5
 
 # ---------- S-curve ramp on −X wall ----------
-PLATE_RAMP_CLEARANCE = 3.0   # mm  → +Y side floor at PLATE_TOP_Z + 3.0 = 13.7 mm
-S_CURVE_RAMP_Z_FLOOR_PLUS_Y: float      = PLATE_TOP_Z + PLATE_RAMP_CLEARANCE  # = 13.7 mm (+Y side)
-
 S_CURVE_RAMP_Y_START: float             = 31.0                      # −Y ramp start Y in case coords
 S_CURVE_RAMP_Y_MID: float              = 63.65                      # −Y spline first midpoint Y in case coords
 S_CURVE_RAMP_Z_FLOOR_MINUS_Y: float     = 6.0                      # −Y spline first midpoint Z
 S_CURVE_RAMP_Y_MID2: float             = 65.0                      # −Y spline second midpoint Y in case coords
 S_CURVE_RAMP_Z_MID2: float             = 5.0                       # −Y spline second midpoint Z
+
+S_CURVE_RAMP_PLUS_Y_SCALARS: tuple[float, float] = (1.0, 1.0)      # +Y spline tangent scalars (start, end)

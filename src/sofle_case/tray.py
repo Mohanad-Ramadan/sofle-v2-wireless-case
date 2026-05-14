@@ -1,11 +1,9 @@
 """Outer shell + inner cavity + integrated MCU hill (−X and +Y walls)."""
 from __future__ import annotations
-import math
 from typing import cast
 from build123d import (
     Part, Wire, Pos, Polyline, make_face, extrude, offset, Kind, Solid,
     Plane, BuildPart, BuildSketch, BuildLine, Axis, fillet, Line, Spline,
-    ThreePointArc,
 )
 from . import constants as C
 from .pcb_geometry import polygon_in_case_coords
@@ -76,8 +74,7 @@ def _hill_discard_outside_L() -> Part:
     Subtracted from the full hill ring to keep only the −X-above-slide-switch
     strip and the +Y-up-to-MCU-east strip. South bound sits at the slide-switch
     slot's +Y flare endpoint so the hill ring meets the slot top with no sliver."""
-    sw_cy = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
-    hill_y_start = sw_cy + C.SLIDE_SWITCH_TOP_W / 2     # slot's +Y flare top corner Y
+    hill_y_start = C.MCU_HILL_NEG_X_SOUTH_Y
     inner_x = C.MCU_HILL_NEG_X_INNER_BOUND_X
     inner_y = C.MCU_HILL_PLUS_Y_INNER_BOUND_Y
     plus_y_x_end = C.MCU_HILL_PLUS_Y_REACH_X + C.MCU_HILL_PLUS_Y_RAMP_RUN
@@ -95,28 +92,21 @@ def _neg_x_wall_cutter_plus_y() -> Part:
     sw_cy  = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
     mcu_cy = C.pcb_to_case(*C.MCU_POS)[1]
     hn     = C.SLIDE_SWITCH_W / 2
-    hw     = C.SLIDE_SWITCH_TOP_W / 2
     z_lo   = C.SLIDE_SWITCH_Z_RANGE[0]
     z_bot  = z_lo - hn
     z_plat = C.MCU_HILL_Z + 0.01
     z_top  = z_plat + 5.0
     y_mcu  = mcu_cy - C.MCU_BODY_L / 2
     y_far  = C.OUTER_DEPTH + 5.0
-
-    _q = math.sqrt(2) / 2
-    arc_mid = (sw_cy + hn * _q, z_lo - hn * _q)
-
     with BuildPart() as bp:
         with BuildSketch(Plane.YZ):
             with BuildLine():
                 Line((sw_cy, z_top), (sw_cy, z_bot))
-                ThreePointArc((sw_cy, z_bot), arc_mid, (sw_cy + hn, z_lo))
                 Spline(
-                    (sw_cy + hn, z_lo),
-                    (sw_cy + hw, C.S_CURVE_RAMP_Z_FLOOR_PLUS_Y),
+                    (sw_cy, z_bot),
                     (y_mcu, z_plat),
-                    tangents=[(0, 1), (1, 0)],
-                    tangent_scalars=list(C.SLIDE_SWITCH_RIGHT_TANGENT_SCALARS),
+                    tangents=[(1, 0), (1, 0)],
+                    tangent_scalars=list(C.S_CURVE_RAMP_PLUS_Y_SCALARS),
                 )
                 Line((y_mcu, z_plat), (y_far, z_plat))
                 Line((y_far, z_plat), (y_far, z_top))
