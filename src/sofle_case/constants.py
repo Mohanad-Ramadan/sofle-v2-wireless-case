@@ -50,7 +50,7 @@ USB_C_SIDE_BULGE = 1.5   # mm outward arc bulge at midpoint of each X-side
 
 SLIDE_SWITCH_W     = 6.0
 SLIDE_SWITCH_TOP_W = 14.0
-SLIDE_SWITCH_Z_RANGE: tuple[float, float] = (7.2, MAIN_RIM_Z + 0.5)   # z_lo = PCB_TOP_Z + 1.1 mm hides switch metal body (stem tops at PCB_TOP_Z + 2.5 mm, leaving 1.4 mm grip); z_hi punches past wall rim so slot is open to air
+SLIDE_SWITCH_Z_RANGE: tuple[float, float] = (10, MAIN_RIM_Z + 0.5)   # z_lo = PCB_TOP_Z + 1.1 mm hides switch metal body (stem tops at PCB_TOP_Z + 2.5 mm, leaving 1.4 mm grip); z_hi punches past wall rim so slot is open to air
 SLIDE_SWITCH_CORNER_R = 0.1   # fillet radius at slot-rim junction on outer wall face
 
 # Spline tangent scalars passed to Spline(...) for the two side profiles.
@@ -69,7 +69,7 @@ SLIDE_SWITCH_RAMP_TANGENT_SCALARS:  tuple[float, float] = (44.1641, 2.5)
 
 # ---------- Component positions (PCB coords, mm) ----------
 MCU_POS        = (10.27, -16.16)
-SW_SLIDE_POS   = (2.945, -43.23)
+SW_SLIDE_POS   = (2.945, -45.23)
 SW_RESET_POS   = (7.72,  -45.35)
 SW_ENCODER_POS = (9.47,  -65.95)
 J_OLED_POS     = (5.22,  -33.69)
