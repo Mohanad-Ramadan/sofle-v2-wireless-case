@@ -125,9 +125,6 @@ def _neg_x_wall_cutter_minus_y() -> Part:
     z_rim  = C.MAIN_RIM_Z + 0.01
     z_top  = C.MCU_HILL_Z + 5.01
     y_ramp = C.S_CURVE_RAMP_Y_START
-    y_mid  = C.S_CURVE_RAMP_Y_MID
-    y_mid2 = C.S_CURVE_RAMP_Y_MID2
-    z_mid2 = C.S_CURVE_RAMP_Z_MID2
     y_far  = -5.0
 
     with BuildPart() as bp:
@@ -138,11 +135,9 @@ def _neg_x_wall_cutter_minus_y() -> Part:
                 Line((y_far, z_rim), (y_ramp, z_rim))
                 Spline(
                     (y_ramp, z_rim),
-                    (y_mid, C.S_CURVE_RAMP_Z_FLOOR_MINUS_Y),
-                    (y_mid2, z_mid2),
                     (sw_cy, z_bot),
                     tangents=[(1, 0), (1, 0)],
-                    tangent_scalars=[2.0, 2.5],
+                    tangent_scalars=list(C.S_CURVE_RAMP_MINUS_Y_SCALARS),
                 )
                 Line((sw_cy, z_bot), (sw_cy, z_top))
             make_face()
@@ -243,16 +238,55 @@ def _fillet_outer_concave_corners(part: Part) -> Part:
 # ---------------------------------------------------------------------------
 
 def _fillet_top_edges(part: Part) -> Part:
-    """Fillet outer top edges (MAIN_RIM_Z through MCU_HILL_Z) by TOP_CHAMFER radius."""
-    top_edges = part.edges().filter_by_position(
-        Axis.Z, minimum=C.MAIN_RIM_Z - 0.5, maximum=C.MCU_HILL_Z + 0.5
-    )
-    if not top_edges:
-        return part
-    try:
-        return cast(Part, fillet(top_edges, radius=C.TOP_CHAMFER))
-    except ValueError:
-        return part
+    """Fillet top-of-wall edges: S-curve ramps, +Y descent, and flat rim/hill.
+
+    Three phases so each group's fillet modifies junction geometry before the
+    next group is selected — resolves OCC failures at cutter boundary edges."""
+    r = C.TOP_CHAMFER
+
+    # Phase 1: S-curve ramp spline edges on −X wall (outer + inner faces, ±Y)
+    ramp = [
+        e for e in part.edges()
+        if (bb := e.bounding_box()).max.X <= C.MCU_HILL_NEG_X_INNER_BOUND_X
+        and bb.max.Z - bb.min.Z > 5.0
+        and bb.max.Y - bb.min.Y > 5.0
+    ]
+    if ramp:
+        try:
+            part = cast(Part, fillet(ramp, radius=r))
+        except ValueError:
+            pass
+
+    # Phase 2: +Y wall descent spline edges (span both X and Z)
+    descent = [
+        e for e in part.edges()
+        if (bb := e.bounding_box()).max.Z - bb.min.Z > 1.0
+        and bb.max.X - bb.min.X > 1.0
+        and bb.min.Z >= C.MAIN_RIM_Z - 0.5
+    ]
+    if descent:
+        try:
+            part = cast(Part, fillet(descent, radius=r))
+        except ValueError:
+            pass
+
+    # Phase 3: horizontal top-rim and hill-plateau edges (z_span filter
+    # excludes blend arcs introduced by phases 1-2)
+    horiz = [
+        e for e in part.edges().filter_by_position(
+            Axis.Z, minimum=C.MAIN_RIM_Z - 0.5, maximum=C.MCU_HILL_Z + 0.5
+        )
+        if e.bounding_box().max.Z - e.bounding_box().min.Z < 0.1
+    ]
+    if horiz:
+        for attempt_r in (r, r * 0.75):
+            try:
+                part = cast(Part, fillet(horiz, radius=attempt_r))
+                break
+            except ValueError:
+                continue
+
+    return part
 
 
 # ---------------------------------------------------------------------------

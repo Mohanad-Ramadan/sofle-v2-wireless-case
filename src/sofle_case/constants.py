@@ -132,9 +132,6 @@ MCU_HILL_PLUS_Y_INNER_BOUND_Y: float   = OUTER_DEPTH - 9.0   # = 112.5
 
 # ---------- S-curve ramp on −X wall ----------
 S_CURVE_RAMP_Y_START: float             = 31.0                      # −Y ramp start Y in case coords
-S_CURVE_RAMP_Y_MID: float              = 63.65                      # −Y spline first midpoint Y in case coords
-S_CURVE_RAMP_Z_FLOOR_MINUS_Y: float     = 6.0                      # −Y spline first midpoint Z
-S_CURVE_RAMP_Y_MID2: float             = 65.0                      # −Y spline second midpoint Y in case coords
-S_CURVE_RAMP_Z_MID2: float             = 5.0                       # −Y spline second midpoint Z
 
+S_CURVE_RAMP_MINUS_Y_SCALARS: tuple[float, float] = (2.0, 0.3)     # −Y spline tangent scalars (start, end)
 S_CURVE_RAMP_PLUS_Y_SCALARS: tuple[float, float] = (1.0, 1.0)      # +Y spline tangent scalars (start, end)

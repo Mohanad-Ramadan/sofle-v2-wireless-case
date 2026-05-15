@@ -87,7 +87,8 @@ def test_mcu_hill_not_on_other_walls():
 
 
 def test_mcu_cap_descent_clears_plate():
-    """−Y ramp floor must stay above the PCB seat shelf."""
-    assert C.S_CURVE_RAMP_Z_FLOOR_MINUS_Y >= C.PCB_SEAT_Z, (
-        f"S_CURVE_RAMP_Z_FLOOR_MINUS_Y {C.S_CURVE_RAMP_Z_FLOOR_MINUS_Y} mm < PCB_SEAT_Z {C.PCB_SEAT_Z}"
+    """−Y ramp lowest point must stay above the PCB seat shelf."""
+    z_bot = C.SLIDE_SWITCH_Z_RANGE[0] - C.SLIDE_SWITCH_W / 2
+    assert z_bot >= C.PCB_SEAT_Z, (
+        f"−Y ramp z_bot {z_bot} mm < PCB_SEAT_Z {C.PCB_SEAT_Z}"
     )
