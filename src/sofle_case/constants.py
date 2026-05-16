@@ -24,7 +24,7 @@ TOP_CHAMFER     = 0.8
 # ---------- Standoff geometry ----------
 STANDOFF_OD_LOWER  = 5.5   # PCB-seat shoulder OD
 STANDOFF_OD_UPPER  = 3.5   # passes through PCB Ø4.1 hole
-STANDOFF_TAP_DIA   = 1.6   # M2 self-tap bore
+STANDOFF_TAP_DIA   = 1.8   # M2 self-tap bore (sized for FDM tolerance)
 STANDOFF_TAP_DEPTH = 4.0
 
 # ---------- Clearances ----------
