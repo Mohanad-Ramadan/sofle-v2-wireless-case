@@ -27,10 +27,6 @@ pytest
 
 ## Status
 
-Last verified: 2026-04-26
+Last verified: 2026-05-16
 
-- Tests: 43 passed, 0 failed
-- `output/sofle_case_left.stl`: 472,184 bytes
-- `output/sofle_case_left.step`: 347,187 bytes
-- `output/sofle_case_right.stl`: 472,184 bytes
-- `output/sofle_case_right.step`: 359,298 bytes
+- Tests: 60 passed, 0 failed

@@ -18,6 +18,7 @@ Z (mm)
  17.3 ╌╌╌╌╌╌╌┴────────────┴╌╌╌╌╌╌╌╌  upper housing top
          ╔══════════════════════════╗
          ║                          ║
+ 17.1 ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌  MCU hill plateau top (−X / +Y walls at MCU corner)
  14.0 ━━━╬══════════════════════════╬━━━━  case rim top  ← midpoint of upper housing
          ║    U P P E R             ║  15.6 × 15.6 mm
          ║    H O U S I N G         ║  6.6 mm tall
@@ -55,6 +56,7 @@ Z (mm)
 |-------:|-----------------------|----------:|---------------------------------|
 |   20.8 | MX stem top           | 3.5 mm    | `switch_phantom._STEM_H`        |
 |   17.3 | MX upper housing top  | 6.6 mm    | `switch_phantom._UPPER_H`       |
+|   17.1 | MCU hill plateau      | —         | `MCU_HILL_Z`                    |
 |   14.0 | Case rim top          | —         | `MAIN_RIM_Z`                    |
 |   10.7 | Plate top / MX upper housing bottom | 1.6 mm | `PLATE_TOP_Z`    |
 |    9.1 | Plate seat / MX lower housing top   | —      | `PLATE_SEAT_Z`   |
@@ -79,7 +81,7 @@ The top surface of the solid floor slab. 2.0 mm is the structural minimum for re
 The shoulder surface the main PCB rests on. The gap from the floor top (2.0 mm → 4.5 mm = 2.5 mm) is occupied by the lower section of each stepped standoff. This height was chosen to clear any through-hole solder joints on the PCB underside while keeping the overall case as flat as possible.
 
 ### PCB top — Z = 6.1 (`PCB_TOP_Z = 6.1`)
-Top surface of the main PCB. Derived from `PCB_SEAT_Z + 1.6 mm` (standard FR4 thickness). The nice!nano daughter board adds another 1.6 mm above this, placing its top at Z = 7.7 (`MCU_PCB_TOP_Z`), and the USB-C jack body reaches Z = 10.3 (`USB_C_BODY_TOP_Z`) — both used to size the USB-C wall cutout.
+Top surface of the main PCB. Derived from `PCB_SEAT_Z + 1.6 mm` (standard FR4 thickness). The nice!nano daughter board adds another 1.6 mm above this, placing its top at Z = 7.7 (`MCU_PCB_TOP_Z`), and the USB-C jack body reaches Z = 18 (`USB_C_BODY_TOP_Z`) — both used to size the USB-C wall cutout.
 
 ### Plate seat — Z = 9.1 (`PLATE_SEAT_Z = 9.1`)
 Bottom surface of the switch plate. The 3.0 mm gap above PCB top (6.1 → 9.1) accommodates the lower housing of Cherry MX-style switches. This dimension was **physically measured** on the real hardware stack — it is not a datasheet value. Standoff upper pins span from `PCB_SEAT_Z` (4.5) to `PLATE_SEAT_Z` (9.1), a 4.6 mm span that passes through the 4.1 mm PCB mounting holes and bridges the MX body clearance.
@@ -94,7 +96,7 @@ Cherry MX upper body sits directly on the plate top surface. Footprint 15.6 × 1
 The stem cylinder (Ø4.5 mm, 3.5 mm tall) rises above the upper housing. Keycaps press-fit onto the stem above this point. The stem top at Z≈20.8 is the highest point in the switch phantom.
 
 ### Case rim top — Z = 14.0 (`MAIN_RIM_Z = 14.0`)
-Top edge of the case wall. Sits 3.3 mm above the plate top — exactly at the midpoint of the MX upper housing (10.7 → 17.3 mm). The rim bisects the upper housing: the lower half is enclosed by the case wall, the upper half and stem protrude above it for keycap clearance. The USB-C and slide-switch wall cutouts punch past this rim (their top Z = `MAIN_RIM_Z + 0.5`) to make them open-top slots, ensuring one case STL fits both left and right halves regardless of MCU footprint orientation.
+Top edge of the case wall. Sits 3.3 mm above the plate top — exactly at the midpoint of the MX upper housing (10.7 → 17.3 mm). The rim bisects the upper housing: the lower half is enclosed by the case wall, the upper half and stem protrude above it for keycap clearance. The USB-C and slide-switch wall openings punch past this rim (top Z = `MAIN_RIM_Z + 0.5` = 14.5) to make them open-top, ensuring one case STL fits both halves regardless of MCU footprint orientation. The −X and +Y walls rise to `MCU_HILL_Z` = 17.1 mm at the MCU corner.
 
 ---
 

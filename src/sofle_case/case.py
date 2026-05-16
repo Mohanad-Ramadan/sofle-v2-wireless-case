@@ -41,11 +41,8 @@ def build_case_half(side: Side) -> Part:
 
 # %%
 def _corner_markers() -> Part:
-    """Spheres at the wall-TOP transition kinks (P1–P2), the slot-cutout polygon
-    corners (A1, A3 −Y interior, B1–B2 +Y rim spline endpoints), and the ramp
-    south start (C1) where the TOP_CHAMFER fillet visibly stops on the outer
-    wall edge next to the rotary-encoder area.
-    """
+    """Debug spheres at geometry transition points. All coords currently commented
+    out — uncomment specific entries to visualise edges in the OCP viewer."""
     x_inner   = C.PCB_OFFSET_X - C.PCB_XY_CLEARANCE                       # 11.000
     x_outer   = C.PCB_OFFSET_X - (C.WALL_THICKNESS + C.PCB_XY_CLEARANCE)  # 8.500
     sw_cy     = C.pcb_to_case(*C.SW_SLIDE_POS)[1]

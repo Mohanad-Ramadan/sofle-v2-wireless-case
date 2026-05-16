@@ -1,4 +1,4 @@
-"""Subtractive cutouts: USB-C (+Y wall), slide-switch arched-trapezoid slot (-X wall)."""
+"""Subtractive cutouts: USB-C open-top slot through +Y wall."""
 from __future__ import annotations
 import math
 from build123d import (

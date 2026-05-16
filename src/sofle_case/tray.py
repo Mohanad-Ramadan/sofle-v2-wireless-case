@@ -71,9 +71,8 @@ def _axis_box(x0: float, x1: float, y0: float, y1: float, z0: float, z1: float) 
 
 def _hill_discard_outside_L() -> Part:
     """Three boxes covering everything outside the MCU L-corner over hill Z range.
-    Subtracted from the full hill ring to keep only the −X-above-slide-switch
-    strip and the +Y-up-to-MCU-east strip. South bound sits at the slide-switch
-    slot's +Y flare endpoint so the hill ring meets the slot top with no sliver."""
+    Subtracted from the full hill ring to keep only the −X strip and +Y strip.
+    South bound is MCU_HILL_NEG_X_SOUTH_Y — keep strip above the S-curve ramp start."""
     hill_y_start = C.MCU_HILL_NEG_X_SOUTH_Y
     inner_x = C.MCU_HILL_NEG_X_INNER_BOUND_X
     inner_y = C.MCU_HILL_PLUS_Y_INNER_BOUND_Y
@@ -147,10 +146,8 @@ def _neg_x_wall_cutter_minus_y() -> Part:
 
 
 def _plus_y_descent_cutter() -> Part:
-    """Region ABOVE the +Y wall descent (XZ profile). Lower boundary is a
-    Spline with horizontal tangents at both ends so the wall surface tilts
-    out of the hill plateau and into the flat rim via smooth arcs instead
-    of two sharp kinks."""
+    """Material above the +Y wall descent profile. Spline boundary gives smooth
+    arcs at both ends instead of sharp kinks where the descent meets flat faces."""
     x_mcu_right = C.MCU_HILL_PLUS_Y_REACH_X
     x_ramp_end  = x_mcu_right + C.MCU_HILL_PLUS_Y_RAMP_RUN
     z_top       = C.MCU_HILL_Z + 5.0
@@ -178,12 +175,8 @@ def _plus_y_descent_cutter() -> Part:
 
 
 def _mcu_hill_solid() -> Part:
-    """Hill = wall ring extruded from MAIN_RIM_Z to MCU_HILL_Z, restricted to the
-    L-corner over MCU, with descent cutters sculpting both top transitions.
-
-    Outer face is the polygon-offset shell face; inner face is the cavity face.
-    Both faces are shared with the rest of the case → boolean union with the
-    shell produces a single continuous solid (no floating slab)."""
+    """Wall ring MAIN_RIM_Z→MCU_HILL_Z restricted to the L-corner over the MCU.
+    Shares outer/inner polygon faces with shell so boolean union is one continuous solid."""
     z_lo, z_hi = C.MAIN_RIM_Z, C.MCU_HILL_Z
 
     outer = _outer_extruded(z_lo, z_hi)
@@ -200,13 +193,8 @@ def _mcu_hill_solid() -> Part:
 # ---------------------------------------------------------------------------
 
 def _fillet_outer_concave_corners(part: Part) -> Part:
-    """Round outer-wall notch edges at the four user-selected concave polygon vertices.
-
-    Kind.ARC offset leaves concave vertices as sharp V-notches on the exterior face.
-    Each entry: (xlo, ylo, xhi, yhi, radius_mm).  Windows are sized to the outer-face
-    notch edge (Z-start ≈ 0), not the inner cavity edge (Z-start = FLOOR_THICKNESS).
-    Per-corner try/except: one failure doesn't abort the others.
-    """
+    """Fillet sharp V-notches left by Kind.ARC offset at concave polygon vertices.
+    Per-corner try/except so one failure doesn't abort the rest."""
     targets: list[tuple[float, float, float, float, float]] = [
         ( 6.0, 33.0,  9.0, 35.5, 0.5),   # [0] (9, 31.5)   — nearly-flat, tiny notch
         (34.5,  9.0, 37.5, 11.5, 0.8),   # [3] (34.5, 13)  — ~5° turn, short segments

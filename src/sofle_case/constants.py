@@ -50,7 +50,7 @@ USB_C_SIDE_BULGE = 1.5   # mm outward arc bulge at midpoint of each X-side
 
 SLIDE_SWITCH_W     = 6.0
 SLIDE_SWITCH_TOP_W = 14.0
-SLIDE_SWITCH_Z_RANGE: tuple[float, float] = (10, MAIN_RIM_Z + 0.5)   # z_lo = PCB_TOP_Z + 1.1 mm hides switch metal body (stem tops at PCB_TOP_Z + 2.5 mm, leaving 1.4 mm grip); z_hi punches past wall rim so slot is open to air
+SLIDE_SWITCH_Z_RANGE: tuple[float, float] = (10, MAIN_RIM_Z + 0.5)   # z_lo clears switch metal body top; z_hi punches past wall rim so slot is open
 SLIDE_SWITCH_CORNER_R = 0.1   # fillet radius at slot-rim junction on outer wall face
 
 # Spline tangent scalars passed to Spline(...) for the two side profiles.
@@ -108,7 +108,7 @@ SHOW_PLATE_PHANTOM  = True # True: adds switch plate phantom to case.py __main__
 SHOW_SWITCH_PHANTOM = True # True: adds MX switch phantom to case.py __main__ viewer
 
 # MCU vertical stack — structural heights that also drive the USB-C cutout design
-MCU_PCB_TOP_Z    = 12    # nice!nano daughter-board top surface (PCB_TOP_Z + 1.6 mm nice!nano PCB layer)
+MCU_PCB_TOP_Z    = 12    # nice!nano PCB top including socket height above main PCB
 USB_C_BODY_TOP_Z = 18   # USB-C jack body top surface
 
 # ---------- MCU wall cap on −X wall ----------
