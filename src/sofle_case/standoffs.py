@@ -1,6 +1,6 @@
 """Stepped standoff: lower shoulder (PCB seat) + upper pin (through PCB) + M2 tap bore."""
 from __future__ import annotations
-from build123d import Part, Cylinder, BuildPart, Mode, Locations
+from build123d import Part, Cylinder, Cone, BuildPart, Mode, Locations
 from . import constants as C
 
 
@@ -30,6 +30,13 @@ def stepped_standoff(at: tuple[float, float]) -> Part:
             Cylinder(
                 radius=C.STANDOFF_TAP_DIA / 2,
                 height=C.STANDOFF_TAP_DEPTH,
+                mode=Mode.SUBTRACT,
+            )
+        with Locations((x, y, C.PLATE_SEAT_Z - C.STANDOFF_TAP_CHAMFER / 2)):
+            Cone(
+                bottom_radius=C.STANDOFF_TAP_DIA / 2,
+                top_radius=C.STANDOFF_TAP_DIA / 2 + C.STANDOFF_TAP_CHAMFER,
+                height=C.STANDOFF_TAP_CHAMFER,
                 mode=Mode.SUBTRACT,
             )
 
