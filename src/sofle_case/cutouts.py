@@ -1,9 +1,9 @@
-"""Subtractive cutouts: USB-C (+Y wall), slide-switch arched-trapezoid slot (-X wall)."""
+"""Subtractive cutouts: USB-C open-top slot through +Y wall."""
 from __future__ import annotations
 import math
 from build123d import (
     Part,
-    BuildPart, BuildSketch, BuildLine, Plane, Line, Spline, ThreePointArc, make_face,
+    BuildPart, BuildSketch, BuildLine, Plane, Line, ThreePointArc, make_face,
     extrude, fillet, Axis,
 )
 from . import constants as C
@@ -29,7 +29,7 @@ def usb_c_cutout() -> Part:
     half_w = C.USB_C_W / 2
     bulge  = C.USB_C_SIDE_BULGE
     total_depth = C.USB_C_Y_DEPTH + _PIERCE
-    outer_y     = C.OUTER_DEPTH + _PIERCE   # sketch at overshoot face; extrude goes −Y
+    outer_y     = C.USB_C_OUTER_Y + _PIERCE  # outer +Y face at MCU X (PCB Y=0 + border); extrude goes −Y
 
     # Midpoint of each 90° corner arc (at 45° along the arc from each end).
     # Arc center for right corner: (cx+half_w+bulge, z_lo); midpoint at 135° from +X.
@@ -52,57 +52,12 @@ def usb_c_cutout() -> Part:
     return bp.part
 
 
-def slide_switch_cutout() -> Part:
-    """Slide-shape slot in -X wall: narrow at switch level, sides flare outward to wide rim opening.
-
-    Right side (farther Y): spline with stretched top tangent for larger arc at rim.
-    Left side (closer Y / ramp): spline with stretched top tangent for smoother ramp entry.
-    """
-    _, cy = C.pcb_to_case(*C.SW_SLIDE_POS)
-    z_lo, z_hi = C.SLIDE_SWITCH_Z_RANGE
-    half_narrow = C.SLIDE_SWITCH_W / 2
-    half_wide   = C.SLIDE_SWITCH_TOP_W / 2
-
-    # Extrude past the switch body so fingers can reach the actuator from outside.
-    depth = C.PCB_OFFSET_X + C.SW_SLIDE_POS[0] + 5.0  # ≈ 25.7 mm
-
-    with BuildPart() as bp:
-        with BuildSketch(Plane.YZ):  # outer wall face at X=0
-            with BuildLine():
-                Line((cy - half_narrow, z_lo), (cy + half_narrow, z_lo))
-                Spline(
-                    (cy + half_narrow, z_lo),
-                    (cy + half_wide,   z_hi),
-                    tangents=[(0, 1), (1, 0)],
-                    tangent_scalars=list(C.SLIDE_SWITCH_RIGHT_TANGENT_SCALARS),
-                )
-                Line((cy + half_wide, z_hi), (cy - half_wide, z_hi))
-                Spline(
-                    (cy - half_wide,   z_hi),
-                    (cy - half_narrow, z_lo),
-                    tangents=[(-1, 0), (0, -1)],
-                    tangent_scalars=list(C.SLIDE_SWITCH_RAMP_TANGENT_SCALARS),
-                )
-            make_face()
-        extrude(amount=depth)  # spans outer face → inner cavity at switch Y
-        # Fillet the two bottom long edges (parallel to X, at z_lo) → semicircle arch at bottom
-        fillet(
-            bp.edges().filter_by(Axis.X).filter_by_position(
-                Axis.Z, minimum=z_lo - 0.01, maximum=z_lo + 0.01
-            ),
-            radius=C.SLIDE_SWITCH_W / 2,
-        )
-
-    assert bp.part is not None
-    return bp.part
-
-
 def all_cutouts() -> list[Part]:
-    return [usb_c_cutout(), slide_switch_cutout()]
+    return [usb_c_cutout()]
 
 
 # %%
 if __name__ == "__main__":
     from ocp_vscode import show
-    from sofle_case.cutouts import usb_c_cutout, slide_switch_cutout
-    show(usb_c_cutout(), slide_switch_cutout(), names=["usb_c", "slide_switch"])
+    from sofle_case.cutouts import usb_c_cutout
+    show(usb_c_cutout(), names=["usb_c"])

@@ -1,11 +1,11 @@
 """Compose the full case half from tray + standoffs, minus cutouts."""
 from __future__ import annotations
 from typing import Literal, cast
-from build123d import Part, fillet, Axis
+from build123d import Part, fillet, Axis, BuildPart, Locations, Cylinder, Sphere
 from . import constants as C
 from .tray import build_tray
 from .standoffs import stepped_standoff
-from .cutouts import usb_c_cutout, slide_switch_cutout
+from .cutouts import usb_c_cutout
 
 
 Side = Literal["left", "right"]
@@ -29,25 +29,46 @@ def build_case_half(side: Side) -> Part:
     shell = cast(Part, shell)
 
     shell -= usb_c_cutout()
-    shell -= slide_switch_cutout()
 
     shell = cast(Part, shell)
 
-    # Round the outer rim corners of the slide switch slot
-    z_hi = C.SLIDE_SWITCH_Z_RANGE[1]
-    slot_rim_edges = (
-        shell.edges()
-             .filter_by_position(Axis.X, minimum=-0.1, maximum=C.WALL_THICKNESS + 0.1)
-             .filter_by_position(Axis.Z, minimum=z_hi - 0.5, maximum=z_hi + 0.1)
-    )
-    if slot_rim_edges:
-        shell = fillet(slot_rim_edges, radius=C.SLIDE_SWITCH_CORNER_R)
-        shell = cast(Part, shell)
-
     if not isinstance(shell, Part):
-        shell = Part(children=[shell])
+        solids = shell.solids()
+        shell = Part(children=list(solids)) if solids else Part(children=[shell])
 
     return shell
+
+
+# %%
+def _corner_markers() -> Part:
+    """Debug spheres at geometry transition points. All coords currently commented
+    out — uncomment specific entries to visualise edges in the OCP viewer."""
+    x_inner   = C.PCB_OFFSET_X - C.PCB_XY_CLEARANCE                       # 11.000
+    x_outer   = C.PCB_OFFSET_X - (C.WALL_THICKNESS + C.PCB_XY_CLEARANCE)  # 8.500
+    sw_cy     = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
+    mcu_cy    = C.pcb_to_case(*C.MCU_POS)[1]
+    half_narrow = C.SLIDE_SWITCH_W / 2                                    # 3.0
+    half_wide   = C.SLIDE_SWITCH_TOP_W / 2                                # 7.0
+    y_slot_n  = sw_cy + half_wide                                         # 77.270
+    y_mcu_bot = mcu_cy - C.MCU_BODY_L / 2                                 # 80.840
+    z_slot_lo = C.SLIDE_SWITCH_Z_RANGE[0]                                 # 7.200
+    y_spline_hits_wall_top = 75.780   # numerically solved; slot +Y spline @ z=13.7
+    coords: tuple[tuple[float, float, float], ...] = (
+        # −X wall TOP kinks (inner wall face, x_inner = 11.0)
+        # (x_inner, y_slot_n,               C.S_CURVE_RAMP_Z_FLOOR),  # P1 (11.00, 77.27, 13.70)
+        # (x_inner, y_mcu_bot,              C.MCU_HILL_Z),            # P2 (11.00, 80.84, 17.10)
+        # # Slot polygon: two cutout points (−Y interior side, outer wall face x_outer = 8.5)
+        # (x_outer, sw_cy - half_narrow,    z_slot_lo),               # A1 (8.50, 67.27, 7.20)  −Y narrow bottom
+        # (x_outer, sw_cy - half_wide,      C.S_CURVE_RAMP_Z_FLOOR),  # A3 (8.50, 63.27, 13.70) −Y wide top corner
+        # # Slot polygon: +Y rim spline endpoints (right side of switch rim)
+        # (x_outer, sw_cy + half_narrow,    z_slot_lo),               # B1 (8.50, 73.27, 7.20)  +Y narrow bottom
+        # (x_outer, sw_cy + half_wide,      C.S_CURVE_RAMP_Z_FLOOR),  # B2 (8.50, 77.27, 13.70) +Y wide top corner
+    )
+    with BuildPart() as bp:
+        for x, y, z in coords:
+            with Locations((x, y, z)):
+                Sphere(radius=1.0)
+    return bp.part # type: ignore
 
 
 # %%
@@ -73,5 +94,8 @@ if __name__ == "__main__":
         from sofle_case.switch_phantom import build_switch_phantom
         parts.append(build_switch_phantom())
         names.append("switch_phantom")
+
+    parts.append(_corner_markers())
+    names.append("corner_markers")
 
     show(*parts, names=names)
