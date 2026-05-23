@@ -1,7 +1,7 @@
 """Compose the full case half from tray + standoffs, minus cutouts."""
 from __future__ import annotations
 from typing import Literal, cast
-from build123d import Part, fillet, Axis, BuildPart, Locations, Cylinder, Sphere
+from build123d import Part, mirror, Plane, Pos, fillet, Axis, BuildPart, Locations, Cylinder, Sphere
 from . import constants as C
 from .tray import build_tray
 from .standoffs import stepped_standoff
@@ -14,8 +14,9 @@ Side = Literal["left", "right"]
 def build_case_half(side: Side) -> Part:
     """Build a single case half.
 
-    The Sofle PCB is reversible — both halves share one case STL. ``side`` is
-    accepted for CLI symmetry / export naming but produces identical geometry.
+    ``side="left"`` returns the as-built geometry (MCU hill on the −X wall).
+    ``side="right"`` returns the mirror image, reflected about the case
+    centreline (X = OUTER_WIDTH / 2), so the MCU hill lands on the +X wall.
     """
     if side not in ("left", "right"):
         raise ValueError(f"side must be 'left' or 'right', got {side!r}")
@@ -31,6 +32,15 @@ def build_case_half(side: Side) -> Part:
     shell -= usb_c_cutout()
 
     shell = cast(Part, shell)
+
+    if side == "right":
+        # Mirror about the YZ plane through case centre X = OUTER_WIDTH/2.
+        # build123d's mirror() reflects about a plane through the origin, so we
+        # shift by -OUTER_WIDTH/2, mirror about YZ, then shift back.
+        shell = Pos(-C.OUTER_WIDTH / 2, 0, 0) * shell
+        shell = mirror(shell, about=Plane.YZ)
+        shell = Pos(C.OUTER_WIDTH / 2, 0, 0) * shell
+        shell = cast(Part, shell)
 
     if not isinstance(shell, Part):
         solids = shell.solids()
@@ -77,22 +87,37 @@ if __name__ == "__main__":
     from sofle_case.case import build_case_half
     from sofle_case import constants as C
 
-    parts = [build_case_half("right")]
+    _SIDE: Side = "right"
+
+    def _mirror_part(p: Part) -> Part:
+        """Apply the same mirror transform as build_case_half() for side='right'.
+
+        Phantoms are always built in left-half (un-mirrored) coordinates. When
+        viewing the right half the same shift-mirror-shift must be applied so
+        they stay aligned with the case geometry.
+        """
+        if _SIDE == "right":
+            p = cast(Part, Pos(-C.OUTER_WIDTH / 2, 0, 0) * p)
+            p = cast(Part, mirror(p, about=Plane.YZ))
+            p = cast(Part, Pos(C.OUTER_WIDTH / 2, 0, 0) * p)
+        return p
+
+    parts = [build_case_half(_SIDE)]
     names = ["case"]
 
     if C.SHOW_PCB_PHANTOM:
         from sofle_case.pcb_phantom import build_pcb_phantom
-        parts.append(build_pcb_phantom())
+        parts.append(_mirror_part(build_pcb_phantom()))
         names.append("pcb_phantom")
 
     if C.SHOW_PLATE_PHANTOM:
         from sofle_case.plate_phantom import build_plate_phantom
-        parts.append(build_plate_phantom())
+        parts.append(_mirror_part(build_plate_phantom()))
         names.append("plate_phantom")
 
     if C.SHOW_SWITCH_PHANTOM:
         from sofle_case.switch_phantom import build_switch_phantom
-        parts.append(build_switch_phantom())
+        parts.append(_mirror_part(build_switch_phantom()))
         names.append("switch_phantom")
 
     parts.append(_corner_markers())
