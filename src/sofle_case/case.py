@@ -14,8 +14,8 @@ Side = Literal["left", "right"]
 def build_case_half(side: Side) -> Part:
     """Build a single case half.
 
-    ``side="left"`` returns the as-built geometry (MCU hill on the −X wall).
-    ``side="right"`` returns the mirror image, reflected about the case
+    ``side="right"`` returns the as-built geometry (MCU hill on the −X wall).
+    ``side="left"`` returns the mirror image, reflected about the case
     centreline (X = OUTER_WIDTH / 2), so the MCU hill lands on the +X wall.
     """
     if side not in ("left", "right"):
@@ -33,7 +33,7 @@ def build_case_half(side: Side) -> Part:
 
     shell = cast(Part, shell)
 
-    if side == "right":
+    if side == "left":
         # Mirror about the YZ plane through case centre X = OUTER_WIDTH/2.
         # build123d's mirror() reflects about a plane through the origin, so we
         # shift by -OUTER_WIDTH/2, mirror about YZ, then shift back.
@@ -90,13 +90,13 @@ if __name__ == "__main__":
     _SIDE: Side = "right"
 
     def _mirror_part(p: Part) -> Part:
-        """Apply the same mirror transform as build_case_half() for side='right'.
+        """Apply the same mirror transform as build_case_half() for side='left'.
 
-        Phantoms are always built in left-half (un-mirrored) coordinates. When
-        viewing the right half the same shift-mirror-shift must be applied so
+        Phantoms are always built in right-half (un-mirrored) coordinates. When
+        viewing the left half the same shift-mirror-shift must be applied so
         they stay aligned with the case geometry.
         """
-        if _SIDE == "right":
+        if _SIDE == "left":
             p = cast(Part, Pos(-C.OUTER_WIDTH / 2, 0, 0) * p)
             p = cast(Part, mirror(p, about=Plane.YZ))
             p = cast(Part, Pos(C.OUTER_WIDTH / 2, 0, 0) * p)
