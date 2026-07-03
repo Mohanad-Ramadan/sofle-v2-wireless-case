@@ -20,10 +20,11 @@ OUTER_DEPTH     = 121.5
 WALL_THICKNESS  = 2.5
 CORNER_RADIUS   = 3.5
 TOP_CHAMFER     = 0.8
+BOTTOM_CHAMFER  = 0.5   # 45° counter-chamfer on outer bottom edge (elephant-foot pre-compensation)
 
 # ---------- Standoff geometry ----------
 STANDOFF_OD_LOWER  = 5.5   # PCB-seat shoulder OD
-STANDOFF_OD_UPPER  = 3.5   # passes through PCB Ø4.1 hole
+STANDOFF_OD_UPPER  = 3.9   # passes through PCB Ø4.1 hole (~0.2 mm clearance); widened from 3.5 to thicken the M2 self-tap boss wall
 STANDOFF_TAP_DIA   = 1.8   # M2 self-tap bore (sized for FDM tolerance)
 STANDOFF_TAP_DEPTH = 4.0
 STANDOFF_TAP_CHAMFER = 0.3  # 45° entry chamfer at bore top

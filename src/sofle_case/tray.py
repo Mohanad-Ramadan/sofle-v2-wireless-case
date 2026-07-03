@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import cast
 from build123d import (
     Part, Wire, Pos, Polyline, make_face, extrude, offset, Kind, Solid,
-    Plane, BuildPart, BuildSketch, BuildLine, Axis, fillet, Line, Spline,
+    Plane, BuildPart, BuildSketch, BuildLine, Axis, fillet, chamfer, Line, Spline,
 )
 from . import constants as C
 from .pcb_geometry import polygon_in_case_coords
@@ -278,6 +278,31 @@ def _fillet_top_edges(part: Part) -> Part:
 
 
 # ---------------------------------------------------------------------------
+# Bottom counter-chamfer (elephant-foot pre-compensation)
+# ---------------------------------------------------------------------------
+
+def _chamfer_bottom_edges(part: Part) -> Part:
+    """Chamfer the outer bottom perimeter (Z=0 plane) by BOTTOM_CHAMFER.
+
+    The squished first layers fill the missing 45° wedge instead of bulging
+    past the nominal footprint. The cavity floor sits at FLOOR_THICKNESS (Z=2.0),
+    so the only edges in the Z≈0 plane are the floor's outer perimeter.
+
+    Runs last in build_tray() so it does not perturb the Z-based edge selection
+    used by the fillet passes. Falls back to a smaller length, then to no
+    chamfer, rather than aborting the build (mirrors _fillet_top_edges)."""
+    bottom = part.edges().filter_by_position(Axis.Z, minimum=-0.01, maximum=0.01)
+    if not bottom:
+        return part
+    for length in (C.BOTTOM_CHAMFER, C.BOTTOM_CHAMFER * 0.75):
+        try:
+            return cast(Part, chamfer(bottom, length=length))
+        except ValueError:
+            continue
+    return part
+
+
+# ---------------------------------------------------------------------------
 # Public entry
 # ---------------------------------------------------------------------------
 
@@ -290,10 +315,11 @@ def build_tray() -> Part:
     hollow = cast(Part, hollow - _neg_x_wall_cutter_minus_y())
     hollow = _fillet_outer_concave_corners(hollow)
     filleted = _fillet_top_edges(hollow)
-    if isinstance(filleted, Part):
-        return filleted
-    solids = filleted.solids()
-    return Part(children=list(solids)) if solids else Part(children=[filleted])
+    chamfered = _chamfer_bottom_edges(filleted)
+    if isinstance(chamfered, Part):
+        return chamfered
+    solids = chamfered.solids()
+    return Part(children=list(solids)) if solids else Part(children=[chamfered])
 
 
 # %%

@@ -107,8 +107,8 @@ Each stepped standoff spans all three seating surfaces:
 | Section      | Z range        | Height  | OD     | Purpose                          |
 |--------------|---------------|---------|--------|----------------------------------|
 | Lower shoulder | 2.0 → 4.5  | 2.5 mm  | 5.5 mm | PCB-seat shoulder; supports PCB  |
-| Upper pin    | 4.5 → 9.1    | 4.6 mm  | 3.5 mm | Passes through PCB hole (Ø4.1 mm); supports plate |
-| M2 tap bore  | 9.1 → 5.1    | 4.0 mm deep | Ø1.6 mm | M2 self-tapping screw bore, drilled top-down |
+| Upper pin    | 4.5 → 9.1    | 4.6 mm  | 3.9 mm | Passes through PCB hole (Ø4.1 mm); supports plate |
+| M2 tap bore  | 9.1 → 5.1    | 4.0 mm deep | Ø1.8 mm | M2 self-tapping screw bore, drilled top-down |
 
 ---
 
