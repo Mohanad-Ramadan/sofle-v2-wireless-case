@@ -58,34 +58,19 @@ def build_case_half(side: Side) -> Part:
 def _corner_markers() -> Part:
     """Debug spheres at geometry transition points. All coords currently commented
     out — uncomment specific entries to visualise edges in the OCP viewer."""
-    x_inner   = C.PCB_OFFSET_X - C.PCB_XY_CLEARANCE                       # 11.000
-    x_outer   = C.PCB_OFFSET_X - (C.WALL_THICKNESS + C.PCB_XY_CLEARANCE)  # 8.500
-    sw_cy     = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
-    mcu_cy    = C.pcb_to_case(*C.MCU_POS)[1]
-    half_narrow = C.SLIDE_SWITCH_W / 2                                    # 3.0
-    half_wide   = C.SLIDE_SWITCH_TOP_W / 2                                # 7.0
-    y_slot_n  = sw_cy + half_wide                                         # 77.270
-    y_mcu_bot = mcu_cy - C.MCU_BODY_L / 2                                 # 80.840
-    z_slot_lo = C.SLIDE_SWITCH_Z_RANGE[0]                                 # 7.200
-    y_spline_hits_wall_top = 75.780   # numerically solved; slot +Y spline @ z=13.7
-    # +Y cover relief: the two descent-curve endpoints, now on the pushed-out
-    # face (Y = new outer). C1 = descent top (plateau→ramp), C2 = descent bottom
-    # (ramp→rim). These mark the two cover points moved by the +Y relief.
-    y_cover_outer = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
-    x_descent_top = C.MCU_HILL_PLUS_Y_REACH_X
-    x_descent_bot = C.MCU_HILL_PLUS_Y_REACH_X + C.MCU_HILL_PLUS_Y_RAMP_RUN
     coords: tuple[tuple[float, float, float], ...] = (
-        (x_descent_top, y_cover_outer, C.MCU_HILL_Z),   # C1 descent top  (plateau → ramp) on new face
-        (x_descent_bot, y_cover_outer, C.MAIN_RIM_Z),   # C2 descent bottom (ramp → rim)   on new face
-        # −X wall TOP kinks (inner wall face, x_inner = 11.0)
-        # (x_inner, y_slot_n,               C.S_CURVE_RAMP_Z_FLOOR),  # P1 (11.00, 77.27, 13.70)
-        # (x_inner, y_mcu_bot,              C.MCU_HILL_Z),            # P2 (11.00, 80.84, 17.10)
-        # # Slot polygon: two cutout points (−Y interior side, outer wall face x_outer = 8.5)
-        # (x_outer, sw_cy - half_narrow,    z_slot_lo),               # A1 (8.50, 67.27, 7.20)  −Y narrow bottom
-        # (x_outer, sw_cy - half_wide,      C.S_CURVE_RAMP_Z_FLOOR),  # A3 (8.50, 63.27, 13.70) −Y wide top corner
-        # # Slot polygon: +Y rim spline endpoints (right side of switch rim)
-        # (x_outer, sw_cy + half_narrow,    z_slot_lo),               # B1 (8.50, 73.27, 7.20)  +Y narrow bottom
-        # (x_outer, sw_cy + half_wide,      C.S_CURVE_RAMP_Z_FLOOR),  # B2 (8.50, 77.27, 13.70) +Y wide top corner
+        # Switch-column-top case edges (outer wall): the staircase along the
+        # top wall where each column's back edge steps to match that
+        # column's stagger. Runs from the right-edge top end above back to
+        # the MCU corner.
+        (111.5,  110.0, C.MAIN_RIM_Z),  # column step
+        (108.5,  119.0, C.MAIN_RIM_Z),  # column step
+        ( 92.46, 119.0,  C.MAIN_RIM_Z),  # column step
+        ( 89.5,  121.5, C.MAIN_RIM_Z),  # column step (thumb-cluster tab)
+        ( 71.5,  121.5, C.MAIN_RIM_Z),  # column step (thumb-cluster tab)
+        ( 68.54, 119.0,  C.MAIN_RIM_Z),  # column step
+        ( 52.5,  119.0, C.MAIN_RIM_Z),  # column step -- index column (matches MCU_Y_RELIEF_TARGET_Y)
+        ( 49.54, 116.5,  C.MAIN_RIM_Z),  # column step
     )
     with BuildPart() as bp:
         for x, y, z in coords:

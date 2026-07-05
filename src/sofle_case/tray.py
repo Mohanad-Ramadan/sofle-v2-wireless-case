@@ -139,7 +139,11 @@ def _mcu_y_relief_bump() -> Part:
     x_lo, x_tall_hi, x_full_hi = _mcu_y_relief_x_range()
     y_old_outer = C.pcb_to_case(0, 0)[1] + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
     y_new_outer = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
-    y_lo = y_old_outer - C.MCU_Y_RELIEF_OVERLAP
+    # Start at the polygon vertex Y (arc start of the Kind.ARC corner at
+    # vertex [16]) so the −X wall face is continuous up to y_new_outer —
+    # otherwise the arc dips inward between the arc start and the old overlap.
+    arc_start_y = C.pcb_to_case(0, 0)[1]
+    y_lo = min(y_old_outer - C.MCU_Y_RELIEF_OVERLAP, arc_start_y)
     tall = _axis_box(x_lo, x_tall_hi, y_lo, y_new_outer, 0.0, C.MCU_HILL_Z)
     low  = _axis_box(x_tall_hi - C.MCU_Y_RELIEF_OVERLAP, x_full_hi, y_lo, y_new_outer, 0.0, C.MAIN_RIM_Z)
     return cast(Part, tall + low)
@@ -384,6 +388,38 @@ def _chamfer_bottom_edges(part: Part) -> Part:
 
 
 # ---------------------------------------------------------------------------
+# Bump −X/+Y convex corner fillet
+# ---------------------------------------------------------------------------
+
+def _fillet_bump_neg_x_corner(part: Part) -> Part:
+    """Fillet the sharp 90° convex edge at the relief bump's −X/+Y corner.
+
+    After the bump pushes the +Y wall out, the corner at (x_lo, y_new_outer)
+    is a raw box edge. This adds an arc matching the polygon offset's
+    Kind.ARC radius so the corner style is consistent."""
+    x_lo, _, _ = _mcu_y_relief_x_range()
+    y_new = (C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1]
+             + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE)
+    r = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+
+    z_edges = [
+        e for e in (
+            part.edges()
+            .filter_by_position(Axis.X, minimum=x_lo - 0.5, maximum=x_lo + 0.5)
+            .filter_by_position(Axis.Y, minimum=y_new - 0.5, maximum=y_new + 0.5)
+        )
+        if (e.bounding_box().max.Z - e.bounding_box().min.Z > 5.0
+            and abs(e.tangent_at(0.5).Z) > 0.9)
+    ]
+    if not z_edges:
+        return part
+    try:
+        return cast(Part, fillet(z_edges, radius=r))
+    except (ValueError, Standard_Failure):
+        return part
+
+
+# ---------------------------------------------------------------------------
 # Public entry
 # ---------------------------------------------------------------------------
 
@@ -400,6 +436,7 @@ def build_tray() -> Part:
     hollow = cast(Part, hollow - _neg_x_wall_cutter_plus_y())
     hollow = cast(Part, hollow - _neg_x_wall_cutter_minus_y())
     hollow = _fillet_outer_concave_corners(hollow)
+    hollow = _fillet_bump_neg_x_corner(hollow)
     filleted = _fillet_top_edges(hollow)
     chamfered = _chamfer_bottom_edges(filleted)
     if isinstance(chamfered, Part):
