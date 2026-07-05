@@ -154,13 +154,15 @@ def _mcu_y_relief_widen() -> Part:
     the old and new inner +Y-wall faces so the added outer bump becomes usable
     interior clearance rather than solid wall.
 
-    X starts INBOARD of the −X wall's inner face (at the MCU body's −X edge, well
-    past X≈11) so this cut never reaches the −X wall — that wall stays exactly
-    as-is. Runs the full x_full_hi span at FLOOR_THICKNESS→MCU_HILL_Z; going
-    higher than the bump's own low segment above MAIN_RIM_Z there is harmless
-    (nothing to remove above rim height past x_tall_hi anyway)."""
+    X starts 0.3 mm inboard of the −X wall's inner polygon face so the cut
+    never reaches the −X wall itself — that wall stays exactly as-is. The
+    0.3 mm margin avoids coincident-face boolean failures while keeping the
+    residual step below FDM nozzle resolution (< 0.4 mm). Runs the full
+    x_full_hi span at FLOOR_THICKNESS→MCU_HILL_Z; going higher than the
+    bump's own low segment above MAIN_RIM_Z there is harmless (nothing to
+    remove above rim height past x_tall_hi anyway)."""
     _, _, x_full_hi = _mcu_y_relief_x_range()
-    x_lo = C.pcb_to_case(C.MCU_POS[0] - C.MCU_BODY_W / 2 - C.MCU_Y_RELIEF_X_MARGIN, 0)[0]
+    x_lo = C.pcb_to_case(0, 0)[0] - C.PCB_XY_CLEARANCE + 0.3
     _, y_safe_lo = C.pcb_to_case(0, C.MCU_POS[1])                      # safely inside cavity
     y_new_inner = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.PCB_XY_CLEARANCE
     return _axis_box(x_lo, x_full_hi, y_safe_lo, y_new_inner, C.FLOOR_THICKNESS, C.MCU_HILL_Z)
