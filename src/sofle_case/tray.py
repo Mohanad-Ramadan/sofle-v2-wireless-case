@@ -154,18 +154,28 @@ def _mcu_y_relief_widen() -> Part:
     the old and new inner +Y-wall faces so the added outer bump becomes usable
     interior clearance rather than solid wall.
 
-    X starts 0.3 mm inboard of the −X wall's inner polygon face so the cut
-    never reaches the −X wall itself — that wall stays exactly as-is. The
-    0.3 mm margin avoids coincident-face boolean failures while keeping the
-    residual step below FDM nozzle resolution (< 0.4 mm). Runs the full
-    x_full_hi span at FLOOR_THICKNESS→MCU_HILL_Z; going higher than the
-    bump's own low segment above MAIN_RIM_Z there is harmless (nothing to
-    remove above rim height past x_tall_hi anyway)."""
+    Two boxes. The base box starts 0.3 mm inboard of the −X wall's inner
+    polygon face: its −X cut runs the full cavity Y-span, so it must stay off
+    the −X wall face (X=inner_x) — a box whose −X face *overlaps* that wall
+    face over the shared Y-range triggers an OCC coincident-face BRepCheck
+    failure. The base box therefore leaves a 0.3 mm strip of bump material
+    unremoved at the corner (X=inner_x..inner_x+0.3, Y=corner_y..y_new_inner).
+
+    The corner box removes exactly that strip. It reaches the −X wall face
+    (x_lo=inner_x) but only over Y=corner_y..y_new_inner — i.e. it starts
+    exactly where the −X wall face ends (Y=corner_y, the polygon vertex). Its
+    −X cut face is thus *contiguous* with the wall face, not overlapping it, so
+    the two merge into one continuous −X inner wall up to the corner with no
+    coincident face and no residual ledge. x_hi overlaps the base box so there
+    is no gap between the two cuts."""
     _, _, x_full_hi = _mcu_y_relief_x_range()
-    x_lo = C.pcb_to_case(0, 0)[0] - C.PCB_XY_CLEARANCE + 0.3
-    _, y_safe_lo = C.pcb_to_case(0, C.MCU_POS[1])                      # safely inside cavity
+    inner_x     = C.pcb_to_case(0, 0)[0] - C.PCB_XY_CLEARANCE          # −X inner wall face
+    corner_y    = C.pcb_to_case(0, 0)[1]                              # polygon vertex Y; −X wall face ends here
     y_new_inner = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.PCB_XY_CLEARANCE
-    return _axis_box(x_lo, x_full_hi, y_safe_lo, y_new_inner, C.FLOOR_THICKNESS, C.MCU_HILL_Z)
+    _, y_safe_lo = C.pcb_to_case(0, C.MCU_POS[1])                      # safely inside cavity
+    base   = _axis_box(inner_x + 0.3, x_full_hi, y_safe_lo, y_new_inner, C.FLOOR_THICKNESS, C.MCU_HILL_Z)
+    corner = _axis_box(inner_x, inner_x + 0.35, corner_y, y_new_inner, C.FLOOR_THICKNESS, C.MCU_HILL_Z)
+    return cast(Part, base + corner)
 
 
 def _neg_x_wall_cutter_plus_y() -> Part:
