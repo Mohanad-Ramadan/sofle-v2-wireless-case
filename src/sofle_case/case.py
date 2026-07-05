@@ -2,6 +2,8 @@
 from __future__ import annotations
 from typing import Literal, cast
 from build123d import Part, mirror, Plane, Pos, fillet, Axis, BuildPart, Locations, Cylinder, Sphere
+from OCP.ShapeFix import ShapeFix_Shape
+from OCP.TopoDS import TopoDS
 from . import constants as C
 from .tray import build_tray
 from .standoffs import stepped_standoff
@@ -10,6 +12,21 @@ from .battery import battery_pocket
 
 
 Side = Literal["left", "right"]
+
+
+def _heal(part: Part) -> Part:
+    """Repair face orientation after a reflection.
+
+    Mirroring a solid that carries filleted top-rim blend surfaces yields a
+    BRepCheck ``UnorientableShape`` — OCC's orientation bookkeeping fails on the
+    reflected BSpline blends even though a mirror is an isometry and the shape
+    is geometrically sound. ShapeFix_Shape flips the offending orientation flags
+    without altering geometry (volume and bbox are preserved). Only the mirrored
+    (left) half needs this; the right half is already valid."""
+    fixer = ShapeFix_Shape(part.wrapped)
+    fixer.Perform()
+    fixed = fixer.Shape()
+    return Part(TopoDS.Solid_s(fixed)) if fixed.ShapeType() == 2 else Part(fixed)
 
 
 def build_case_half(side: Side) -> Part:
@@ -46,6 +63,9 @@ def build_case_half(side: Side) -> Part:
         shell = mirror(shell, about=Plane.YZ)
         shell = Pos(C.OUTER_WIDTH / 2, 0, 0) * shell
         shell = cast(Part, shell)
+        # Reflection leaves filleted rim blends unorientable; heal orientation
+        # (geometry unchanged) so the half passes BRepCheck. See _heal().
+        shell = _heal(shell)
 
     if not isinstance(shell, Part):
         solids = shell.solids()
