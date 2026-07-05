@@ -6,6 +6,7 @@ from . import constants as C
 from .tray import build_tray
 from .standoffs import stepped_standoff
 from .cutouts import usb_c_cutout
+from .battery import battery_pocket
 
 
 Side = Literal["left", "right"]
@@ -30,6 +31,10 @@ def build_case_half(side: Side) -> Part:
     shell = cast(Part, shell)
 
     shell -= usb_c_cutout()
+
+    shell = cast(Part, shell)
+
+    shell -= battery_pocket()
 
     shell = cast(Part, shell)
 
@@ -63,7 +68,15 @@ def _corner_markers() -> Part:
     y_mcu_bot = mcu_cy - C.MCU_BODY_L / 2                                 # 80.840
     z_slot_lo = C.SLIDE_SWITCH_Z_RANGE[0]                                 # 7.200
     y_spline_hits_wall_top = 75.780   # numerically solved; slot +Y spline @ z=13.7
+    # +Y cover relief: the two descent-curve endpoints, now on the pushed-out
+    # face (Y = new outer). C1 = descent top (plateau→ramp), C2 = descent bottom
+    # (ramp→rim). These mark the two cover points moved by the +Y relief.
+    y_cover_outer = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+    x_descent_top = C.MCU_HILL_PLUS_Y_REACH_X
+    x_descent_bot = C.MCU_HILL_PLUS_Y_REACH_X + C.MCU_HILL_PLUS_Y_RAMP_RUN
     coords: tuple[tuple[float, float, float], ...] = (
+        (x_descent_top, y_cover_outer, C.MCU_HILL_Z),   # C1 descent top  (plateau → ramp) on new face
+        (x_descent_bot, y_cover_outer, C.MAIN_RIM_Z),   # C2 descent bottom (ramp → rim)   on new face
         # −X wall TOP kinks (inner wall face, x_inner = 11.0)
         # (x_inner, y_slot_n,               C.S_CURVE_RAMP_Z_FLOOR),  # P1 (11.00, 77.27, 13.70)
         # (x_inner, y_mcu_bot,              C.MCU_HILL_Z),            # P2 (11.00, 80.84, 17.10)

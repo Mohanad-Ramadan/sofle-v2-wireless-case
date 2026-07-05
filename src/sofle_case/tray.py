@@ -5,8 +5,13 @@ from build123d import (
     Part, Wire, Pos, Polyline, make_face, extrude, offset, Kind, Solid,
     Plane, BuildPart, BuildSketch, BuildLine, Axis, fillet, chamfer, Line, Spline,
 )
+from OCP.Standard import Standard_Failure
 from . import constants as C
 from .pcb_geometry import polygon_in_case_coords
+
+# Flat run-out length past the +Y descent ramp, shared by the descent cutter and
+# the relief's X extent so the pushed-out cover fully covers the descent region.
+_DESCENT_X_SAFETY = 5.0
 
 
 # ---------------------------------------------------------------------------
@@ -87,6 +92,76 @@ def _hill_discard_outside_L() -> Part:
     return cast(Part, south + middle + top_e)
 
 
+def _descent_x_end() -> float:
+    """+X end of the cover's descent ramp region (incl. the cutter's flat run-out)."""
+    return C.MCU_HILL_PLUS_Y_REACH_X + C.MCU_HILL_PLUS_Y_RAMP_RUN + _DESCENT_X_SAFETY
+
+
+def _mcu_y_relief_x_range() -> tuple[float, float, float]:
+    """X span of the +Y relief, as (x_lo, x_tall_hi, x_full_hi).
+
+    x_lo reaches the −X wall's OUTER face so the pushed-out cover face joins
+    the corner with no notch — but this is add-only (the widen below starts
+    inboard), so the −X wall itself is never cut.
+
+    x_tall_hi is the descent ramp's own reach — full MCU_HILL_Z height is only
+    valid up to here (matches the hill ring's real extent).
+
+    x_full_hi reaches all the way to where the polygon itself naturally steps
+    to MCU_Y_RELIEF_TARGET_Y (MCU_Y_RELIEF_X_HI) — the relief must cover this
+    whole stretch or a gap remains between the ramp and the polygon's own
+    step, which reads as a dip back to the old tight line."""
+    corner_x = C.pcb_to_case(0, 0)[0]
+    x_lo = corner_x - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE            # −X wall outer face
+    x_tall_hi = _descent_x_end()
+    x_full_hi = C.pcb_to_case(C.MCU_Y_RELIEF_X_HI, 0)[0]
+    return x_lo, x_tall_hi, x_full_hi
+
+
+def _mcu_y_relief_bump() -> Part:
+    """Push the MCU cover's +Y OUTER wall out to the index-column line (+Y wall
+    only — see MCU_Y_RELIEF_* comment in constants.py). Paired with
+    _mcu_y_relief_widen() so wall thickness is preserved — the wall shifts
+    outward, it doesn't thin out.
+
+    Two X segments, not one uniform box: full MCU_HILL_Z height only up to the
+    descent ramp's own reach (x_tall_hi) — beyond that, out to the polygon's
+    natural step (x_full_hi), only MAIN_RIM_Z height. Using MCU_HILL_Z across
+    the whole span would add an artificial tall stub past where the hill has
+    any business being, since the descent cutter (re-applied in build_tray)
+    only trims height back down within its own reach, not out to x_full_hi.
+
+    Z0 starts at the case bottom (not FLOOR_THICKNESS) so this box genuinely
+    overlaps the solid floor slab beneath — that's what keeps the resulting
+    ridge structurally fused to the rest of the case once _mcu_y_relief_widen()
+    hollows out the cavity behind it; a coincident-face touch alone isn't
+    reliable enough for OCC's boolean union."""
+    x_lo, x_tall_hi, x_full_hi = _mcu_y_relief_x_range()
+    y_old_outer = C.pcb_to_case(0, 0)[1] + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+    y_new_outer = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+    y_lo = y_old_outer - C.MCU_Y_RELIEF_OVERLAP
+    tall = _axis_box(x_lo, x_tall_hi, y_lo, y_new_outer, 0.0, C.MCU_HILL_Z)
+    low  = _axis_box(x_tall_hi - C.MCU_Y_RELIEF_OVERLAP, x_full_hi, y_lo, y_new_outer, 0.0, C.MAIN_RIM_Z)
+    return cast(Part, tall + low)
+
+
+def _mcu_y_relief_widen() -> Part:
+    """Widen the cavity to match _mcu_y_relief_bump() — removes material between
+    the old and new inner +Y-wall faces so the added outer bump becomes usable
+    interior clearance rather than solid wall.
+
+    X starts INBOARD of the −X wall's inner face (at the MCU body's −X edge, well
+    past X≈11) so this cut never reaches the −X wall — that wall stays exactly
+    as-is. Runs the full x_full_hi span at FLOOR_THICKNESS→MCU_HILL_Z; going
+    higher than the bump's own low segment above MAIN_RIM_Z there is harmless
+    (nothing to remove above rim height past x_tall_hi anyway)."""
+    _, _, x_full_hi = _mcu_y_relief_x_range()
+    x_lo = C.pcb_to_case(C.MCU_POS[0] - C.MCU_BODY_W / 2 - C.MCU_Y_RELIEF_X_MARGIN, 0)[0]
+    _, y_safe_lo = C.pcb_to_case(0, C.MCU_POS[1])                      # safely inside cavity
+    y_new_inner = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.PCB_XY_CLEARANCE
+    return _axis_box(x_lo, x_full_hi, y_safe_lo, y_new_inner, C.FLOOR_THICKNESS, C.MCU_HILL_Z)
+
+
 def _neg_x_wall_cutter_plus_y() -> Part:
     sw_cy  = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
     mcu_cy = C.pcb_to_case(*C.MCU_POS)[1]
@@ -145,13 +220,19 @@ def _neg_x_wall_cutter_minus_y() -> Part:
     return cast(Part, Pos(-1.0, 0, 0) * bp.part)
 
 
-def _plus_y_descent_cutter() -> Part:
+def _plus_y_descent_cutter(y_shift: float = 0.0) -> Part:
     """Material above the +Y wall descent profile. Spline boundary gives smooth
-    arcs at both ends instead of sharp kinks where the descent meets flat faces."""
+    arcs at both ends instead of sharp kinks where the descent meets flat faces.
+
+    ``y_shift`` moves the cutter outward in +Y. It is applied twice: once at 0
+    inside _mcu_hill_solid() to shape the base hill, and again at
+    MCU_Y_RELIEF_TARGET_Y in build_tray() so the SAME descent curve shapes the
+    +Y face after the relief bump pushed it out — otherwise the descent would
+    stay stranded on the old, now-buried face."""
     x_mcu_right = C.MCU_HILL_PLUS_Y_REACH_X
     x_ramp_end  = x_mcu_right + C.MCU_HILL_PLUS_Y_RAMP_RUN
     z_top       = C.MCU_HILL_Z + 5.0
-    x_safety    = 5.0
+    x_safety    = _DESCENT_X_SAFETY
     y_thickness = 6.0   # covers wall Y ∈ [INNER_Y_BOUND, INNER_Y_BOUND + 6]
 
     with BuildPart() as bp:
@@ -171,7 +252,7 @@ def _plus_y_descent_cutter() -> Part:
         extrude(amount=y_thickness)
     assert bp.part is not None
     # Plane.XZ extrudes in −Y; translate so cutter covers Y ∈ [inner_y_bound, inner_y_bound+thickness].
-    return cast(Part, Pos(0, C.MCU_HILL_PLUS_Y_INNER_BOUND_Y + y_thickness, 0) * bp.part)
+    return cast(Part, Pos(0, C.MCU_HILL_PLUS_Y_INNER_BOUND_Y + y_shift + y_thickness, 0) * bp.part)
 
 
 def _mcu_hill_solid() -> Part:
@@ -216,7 +297,7 @@ def _fillet_outer_concave_corners(part: Part) -> Part:
             continue
         try:
             part = cast(Part, fillet(z_edges, radius=r))
-        except ValueError:
+        except (ValueError, Standard_Failure):
             pass
     return part
 
@@ -242,7 +323,7 @@ def _fillet_top_edges(part: Part) -> Part:
     if ramp:
         try:
             part = cast(Part, fillet(ramp, radius=r))
-        except ValueError:
+        except (ValueError, Standard_Failure):
             pass
 
     # Phase 2: +Y wall descent spline edges (span both X and Z)
@@ -255,7 +336,7 @@ def _fillet_top_edges(part: Part) -> Part:
     if descent:
         try:
             part = cast(Part, fillet(descent, radius=r))
-        except ValueError:
+        except (ValueError, Standard_Failure):
             pass
 
     # Phase 3: horizontal top-rim and hill-plateau edges (z_span filter
@@ -271,7 +352,7 @@ def _fillet_top_edges(part: Part) -> Part:
             try:
                 part = cast(Part, fillet(horiz, radius=attempt_r))
                 break
-            except ValueError:
+            except (ValueError, Standard_Failure):
                 continue
 
     return part
@@ -297,7 +378,7 @@ def _chamfer_bottom_edges(part: Part) -> Part:
     for length in (C.BOTTOM_CHAMFER, C.BOTTOM_CHAMFER * 0.75):
         try:
             return cast(Part, chamfer(bottom, length=length))
-        except ValueError:
+        except (ValueError, Standard_Failure):
             continue
     return part
 
@@ -311,6 +392,11 @@ def build_tray() -> Part:
     cavity = _cavity_solid()
     hill   = _mcu_hill_solid()
     hollow = cast(Part, (shell + hill) - cavity)
+    hollow = cast(Part, hollow + _mcu_y_relief_bump())
+    hollow = cast(Part, hollow - _mcu_y_relief_widen())
+    # Re-cut the cover's +X descent curve at the pushed-out face so it follows
+    # the new Y, not the old buried one (see _plus_y_descent_cutter docstring).
+    hollow = cast(Part, hollow - _plus_y_descent_cutter(y_shift=C.MCU_Y_RELIEF_TARGET_Y))
     hollow = cast(Part, hollow - _neg_x_wall_cutter_plus_y())
     hollow = cast(Part, hollow - _neg_x_wall_cutter_minus_y())
     hollow = _fillet_outer_concave_corners(hollow)
