@@ -324,6 +324,55 @@ def _fillet_bump_neg_x_corner(part: Part) -> Part:
 
 
 # ---------------------------------------------------------------------------
+# Outer-top chamfer (thick-wall ledge descends outward to the ground)
+# ---------------------------------------------------------------------------
+
+def _chamfer_outer_top_edges(part: Part) -> Part:
+    """Bevel the OUTER top perimeter (45°) so the thick wall's top edge descends
+    toward the ground instead of reading as a hard block. The inner cavity rim is
+    left sharp (flush with the switch plate) — only edges on the outer boundary
+    are selected.
+
+    Outer vs inner rim is told apart by a radial membership probe: at an outer
+    edge, material lies inward (into the wall) and air lies outward; at the inner
+    rim it is the reverse. The slide-switch valley top edges sit below the rim, so
+    the rim-Z filter skips them automatically. Size fallback + try/except mirror
+    the other top-edge passes so an OCC failure never aborts the whole bevel."""
+    rim = C.MAIN_RIM_Z
+    cx, cy = C.OUTER_WIDTH / 2, C.OUTER_DEPTH / 2
+
+    def _solid(x: float, y: float, z: float) -> bool:
+        probe = Solid.make_box(0.4, 0.4, 0.4).translate((x - 0.2, y - 0.2, z - 0.2))
+        return cast(float, (part & probe).volume) > 1e-6
+
+    outer = []
+    for e in part.edges():
+        bb = e.bounding_box()
+        if bb.max.Z - bb.min.Z > 0.05:                 # horizontal edges only
+            continue
+        if not (rim - 0.1 <= bb.min.Z <= rim + 0.1):   # at the flat rim
+            continue
+        m = e.position_at(0.5)
+        dx, dy = m.X - cx, m.Y - cy
+        n = (dx * dx + dy * dy) ** 0.5
+        if n < 1e-6:
+            continue
+        ux, uy = dx / n, dy / n
+        if _solid(m.X - ux * 0.6, m.Y - uy * 0.6, rim - 0.6) and not _solid(
+                m.X + ux * 0.6, m.Y + uy * 0.6, rim - 0.6):
+            outer.append(e)
+    if not outer:
+        return part
+
+    for length in (C.OUTER_TOP_CHAMFER, C.OUTER_TOP_CHAMFER * 0.75, C.OUTER_TOP_CHAMFER * 0.5):
+        try:
+            return cast(Part, chamfer(outer, length=length))
+        except (ValueError, Standard_Failure):
+            continue
+    return part
+
+
+# ---------------------------------------------------------------------------
 # Public entry
 # ---------------------------------------------------------------------------
 
@@ -338,6 +387,7 @@ def build_tray() -> Part:
     hollow = _fillet_outer_concave_corners(hollow)
     hollow = _fillet_bump_neg_x_corner(hollow)
     filleted = _fillet_top_edges(hollow)
+    filleted = _chamfer_outer_top_edges(filleted)
     chamfered = _chamfer_bottom_edges(filleted)
     if isinstance(chamfered, Part):
         return chamfered

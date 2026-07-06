@@ -30,3 +30,33 @@ def test_tray_is_single_solid():
     against a disconnected floating ridge at the +Y relief."""
     t = build_tray()
     assert len(t.solids()) == 1, f"tray has {len(t.solids())} solids; expected 1 fused solid"
+
+
+def test_walls_are_thick():
+    """Walls are the full WALL_THICKNESS (7.5 mm). Probe the flat +X wall below
+    the outer-top chamfer: solid 7 mm in from the outer face, cavity air 9 mm in."""
+    from build123d import Solid
+    t = build_tray()
+    y, z = 65.0, 6.0   # +X flat wall region, above the floor, below the chamfer
+    x_out = C.OUTER_WIDTH
+
+    def solid(x: float) -> bool:
+        p = Solid.make_box(0.4, 0.4, 0.4).translate((x - 0.2, y - 0.2, z - 0.2))
+        return (t & p).volume > 1e-6
+
+    assert C.WALL_THICKNESS == 7.5
+    assert solid(x_out - 7.0), "+X wall is thinner than 7 mm"
+    assert not solid(x_out - 9.0), "no cavity behind the +X wall (wall/cavity wrong)"
+
+
+def test_outer_top_chamfer_present():
+    """The outer-top perimeter carries a chamfer (angled faces up at the rim) while
+    the inner cavity rim stays at MAIN_RIM_Z (flush with the plate, nothing above)."""
+    t = build_tray()
+    angled = [
+        f for f in t.faces()
+        if 0.1 < abs(f.normal_at().Z) < 0.98
+        and f.bounding_box().max.Z > C.MAIN_RIM_Z - 0.1
+    ]
+    assert len(angled) > 0, "no outer-top chamfer face found"
+    assert abs(t.bounding_box().max.Z - C.MAIN_RIM_Z) < 0.01, "chamfer changed rim height"

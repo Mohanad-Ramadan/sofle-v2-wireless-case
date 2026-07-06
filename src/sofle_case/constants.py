@@ -23,12 +23,22 @@ PCB_THICKNESS   = PCB_TOP_Z   - PCB_SEAT_Z    # ≈ 1.6 mm
 PLATE_THICKNESS = PLATE_TOP_Z - PLATE_SEAT_Z  # = 1.5 mm
 
 # ---------- Outer envelope ----------
-OUTER_WIDTH     = 149.5
-OUTER_DEPTH     = 121.5
-WALL_THICKNESS  = 2.5
+# OUTER_WIDTH / OUTER_DEPTH are DERIVED from the PCB span + wall + clearance
+# (see the PCB transform section below) so the footprint always tracks
+# WALL_THICKNESS — thicken the wall and the envelope grows outward automatically
+# while the PCB stays centred.
+WALL_THICKNESS  = 7.5   # chunky wall; grows the footprint outward (was 2.5)
 CORNER_RADIUS   = 3.5
 TOP_CHAMFER     = 0.8
 BOTTOM_CHAMFER  = 0.5   # 45° counter-chamfer on outer bottom edge (elephant-foot pre-compensation)
+
+# Outer-top bevel on the thick wall: a 45° chamfer that takes the outer top edge
+# down toward the ground, so the chunky wall doesn't read as a hard block. Only
+# the OUTER perimeter edge is bevelled — the inner cavity rim stays sharp (flush
+# with the switch plate). 1.5 mm eats ~20% of the top wall thickness while leaving
+# a 6.0 mm solid base. (OCC rejects an asymmetric chamfer on this edge set, so a
+# clean symmetric 45° is used — the horizontal and vertical legs are equal.)
+OUTER_TOP_CHAMFER = 1.5   # mm, 45° outer-top bevel leg
 
 # ---------- Standoff geometry ----------
 STANDOFF_OD_LOWER  = 5.5   # PCB-seat shoulder OD
@@ -109,6 +119,11 @@ MOUNTING_HOLES: tuple[tuple[float, float], ...] = (
 PCB_X_MIN, PCB_X_MAX = -8.5, 135.0
 PCB_Y_MIN, PCB_Y_MAX = -110.5, 5.0
 
+# Outer envelope = PCB span + a full wall + clearance on every side. Derived so
+# the footprint tracks WALL_THICKNESS automatically and the PCB stays centred.
+OUTER_WIDTH  = (PCB_X_MAX - PCB_X_MIN) + 2 * (WALL_THICKNESS + PCB_XY_CLEARANCE)  # = 159.5
+OUTER_DEPTH  = (PCB_Y_MAX - PCB_Y_MIN) + 2 * (WALL_THICKNESS + PCB_XY_CLEARANCE)  # = 131.5
+
 PCB_OFFSET_X = (OUTER_WIDTH - (PCB_X_MAX - PCB_X_MIN)) / 2 - PCB_X_MIN
 PCB_OFFSET_Y = (OUTER_DEPTH - (PCB_Y_MAX - PCB_Y_MIN)) / 2 - PCB_Y_MIN
 
@@ -147,17 +162,21 @@ MCU_Y_RELIEF_X_HI      = 41.0  # mm, PCB coords — polygon's own Y=0.0→2.5 st
 # The outer shell's wall face is an arc-based polygon offset (Kind.ARC), not a raw
 # flat plane, so a bump box that merely touches it can fail to fuse (OCC
 # coincident-face union is unreliable). Overlapping 1mm into solid wall material
-# (within the 2.5mm WALL_THICKNESS), and starting the box at Z=0 so it overlaps
+# (well within WALL_THICKNESS), and starting the box at Z=0 so it overlaps
 # the floor slab, guarantees a real fuse once the cavity is widened behind it.
 MCU_Y_RELIEF_OVERLAP   = 1.0   # mm, fusion overlap into existing wall material
 
 # ---------- Slide-switch wall-cutter X reach (−X wall) ----------
 # −X inner-wall X bound the slide-switch valley cutters extrude to, and the X
-# ceiling for selecting the valley's ramp edges to fillet.
-MCU_HILL_NEG_X_INNER_BOUND_X: float    = 13.0
+# ceiling for selecting the valley's ramp edges to fillet. Derived from the −X
+# wall corner (pcb_to_case(0,0)[0]) + a 1.5 mm margin so it tracks the PCB
+# re-centring when WALL_THICKNESS changes (18.0 at WALL=7.5).
+MCU_HILL_NEG_X_INNER_BOUND_X: float    = pcb_to_case(0, 0)[0] + 1.5
 
 # ---------- S-curve ramp on −X wall ----------
-S_CURVE_RAMP_Y_START: float             = 31.0                      # −Y ramp start Y in case coords
+# Empirical −Y ramp start, anchored in PCB coords (case-Y 31.0 in the original
+# WALL=2.5 frame → PCB-Y −82.5) so it tracks the PCB re-centring (36.0 at WALL=7.5).
+S_CURVE_RAMP_Y_START: float             = pcb_to_case(0, -82.5)[1]
 
 S_CURVE_RAMP_MINUS_Y_SCALARS: tuple[float, float] = (2.0, 0.3)     # −Y spline tangent scalars (start, end)
 S_CURVE_RAMP_PLUS_Y_SCALARS: tuple[float, float] = (1.0, 1.0)      # +Y spline tangent scalars (start, end)
