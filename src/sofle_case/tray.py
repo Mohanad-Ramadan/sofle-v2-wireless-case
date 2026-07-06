@@ -355,35 +355,21 @@ def _fillet_top_edges(part: Part) -> Part:
         except (ValueError, Standard_Failure):
             pass
 
-    # Phases 3a/3b: horizontal top edges. These MUST NOT be filleted as one
-    # batch — OCC batch fillet is all-or-nothing, and the raised MCU hill top
-    # (thin walls at the descent-ramp junction) cannot take the full r that the
-    # main perimeter rim accepts. Batching them together makes the hill's
-    # failure abort the entire perimeter bevel, leaving every wall except the
-    # −X ramp (Phase 1) sharp. So split by structural level, fillet each in its
-    # own try/except, and re-query between passes (the rim fillet changes
-    # topology, invalidating the hill edge references).
+    # Phase 3: horizontal top edges. Minimal short case — the main perimeter
+    # rim is intentionally left SHARP so the wall top sits flat and flush with
+    # the switch plate's top surface (MAIN_RIM_Z == PLATE_TOP_Z); a rim bevel
+    # there would read as a rounded lip standing off the plate. Only the raised
+    # MCU hill top is filleted (it stands above the plate and is excluded from
+    # the flush requirement).
     def _horiz_edges(p: Part, z_lo: float, z_hi: float) -> list:
         return [
             e for e in p.edges().filter_by_position(Axis.Z, minimum=z_lo, maximum=z_hi)
             if e.bounding_box().max.Z - e.bounding_box().min.Z < 0.1
         ]
 
-    # Phase 3a: main perimeter rim (Z ≈ MAIN_RIM_Z) — the dominant visible
-    # bevel around every wall. Succeeds at full r; fallback only for safety.
-    rim = _horiz_edges(part, C.MAIN_RIM_Z - 0.3, C.MAIN_RIM_Z + 0.4)
-    if rim:
-        for attempt_r in (r, r * 0.75, r * 0.5):
-            try:
-                part = cast(Part, fillet(rim, radius=attempt_r))
-                break
-            except (ValueError, Standard_Failure):
-                continue
-
-    # Phase 3b: MCU hill top (Z above the rim). Re-queried from the now
-    # rim-filleted part. The thin hill walls force a smaller radius, so the
-    # fallback reaches further down; its own try/except keeps any failure from
-    # touching the perimeter bevel filleted in 3a.
+    # MCU hill top (Z above the rim). The thin hill walls force a smaller
+    # radius, so the fallback reaches further down; its own try/except keeps any
+    # failure from touching the rest of the geometry.
     hill = _horiz_edges(part, C.MAIN_RIM_Z + 0.4, C.MCU_HILL_Z + 0.5)
     if hill:
         for attempt_r in (r, r * 0.75, r * 0.625, r * 0.5):

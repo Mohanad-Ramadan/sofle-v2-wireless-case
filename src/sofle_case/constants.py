@@ -9,10 +9,13 @@
 FLOOR_THICKNESS = 3.8
 PCB_SEAT_Z      = 6.3
 PLATE_SEAT_Z    = 10.9  # PCB_TOP_Z + 3.0 mm measured MX switch body clearance
-MAIN_RIM_Z      = 15.8
 
 PCB_TOP_Z       = 7.9   # PCB_SEAT_Z + 1.6 mm PCB thickness
 PLATE_TOP_Z     = 12.5  # PLATE_SEAT_Z + 1.6 mm plate thickness
+
+# Minimal short case: perimeter walls end flush with the plate's top surface —
+# no proud lip above the plate. The MCU hill still rises above this (excluded).
+MAIN_RIM_Z      = PLATE_TOP_Z  # 12.5
 
 # Derived thicknesses — computed from the authoritative Z positions so that
 # (TOP_Z - SEAT_Z == THICKNESS) holds exactly in floating-point arithmetic.
