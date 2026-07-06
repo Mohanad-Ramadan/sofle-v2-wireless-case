@@ -79,18 +79,7 @@ def _corner_markers() -> Part:
     """Debug spheres at geometry transition points. All coords currently commented
     out — uncomment specific entries to visualise edges in the OCP viewer."""
     coords: tuple[tuple[float, float, float], ...] = (
-        # Switch-column-top case edges (outer wall): the staircase along the
-        # top wall where each column's back edge steps to match that
-        # column's stagger. Runs from the right-edge top end above back to
-        # the MCU corner.
-        (111.5,  110.0, C.MAIN_RIM_Z),  # column step
-        (108.5,  119.0, C.MAIN_RIM_Z),  # column step
-        ( 92.46, 119.0,  C.MAIN_RIM_Z),  # column step
-        ( 89.5,  121.5, C.MAIN_RIM_Z),  # column step (thumb-cluster tab)
-        ( 71.5,  121.5, C.MAIN_RIM_Z),  # column step (thumb-cluster tab)
-        ( 68.54, 119.0,  C.MAIN_RIM_Z),  # column step
-        ( 52.5,  119.0, C.MAIN_RIM_Z),  # column step -- index column (matches MCU_Y_RELIEF_TARGET_Y)
-        ( 49.54, 116.5,  C.MAIN_RIM_Z),  # column step
+        
     )
     with BuildPart() as bp:
         for x, y, z in coords:
