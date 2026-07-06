@@ -1,4 +1,7 @@
-"""Outer shell + inner cavity + integrated MCU hill (−X and +Y walls)."""
+"""Outer shell + inner cavity, all walls flat at MAIN_RIM_Z (flush with the
+switch plate). The MCU corner is a plain flat wall — no hill; the nice!nano and
+its USB-C jack sit open above the rim. The slide-switch S-curve valley on the −X
+wall and the +Y wall's B+/B- relief bump are the only local wall features."""
 from __future__ import annotations
 from typing import cast
 from build123d import (
@@ -8,10 +11,6 @@ from build123d import (
 from OCP.Standard import Standard_Failure
 from . import constants as C
 from .pcb_geometry import polygon_in_case_coords
-
-# Flat run-out length past the +Y descent ramp, shared by the descent cutter and
-# the relief's X extent so the pushed-out cover fully covers the descent region.
-_DESCENT_X_SAFETY = 5.0
 
 
 # ---------------------------------------------------------------------------
@@ -62,11 +61,11 @@ def _outer_shell() -> Part:
 
 
 def _cavity_solid() -> Part:
-    return _inner_extruded(C.FLOOR_THICKNESS, C.MCU_HILL_Z + 0.01)
+    return _inner_extruded(C.FLOOR_THICKNESS, C.MAIN_RIM_Z + 0.01)
 
 
 # ---------------------------------------------------------------------------
-# MCU hill — wall-ring extension over the −X / +Y corner above MCU
+# +Y wall B+/B- relief bump (MCU corner)
 # ---------------------------------------------------------------------------
 
 def _axis_box(x0: float, x1: float, y0: float, y1: float, z0: float, z1: float) -> Part:
@@ -74,38 +73,12 @@ def _axis_box(x0: float, x1: float, y0: float, y1: float, z0: float, z1: float) 
     return cast(Part, Solid.make_box(x1 - x0, y1 - y0, z1 - z0).translate((x0, y0, z0)))
 
 
-def _hill_discard_outside_L() -> Part:
-    """Three boxes covering everything outside the MCU L-corner over hill Z range.
-    Subtracted from the full hill ring to keep only the −X strip and +Y strip.
-    South bound is MCU_HILL_NEG_X_SOUTH_Y — keep strip above the S-curve ramp start."""
-    hill_y_start = C.MCU_HILL_NEG_X_SOUTH_Y
-    inner_x = C.MCU_HILL_NEG_X_INNER_BOUND_X
-    inner_y = C.MCU_HILL_PLUS_Y_INNER_BOUND_Y
-    plus_y_x_end = C.MCU_HILL_PLUS_Y_REACH_X + C.MCU_HILL_PLUS_Y_RAMP_RUN
-    bx_min, bx_max = -1.0, C.OUTER_WIDTH + 1.0
-    by_min, by_max = -1.0, C.OUTER_DEPTH + 1.0
-    z_lo, z_hi = C.MAIN_RIM_Z, C.MCU_HILL_Z + 0.01
-
-    south  = _axis_box(bx_min,         bx_max, by_min,       hill_y_start, z_lo, z_hi)
-    middle = _axis_box(inner_x,        bx_max, hill_y_start, inner_y,      z_lo, z_hi)
-    top_e  = _axis_box(plus_y_x_end,   bx_max, inner_y,      by_max,       z_lo, z_hi)
-    return cast(Part, south + middle + top_e)
-
-
-def _descent_x_end() -> float:
-    """+X end of the cover's descent ramp region (incl. the cutter's flat run-out)."""
-    return C.MCU_HILL_PLUS_Y_REACH_X + C.MCU_HILL_PLUS_Y_RAMP_RUN + _DESCENT_X_SAFETY
-
-
-def _mcu_y_relief_x_range() -> tuple[float, float, float]:
-    """X span of the +Y relief, as (x_lo, x_tall_hi, x_full_hi).
+def _mcu_y_relief_x_range() -> tuple[float, float]:
+    """X span of the +Y relief, as (x_lo, x_full_hi).
 
     x_lo reaches the −X wall's OUTER face so the pushed-out cover face joins
     the corner with no notch — but this is add-only (the widen below starts
     inboard), so the −X wall itself is never cut.
-
-    x_tall_hi is the descent ramp's own reach — full MCU_HILL_Z height is only
-    valid up to here (matches the hill ring's real extent).
 
     x_full_hi reaches all the way to where the polygon itself naturally steps
     to MCU_Y_RELIEF_TARGET_Y (MCU_Y_RELIEF_X_HI) — the relief must cover this
@@ -113,9 +86,8 @@ def _mcu_y_relief_x_range() -> tuple[float, float, float]:
     step, which reads as a dip back to the old tight line."""
     corner_x = C.pcb_to_case(0, 0)[0]
     x_lo = corner_x - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE            # −X wall outer face
-    x_tall_hi = _descent_x_end()
     x_full_hi = C.pcb_to_case(C.MCU_Y_RELIEF_X_HI, 0)[0]
-    return x_lo, x_tall_hi, x_full_hi
+    return x_lo, x_full_hi
 
 
 def _mcu_y_relief_bump() -> Part:
@@ -124,19 +96,16 @@ def _mcu_y_relief_bump() -> Part:
     _mcu_y_relief_widen() so wall thickness is preserved — the wall shifts
     outward, it doesn't thin out.
 
-    Two X segments, not one uniform box: full MCU_HILL_Z height only up to the
-    descent ramp's own reach (x_tall_hi) — beyond that, out to the polygon's
-    natural step (x_full_hi), only MAIN_RIM_Z height. Using MCU_HILL_Z across
-    the whole span would add an artificial tall stub past where the hill has
-    any business being, since the descent cutter (re-applied in build_tray)
-    only trims height back down within its own reach, not out to x_full_hi.
+    A single box capped at MAIN_RIM_Z: the walls are flat at the rim now (no
+    hill), so there is no wall material above the rim to relieve — the B+/B-
+    pads clear into open air above 12.5.
 
     Z0 starts at the case bottom (not FLOOR_THICKNESS) so this box genuinely
     overlaps the solid floor slab beneath — that's what keeps the resulting
     ridge structurally fused to the rest of the case once _mcu_y_relief_widen()
     hollows out the cavity behind it; a coincident-face touch alone isn't
     reliable enough for OCC's boolean union."""
-    x_lo, x_tall_hi, x_full_hi = _mcu_y_relief_x_range()
+    x_lo, x_full_hi = _mcu_y_relief_x_range()
     y_old_outer = C.pcb_to_case(0, 0)[1] + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
     y_new_outer = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
     # Start at the polygon vertex Y (arc start of the Kind.ARC corner at
@@ -144,9 +113,7 @@ def _mcu_y_relief_bump() -> Part:
     # otherwise the arc dips inward between the arc start and the old overlap.
     arc_start_y = C.pcb_to_case(0, 0)[1]
     y_lo = min(y_old_outer - C.MCU_Y_RELIEF_OVERLAP, arc_start_y)
-    tall = _axis_box(x_lo, x_tall_hi, y_lo, y_new_outer, 0.0, C.MCU_HILL_Z)
-    low  = _axis_box(x_tall_hi - C.MCU_Y_RELIEF_OVERLAP, x_full_hi, y_lo, y_new_outer, 0.0, C.MAIN_RIM_Z)
-    return cast(Part, tall + low)
+    return _axis_box(x_lo, x_full_hi, y_lo, y_new_outer, 0.0, C.MAIN_RIM_Z)
 
 
 def _mcu_y_relief_widen() -> Part:
@@ -168,13 +135,14 @@ def _mcu_y_relief_widen() -> Part:
     the two merge into one continuous −X inner wall up to the corner with no
     coincident face and no residual ledge. x_hi overlaps the base box so there
     is no gap between the two cuts."""
-    _, _, x_full_hi = _mcu_y_relief_x_range()
+    _, x_full_hi = _mcu_y_relief_x_range()
     inner_x     = C.pcb_to_case(0, 0)[0] - C.PCB_XY_CLEARANCE          # −X inner wall face
     corner_y    = C.pcb_to_case(0, 0)[1]                              # polygon vertex Y; −X wall face ends here
     y_new_inner = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.PCB_XY_CLEARANCE
     _, y_safe_lo = C.pcb_to_case(0, C.MCU_POS[1])                      # safely inside cavity
-    base   = _axis_box(inner_x + 0.3, x_full_hi, y_safe_lo, y_new_inner, C.FLOOR_THICKNESS, C.MCU_HILL_Z)
-    corner = _axis_box(inner_x, inner_x + 0.35, corner_y, y_new_inner, C.FLOOR_THICKNESS, C.MCU_HILL_Z)
+    z_hi = C.MAIN_RIM_Z + 0.01                                        # walls are flat at the rim
+    base   = _axis_box(inner_x + 0.3, x_full_hi, y_safe_lo, y_new_inner, C.FLOOR_THICKNESS, z_hi)
+    corner = _axis_box(inner_x, inner_x + 0.35, corner_y, y_new_inner, C.FLOOR_THICKNESS, z_hi)
     return cast(Part, base + corner)
 
 
@@ -236,55 +204,6 @@ def _neg_x_wall_cutter_minus_y() -> Part:
     return cast(Part, Pos(-1.0, 0, 0) * bp.part)
 
 
-def _plus_y_descent_cutter(y_shift: float = 0.0) -> Part:
-    """Material above the +Y wall descent profile. Spline boundary gives smooth
-    arcs at both ends instead of sharp kinks where the descent meets flat faces.
-
-    ``y_shift`` moves the cutter outward in +Y. It is applied twice: once at 0
-    inside _mcu_hill_solid() to shape the base hill, and again at
-    MCU_Y_RELIEF_TARGET_Y in build_tray() so the SAME descent curve shapes the
-    +Y face after the relief bump pushed it out — otherwise the descent would
-    stay stranded on the old, now-buried face."""
-    x_mcu_right = C.MCU_HILL_PLUS_Y_REACH_X
-    x_ramp_end  = x_mcu_right + C.MCU_HILL_PLUS_Y_RAMP_RUN
-    z_top       = C.MCU_HILL_Z + 5.0
-    x_safety    = _DESCENT_X_SAFETY
-    y_thickness = 6.0   # covers wall Y ∈ [INNER_Y_BOUND, INNER_Y_BOUND + 6]
-
-    with BuildPart() as bp:
-        with BuildSketch(Plane.XZ):
-            with BuildLine():
-                Spline(
-                    (x_mcu_right, C.MCU_HILL_Z),
-                    (x_ramp_end,  C.MAIN_RIM_Z),
-                    tangents=[(1, 0), (1, 0)],
-                    tangent_scalars=list(C.MCU_HILL_DESCENT_SCALARS),
-                )
-                Line((x_ramp_end,             C.MAIN_RIM_Z), (x_ramp_end + x_safety, C.MAIN_RIM_Z))
-                Line((x_ramp_end + x_safety,  C.MAIN_RIM_Z), (x_ramp_end + x_safety, z_top))
-                Line((x_ramp_end + x_safety,  z_top),        (x_mcu_right,           z_top))
-                Line((x_mcu_right,            z_top),        (x_mcu_right,           C.MCU_HILL_Z))
-            make_face()
-        extrude(amount=y_thickness)
-    assert bp.part is not None
-    # Plane.XZ extrudes in −Y; translate so cutter covers Y ∈ [inner_y_bound, inner_y_bound+thickness].
-    return cast(Part, Pos(0, C.MCU_HILL_PLUS_Y_INNER_BOUND_Y + y_shift + y_thickness, 0) * bp.part)
-
-
-def _mcu_hill_solid() -> Part:
-    """Wall ring MAIN_RIM_Z→MCU_HILL_Z restricted to the L-corner over the MCU.
-    Shares outer/inner polygon faces with shell so boolean union is one continuous solid."""
-    z_lo, z_hi = C.MAIN_RIM_Z, C.MCU_HILL_Z
-
-    outer = _outer_extruded(z_lo, z_hi)
-    inner = _inner_extruded(z_lo, z_hi)
-    ring = cast(Part, outer - inner)
-
-    ring = cast(Part, ring - _hill_discard_outside_L())
-    ring = cast(Part, ring - _plus_y_descent_cutter())
-    return ring
-
-
 # ---------------------------------------------------------------------------
 # Outer concave corner fillets
 # ---------------------------------------------------------------------------
@@ -323,13 +242,15 @@ def _fillet_outer_concave_corners(part: Part) -> Part:
 # ---------------------------------------------------------------------------
 
 def _fillet_top_edges(part: Part) -> Part:
-    """Fillet top-of-wall edges: S-curve ramps, +Y descent, and flat rim/hill.
+    """Fillet the slide-switch S-curve valley's top edges on the −X wall.
 
-    Three phases so each group's fillet modifies junction geometry before the
-    next group is selected — resolves OCC failures at cutter boundary edges."""
+    The flat perimeter rim is intentionally left SHARP so the wall top sits flush
+    with the switch plate (MAIN_RIM_Z == PLATE_TOP_Z) — a bevel there would read
+    as a rounded lip standing off the plate. Only the slide-switch valley (which
+    dips below the rim for finger access) gets its spline edges softened."""
     r = C.TOP_CHAMFER
 
-    # Phase 1: S-curve ramp spline edges on −X wall (outer + inner faces, ±Y)
+    # Slide-switch S-curve ramp spline edges on −X wall (outer + inner faces, ±Y)
     ramp = [
         e for e in part.edges()
         if (bb := e.bounding_box()).max.X <= C.MCU_HILL_NEG_X_INNER_BOUND_X
@@ -341,43 +262,6 @@ def _fillet_top_edges(part: Part) -> Part:
             part = cast(Part, fillet(ramp, radius=r))
         except (ValueError, Standard_Failure):
             pass
-
-    # Phase 2: +Y wall descent spline edges (span both X and Z)
-    descent = [
-        e for e in part.edges()
-        if (bb := e.bounding_box()).max.Z - bb.min.Z > 1.0
-        and bb.max.X - bb.min.X > 1.0
-        and bb.min.Z >= C.MAIN_RIM_Z - 0.5
-    ]
-    if descent:
-        try:
-            part = cast(Part, fillet(descent, radius=r))
-        except (ValueError, Standard_Failure):
-            pass
-
-    # Phase 3: horizontal top edges. Minimal short case — the main perimeter
-    # rim is intentionally left SHARP so the wall top sits flat and flush with
-    # the switch plate's top surface (MAIN_RIM_Z == PLATE_TOP_Z); a rim bevel
-    # there would read as a rounded lip standing off the plate. Only the raised
-    # MCU hill top is filleted (it stands above the plate and is excluded from
-    # the flush requirement).
-    def _horiz_edges(p: Part, z_lo: float, z_hi: float) -> list:
-        return [
-            e for e in p.edges().filter_by_position(Axis.Z, minimum=z_lo, maximum=z_hi)
-            if e.bounding_box().max.Z - e.bounding_box().min.Z < 0.1
-        ]
-
-    # MCU hill top (Z above the rim). The thin hill walls force a smaller
-    # radius, so the fallback reaches further down; its own try/except keeps any
-    # failure from touching the rest of the geometry.
-    hill = _horiz_edges(part, C.MAIN_RIM_Z + 0.4, C.MCU_HILL_Z + 0.5)
-    if hill:
-        for attempt_r in (r, r * 0.75, r * 0.625, r * 0.5):
-            try:
-                part = cast(Part, fillet(hill, radius=attempt_r))
-                break
-            except (ValueError, Standard_Failure):
-                continue
 
     return part
 
@@ -417,7 +301,7 @@ def _fillet_bump_neg_x_corner(part: Part) -> Part:
     After the bump pushes the +Y wall out, the corner at (x_lo, y_new_outer)
     is a raw box edge. This adds an arc matching the polygon offset's
     Kind.ARC radius so the corner style is consistent."""
-    x_lo, _, _ = _mcu_y_relief_x_range()
+    x_lo, _ = _mcu_y_relief_x_range()
     y_new = (C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1]
              + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE)
     r = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
@@ -446,13 +330,9 @@ def _fillet_bump_neg_x_corner(part: Part) -> Part:
 def build_tray() -> Part:
     shell  = _outer_shell()
     cavity = _cavity_solid()
-    hill   = _mcu_hill_solid()
-    hollow = cast(Part, (shell + hill) - cavity)
+    hollow = cast(Part, shell - cavity)
     hollow = cast(Part, hollow + _mcu_y_relief_bump())
     hollow = cast(Part, hollow - _mcu_y_relief_widen())
-    # Re-cut the cover's +X descent curve at the pushed-out face so it follows
-    # the new Y, not the old buried one (see _plus_y_descent_cutter docstring).
-    hollow = cast(Part, hollow - _plus_y_descent_cutter(y_shift=C.MCU_Y_RELIEF_TARGET_Y))
     hollow = cast(Part, hollow - _neg_x_wall_cutter_plus_y())
     hollow = cast(Part, hollow - _neg_x_wall_cutter_minus_y())
     hollow = _fillet_outer_concave_corners(hollow)

@@ -14,7 +14,7 @@ def test_left_outer_bbox():
     assert abs((bb.max.X - bb.min.X) - C.OUTER_WIDTH) < 0.01
     assert abs((bb.max.Y - bb.min.Y) - C.OUTER_DEPTH) < 0.01
     assert abs(bb.min.Z - 0.0) < 0.01
-    assert abs(bb.max.Z - C.MCU_HILL_Z) < 0.01
+    assert abs(bb.max.Z - C.MAIN_RIM_Z) < 0.01  # flat walls, no hill
 
 
 def test_left_equals_right():

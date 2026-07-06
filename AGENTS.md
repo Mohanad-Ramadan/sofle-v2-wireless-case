@@ -18,7 +18,7 @@ Parametric tray case generator for the Sofle V2 Wireless (Alt_Switch) keyboard. 
 | Directory | Purpose |
 |-----------|---------|
 | `src/` | Package source — all geometry and constants (see `src/AGENTS.md`) |
-| `tests/` | pytest suite — 60 tests covering geometry, fit, manifold (see `tests/AGENTS.md`) |
+| `tests/` | pytest suite covering geometry, fit, manifold (see `tests/AGENTS.md`) |
 | `scripts/` | Build CLI and PCB-data parsers (see `scripts/AGENTS.md`) |
 | `docs/` | Z-stack reference and design docs (see `docs/AGENTS.md`) |
 | `data/` | Cached PCB geometry JSON — source of truth for polygon and hole positions (see `data/AGENTS.md`) |
@@ -29,7 +29,7 @@ Parametric tray case generator for the Sofle V2 Wireless (Alt_Switch) keyboard. 
 ### Working In This Directory
 - **Single source of truth for dimensions:** `src/sofle_case/constants.py`. Edit only there; all derived values recompute at import time.
 - **Never edit `data/` JSON by hand.** Re-run `scripts/parse_gerber.py` / `scripts/parse_cpl.py` if the PCB sources change.
-- **Always run `pytest` after any change.** All 60 tests must pass before committing.
+- **Always run `pytest` after any change.** All tests must pass before committing.
 - Both `build_case_half("left")` and `build_case_half("right")` return **identical geometry**. `side` only affects the output filename.
 
 ### Testing Requirements

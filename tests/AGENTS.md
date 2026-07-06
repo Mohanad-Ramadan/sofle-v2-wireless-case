@@ -4,19 +4,19 @@
 # tests/
 
 ## Purpose
-pytest suite — 60 tests covering geometry correctness, dimensional fit, manifold integrity, and CLI smoke tests. All tests must pass after every change.
+pytest suite covering geometry correctness, dimensional fit, manifold integrity, and CLI smoke tests. All tests must pass after every change.
 
 ## Key Files
 
 | File | Description |
 |------|-------------|
 | `test_constants.py` | Sanity-check: envelope ≥ PCB + walls, Z-stack is monotonically increasing |
-| `test_tray.py` | Tray shell: outer bbox matches constants, single solid (no floating slab regression), MCU hill flush on −X and +Y walls |
+| `test_tray.py` | Tray shell: outer bbox matches constants (flat walls at `MAIN_RIM_Z`), single solid (no floating-relief regression) |
 | `test_case.py` | Full case half: bounding box, single solid, volume sanity |
 | `test_holes.py` | Standoff XY positions match `data/mounting_holes.json` T9 positions |
 | `test_standoff.py` | Stepped standoff geometry: height, lower OD, centering |
-| `test_clearances.py` | USB-C and slide-switch cutout edges clear component bodies by ≥ 0.3 mm |
-| `test_cutouts.py` | USB-C slot geometry: width, Z range, Y depth |
+| `test_clearances.py` | Slide-switch slot fit; flat-wall (no-hill) guarantees; +Y relief clears component bodies |
+| `test_cutouts.py` | Slide-switch wall cutters build as valid parts |
 | `test_manifold.py` | Left and right halves are watertight (no open edges) |
 | `test_print_envelope.py` | Each half fits a 250 × 210 mm FDM bed |
 | `test_pcb_geometry.py` | PCB polygon loads correctly, `pcb_to_case` transform is accurate |
@@ -33,7 +33,7 @@ pytest suite — 60 tests covering geometry correctness, dimensional fit, manifo
 - Run with `pytest tests/ -x -q` (fail-fast, quiet). Full suite takes ~15 seconds.
 - **Never skip or mock geometry calls** in tests — the geometry must actually build. Tests are the regression guard for the OCC kernel.
 - When adding a new constant or feature, add a corresponding test. Minimum: bbox check + single-solid check.
-- `test_tray.py::test_tray_is_single_solid` is the most important regression guard — it catches the "floating hill slab" failure mode where the MCU hill detaches from the shell.
+- `test_tray.py::test_tray_is_single_solid` is the most important regression guard — it catches the "floating slab" failure mode where the +Y relief bump detaches from the shell.
 
 ### Common Patterns
 - Tolerance on float comparisons: `< 0.01` mm (OCC kernel precision).

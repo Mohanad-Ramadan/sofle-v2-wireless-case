@@ -4,17 +4,16 @@
 # src/sofle_case/
 
 ## Purpose
-The core `sofle_case` Python package. Contains all parametric geometry (tray shell, standoffs, cutouts), constants, PCB data loading, and phantom visualisation helpers. Entry point is `case.py::build_case_half()`.
+The core `sofle_case` Python package. Contains all parametric geometry (tray shell, standoffs, battery pocket), constants, PCB data loading, and phantom visualisation helpers. Entry point is `case.py::build_case_half()`.
 
 ## Key Files
 
 | File | Description |
 |------|-------------|
 | `constants.py` | **Single source of truth for all dimensions.** Every Z height, wall thickness, clearance, cutout size, and component position lives here. Edit here first; everything else recomputes. |
-| `case.py` | Top-level composer: `build_case_half(side)` → tray + standoffs − USB-C cutout. Also contains `_corner_markers()` debug helper. |
-| `tray.py` | Outer shell + inner cavity + MCU hill (−X and +Y walls) + S-curve cutters + fillets. Most-edited file. |
+| `case.py` | Top-level composer: `build_case_half(side)` → tray + standoffs − battery pocket. Also contains `_corner_markers()` debug helper. |
+| `tray.py` | Outer shell + inner cavity, all walls flat at `MAIN_RIM_Z` (flush with plate). +Y B+/B- relief bump + slide-switch S-curve cutters + fillets. Most-edited file. No MCU hill. |
 | `standoffs.py` | Stepped standoff: lower shoulder (Ø5.5mm) + upper pin (Ø3.5mm) + M2 tap bore (Ø1.8mm) + 0.3mm entry chamfer. |
-| `cutouts.py` | USB-C open-top slot through +Y wall. Rounded-rectangle profile with side bulge arcs. |
 | `pcb_geometry.py` | Loads `data/pcb_outline.json` and `data/mounting_holes.json`; applies `pcb_to_case()` transform. |
 | `pcb_phantom.py` | Visual phantom: main PCB + nice!nano MCU + slide switch body. For OCP viewer only. |
 | `plate_phantom.py` | Visual phantom: switch plate. For OCP viewer only. |
@@ -30,9 +29,9 @@ The core `sofle_case` Python package. Contains all parametric geometry (tray she
 Key invariants to preserve:
 1. `PCB_TOP_Z == PCB_SEAT_Z + 1.6` — derived, do not break.
 2. `PLATE_TOP_Z == PLATE_SEAT_Z + 1.6` — derived, do not break.
-3. `MCU_HILL_Z == PCB_TOP_Z + 11.0` — MCU + socket + header clearance.
+3. `MAIN_RIM_Z == PLATE_TOP_Z` — minimal short case: walls end flush with the plate top, no hill.
 4. `tray.py` must produce **exactly 1 solid** — `test_tray_is_single_solid` guards this.
-5. The MCU hill outer face must be **flush** with the shell (same polygon-offset profile) — `test_hill_outer_face_flush_with_shell` guards this.
+5. No wall rises above `MAIN_RIM_Z` — `test_no_wall_above_rim` guards the flat-wall design.
 
 **Phantom modules** (`pcb_phantom.py`, `plate_phantom.py`, `switch_phantom.py`) are visual only. They must not be imported by structural modules. Guard all phantom imports inside `if __name__ == "__main__":` blocks.
 
@@ -41,7 +40,7 @@ Key invariants to preserve:
 source .venv/bin/activate
 pytest tests/ -x -q
 ```
-All 60 tests must pass. Geometry tests call real build functions — no mocking.
+All tests must pass. Geometry tests call real build functions — no mocking.
 
 ### Common Patterns
 

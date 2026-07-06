@@ -45,19 +45,13 @@ PCB_HOLE_DIA     = 4.1
 PCB_LEDGE_ENABLED = False
 PCB_LEDGE_WIDTH   = 1.0   # mm; ring width if enabled
 
-# ---------- Cutouts (W = horizontal width along wall, H = vertical height) ----------
-# USB-C slot in +Y wall: open-top (top edge punches past wall rim) so a single case
-# STL fits both halves regardless of which MCU footprint is populated.
-#   Z stack at MCU: main-PCB top 6.1, nice!nano PCB top 7.7, USB-C jack body 7.7→10.3.
-#   Bottom Z 7.5 sits just below the jack lower lip; top punches past the rim.
-#   USB_C_Y_DEPTH must reach the MCU's +Y edge (case Y ≈ 113.8) — there is ~2.5 mm of
-#   solid case between the wall outer face (Y=116.5, USB_C_OUTER_Y) and the cavity edge,
-#   so a 31 mm inward extrusion clears past the MCU into the empty cavity beyond.
+# ---------- USB-C jack (physical) ----------
+# The nice!nano USB-C jack sits above the flat rim (jack ~MCU_PCB_TOP_Z 13.8 >
+# MAIN_RIM_Z 12.5), so with no hill the port is open to air over the +Y wall —
+# no case cutout is needed. USB_C_W is kept for the PCB phantom's jack stub.
 USB_C_W = 9.0
-USB_C_Z_RANGE: tuple[float, float] = (12.8, PCB_TOP_Z + 11.5)   # top = MCU_HILL_Z + 0.5; clears raised +Y wall
-USB_C_Y_DEPTH = 31.0
-USB_C_SIDE_BULGE = 1.5   # mm outward arc bulge at midpoint of each X-side
 
+# ---------- Slide-switch access valley (−X wall) ----------
 SLIDE_SWITCH_W     = 6.0
 SLIDE_SWITCH_TOP_W = 14.0
 SLIDE_SWITCH_Z_RANGE: tuple[float, float] = (11.8, MAIN_RIM_Z + 0.5)   # z_lo clears switch metal body top; z_hi punches past wall rim so slot is open
@@ -119,10 +113,6 @@ PCB_OFFSET_X = (OUTER_WIDTH - (PCB_X_MAX - PCB_X_MIN)) / 2 - PCB_X_MIN
 PCB_OFFSET_Y = (OUTER_DEPTH - (PCB_Y_MAX - PCB_Y_MIN)) / 2 - PCB_Y_MIN
 
 
-# Outer wall face positions (polygon-derived; PCB top boundary at MCU X column = PCB Y=0)
-USB_C_OUTER_Y = PCB_OFFSET_Y + WALL_THICKNESS + PCB_XY_CLEARANCE  # +Y outer face at MCU X = 116.5
-
-
 def pcb_to_case(x: float, y: float) -> tuple[float, float]:
     """Translate a PCB-coordinate point into case (outer-rect) coordinates."""
     return (x + PCB_OFFSET_X, y + PCB_OFFSET_Y)
@@ -133,58 +123,38 @@ SHOW_PCB_PHANTOM    = True # True: adds PCB phantom to case.py __main__ viewer
 SHOW_PLATE_PHANTOM  = True # True: adds switch plate phantom to case.py __main__ viewer
 SHOW_SWITCH_PHANTOM = True # True: adds MX switch phantom to case.py __main__ viewer
 
-# MCU vertical stack — structural heights that also drive the USB-C cutout design
+# MCU physical stack heights — used by the PCB phantom (jack/header visuals) and
+# as a convenient over-tall bound for the slide-switch wall cutters.
 MCU_PCB_TOP_Z    = 13.8    # nice!nano PCB top including socket height above main PCB
-USB_C_BODY_TOP_Z = 19.8   # USB-C jack body top surface
-
-# ---------- MCU wall cap on −X wall ----------
-MCU_HILL_Z                              = PCB_TOP_Z + 11.0          # 17.1 mm — top of MCU + header legs
-MCU_BODY_L                              = 33.0                       # MCU body length in Y (mm)
-MCU_BODY_W                              = 18.0                       # MCU body width in X (mm)
+USB_C_BODY_TOP_Z = 19.8    # USB-C jack body top surface
+MCU_HILL_Z       = PCB_TOP_Z + 11.0   # top of MCU + header legs (physical stack top)
+MCU_BODY_L       = 33.0    # MCU body length in Y (mm)
 
 # ---------- MCU +Y cover relief (B+/B- clearance) ----------
 # The nice!nano's B+/B- pads (unsoldered — meant for direct battery wire, no leg
 # through the main PCB) sit near the USB-C end and overhang past the +Y case
-# wall, which at the MCU's own X column sits at the tight PCB edge (PCB Y=0.0,
-# see USB_C_OUTER_Y comment above) — only PCB_XY_CLEARANCE (0.5mm) of clearance.
-# The index-finger switch column next to the MCU (SW2, X≈49.77) has its PCB edge
-# 2.5mm further +Y (polygon step from Y=0.0 to Y=2.5 in data/pcb_outline.json).
-# This relief pushes the MCU cover's +Y face out to that same index-column line
-# — ONLY the +Y wall over the MCU; the −X wall is left exactly as-is. The wall
-# shifts outward (thickness preserved), it does not thin out.
+# wall, which at the MCU's own X column sits at the tight PCB edge (PCB Y=0.0) —
+# only PCB_XY_CLEARANCE (0.5mm) of clearance. The index-finger switch column next
+# to the MCU (SW2, X≈49.77) has its PCB edge 2.5mm further +Y (polygon step from
+# Y=0.0 to Y=2.5 in data/pcb_outline.json). This relief pushes the +Y wall face
+# out to that same index-column line — ONLY the +Y wall; the −X wall is left
+# exactly as-is. The wall shifts outward (thickness preserved), it does not thin.
 MCU_Y_RELIEF_TARGET_Y  = 2.5   # mm, PCB coords — target +Y edge (matches index column's stagger)
-MCU_Y_RELIEF_X_MARGIN  = 1.0   # mm, safety margin beyond MCU_BODY_W on each side
-# The relief must reach all the way to where the polygon itself naturally
-# arrives at MCU_Y_RELIEF_TARGET_Y (PCB X=41, the same flat-segment boundary
-# used by the +Y outer face — see USB_C_OUTER_Y comment above) — stopping
-# short (e.g. at the descent ramp's own X reach) leaves an unrelieved gap
-# between the ramp and the polygon's natural step, which reads as a dip back
-# to the old tight line before the index column.
+# The relief must reach all the way to where the polygon itself naturally arrives
+# at MCU_Y_RELIEF_TARGET_Y (PCB X=41, the same flat-segment boundary) — stopping
+# short leaves an unrelieved gap that reads as a dip back to the tight line.
 MCU_Y_RELIEF_X_HI      = 41.0  # mm, PCB coords — polygon's own Y=0.0→2.5 step point
-# The outer shell's wall face is an arc-based polygon offset (Kind.ARC), not a
-# raw flat plane, so a bump box that merely touches it at the nominal surface
-# position can fail to fuse (OCC coincident-face union is unreliable) and end
-# up a disconnected floating solid. Overlapping 1mm into genuinely-solid wall
-# material (well within the 2.5mm WALL_THICKNESS) guarantees a real fuse.
-# Z runs floor-to-MCU_HILL_Z (covers the USB-C jack height, not just PCB level)
-# and the bump box starts at the case bottom (Z=0), not FLOOR_THICKNESS, so it
-# genuinely overlaps the solid floor slab — the anchor that keeps the relief
-# fused to the rest of the case once the cavity is widened behind it.
+# The outer shell's wall face is an arc-based polygon offset (Kind.ARC), not a raw
+# flat plane, so a bump box that merely touches it can fail to fuse (OCC
+# coincident-face union is unreliable). Overlapping 1mm into solid wall material
+# (within the 2.5mm WALL_THICKNESS), and starting the box at Z=0 so it overlaps
+# the floor slab, guarantees a real fuse once the cavity is widened behind it.
 MCU_Y_RELIEF_OVERLAP   = 1.0   # mm, fusion overlap into existing wall material
-MCU_HILL_DESCENT_SCALARS: tuple[float, float] = (1.5, 1.5)          # +Y wall spline descent tuning (larger = gentler curve)
 
-# ---------- Integrated MCU hill covering −X and +Y walls at MCU corner ----------
-# +X extent of the MCU hill on the +Y wall (case coords): MCU +X edge = MCU_POS + half width in PCB coords
-MCU_HILL_PLUS_Y_REACH_X: float         = pcb_to_case(MCU_POS[0] + MCU_BODY_W / 2, 0)[0]  # ≈ 30.77 mm
-# +Y wall linear ramp run (mm) from MCU +X edge down to MAIN_RIM_Z
-MCU_HILL_PLUS_Y_RAMP_RUN: float        = 8.0
-# L-corner XY mask bounds (case coords). Hill ring is kept where:
-#   X ≤ MCU_HILL_NEG_X_INNER_BOUND_X (covers −X wall ring at MCU Y range)
-#   Y ≥ MCU_HILL_PLUS_Y_INNER_BOUND_Y (covers +Y wall ring at MCU X column)
-# Polygon at MCU column: outer −X face X=8.5, inner X=12.0; outer +Y face Y=116.5, inner Y=113.0.
+# ---------- Slide-switch wall-cutter X reach (−X wall) ----------
+# −X inner-wall X bound the slide-switch valley cutters extrude to, and the X
+# ceiling for selecting the valley's ramp edges to fillet.
 MCU_HILL_NEG_X_INNER_BOUND_X: float    = 13.0
-MCU_HILL_NEG_X_SOUTH_Y: float          = 75.0                       # hill −X strip south boundary (below spline's rim-Z crossing)
-MCU_HILL_PLUS_Y_INNER_BOUND_Y: float   = OUTER_DEPTH - 9.0   # = 112.5
 
 # ---------- S-curve ramp on −X wall ----------
 S_CURVE_RAMP_Y_START: float             = 31.0                      # −Y ramp start Y in case coords

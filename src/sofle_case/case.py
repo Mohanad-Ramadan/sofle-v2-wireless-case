@@ -1,4 +1,4 @@
-"""Compose the full case half from tray + standoffs, minus cutouts."""
+"""Compose the full case half from tray + standoffs, minus the battery pocket."""
 from __future__ import annotations
 from typing import Literal, cast
 from build123d import Part, mirror, Plane, Pos, fillet, Axis, BuildPart, Locations, Cylinder, Sphere
@@ -7,7 +7,6 @@ from OCP.TopoDS import TopoDS
 from . import constants as C
 from .tray import build_tray
 from .standoffs import stepped_standoff
-from .cutouts import usb_c_cutout
 from .battery import battery_pocket
 
 
@@ -44,10 +43,6 @@ def build_case_half(side: Side) -> Part:
     for hx, hy in C.MOUNTING_HOLES:
         cx, cy = C.pcb_to_case(hx, hy)
         shell += stepped_standoff(at=(cx, cy))
-
-    shell = cast(Part, shell)
-
-    shell -= usb_c_cutout()
 
     shell = cast(Part, shell)
 
