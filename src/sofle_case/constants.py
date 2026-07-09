@@ -52,6 +52,21 @@ MX_TOP_HOUSING_W        = 15.6   # mm; widest part of a Cherry MX switch (rests 
 COVER_THICKNESS         = 1.0    # mm; lid thickness, top at MAIN_RIM_Z + 1.0 = 13.5
 COVER_WINDOW_OFFSET     = 1.25   # mm; grow each 14 mm plate cutout → 16.5 mm window (0.45 mm/side over the 15.6 housing)
 COVER_SCREW_CLEARANCE_DIA = 2.4  # mm; M2 screw shaft clearance through the cover
+# The plate-outline membrane sits ~0.3–0.7 mm inside the inner cavity wall, so on
+# its own it floats free (a separate solid) inside the TOP part. Grow the membrane
+# outline outward by this margin so it bites into the upper-wall material and fuses
+# into one solid with the TOP walls. The bay notch shrinks by the same amount but
+# stays wide open (the MCU/OLED/JST bay is ~20 mm across). Real overlap into wall
+# material is used (not a coincident-face touch) because OCC's boolean union is
+# unreliable on merely-coincident faces.
+COVER_FUSE_MARGIN       = 1.0    # mm; membrane→upper-wall fusion overlap in the TOP part
+
+# ---------- Sandwich clamshell split (TOP / BOTTOM parts) ----------
+# A single planar seam halves the shell into two printable parts screwed together
+# through the standoffs. Total height rises to COVER_TOP_Z because the TOP part's
+# rim carries the membrane ceiling above the 12.5 plate reference.
+SEAM_Z       = MAIN_RIM_Z / 2            # 6.25 mm; the horizontal split plane
+COVER_TOP_Z  = MAIN_RIM_Z + COVER_THICKNESS  # 13.5 mm; TOP part rim (membrane top)
 
 # ---------- Standoff geometry ----------
 STANDOFF_OD_LOWER  = 5.5   # PCB-seat shoulder OD

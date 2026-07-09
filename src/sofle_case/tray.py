@@ -56,12 +56,12 @@ def _inner_extruded(z_lo: float, z_hi: float) -> Part:
 # Shell + cavity
 # ---------------------------------------------------------------------------
 
-def _outer_shell() -> Part:
-    return _outer_extruded(0.0, C.MAIN_RIM_Z)
+def _outer_shell(rim_z: float = C.MAIN_RIM_Z) -> Part:
+    return _outer_extruded(0.0, rim_z)
 
 
-def _cavity_solid() -> Part:
-    return _inner_extruded(C.FLOOR_THICKNESS, C.MAIN_RIM_Z + 0.01)
+def _cavity_solid(rim_z: float = C.MAIN_RIM_Z) -> Part:
+    return _inner_extruded(C.FLOOR_THICKNESS, rim_z + 0.01)
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +90,7 @@ def _mcu_y_relief_x_range() -> tuple[float, float]:
     return x_lo, x_full_hi
 
 
-def _mcu_y_relief_bump() -> Part:
+def _mcu_y_relief_bump(rim_z: float = C.MAIN_RIM_Z) -> Part:
     """Push the MCU cover's +Y OUTER wall out to the index-column line (+Y wall
     only — see MCU_Y_RELIEF_* comment in constants.py). Paired with
     _mcu_y_relief_widen() so wall thickness is preserved — the wall shifts
@@ -113,10 +113,10 @@ def _mcu_y_relief_bump() -> Part:
     # otherwise the arc dips inward between the arc start and the old overlap.
     arc_start_y = C.pcb_to_case(0, 0)[1]
     y_lo = min(y_old_outer - C.MCU_Y_RELIEF_OVERLAP, arc_start_y)
-    return _axis_box(x_lo, x_full_hi, y_lo, y_new_outer, 0.0, C.MAIN_RIM_Z)
+    return _axis_box(x_lo, x_full_hi, y_lo, y_new_outer, 0.0, rim_z)
 
 
-def _mcu_y_relief_widen() -> Part:
+def _mcu_y_relief_widen(rim_z: float = C.MAIN_RIM_Z) -> Part:
     """Widen the cavity to match _mcu_y_relief_bump() — removes material between
     the old and new inner +Y-wall faces so the added outer bump becomes usable
     interior clearance rather than solid wall.
@@ -140,7 +140,7 @@ def _mcu_y_relief_widen() -> Part:
     corner_y    = C.pcb_to_case(0, 0)[1]                              # polygon vertex Y; −X wall face ends here
     y_new_inner = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.PCB_XY_CLEARANCE
     _, y_safe_lo = C.pcb_to_case(0, C.MCU_POS[1])                      # safely inside cavity
-    z_hi = C.MAIN_RIM_Z + 0.01                                        # walls are flat at the rim
+    z_hi = rim_z + 0.01                                               # widen the cavity up to the rim
     base   = _axis_box(inner_x + 0.3, x_full_hi, y_safe_lo, y_new_inner, C.FLOOR_THICKNESS, z_hi)
     corner = _axis_box(inner_x, inner_x + 0.35, corner_y, y_new_inner, C.FLOOR_THICKNESS, z_hi)
     return cast(Part, base + corner)
@@ -175,12 +175,12 @@ def _neg_x_wall_cutter_plus_y() -> Part:
     return cast(Part, Pos(-1.0, 0, 0) * bp.part)
 
 
-def _neg_x_wall_cutter_minus_y() -> Part:
+def _neg_x_wall_cutter_minus_y(rim_z: float = C.MAIN_RIM_Z) -> Part:
     sw_cy  = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
     hn     = C.SLIDE_SWITCH_W / 2
     z_lo   = C.SLIDE_SWITCH_Z_RANGE[0]
     z_bot  = z_lo - hn
-    z_rim  = C.MAIN_RIM_Z + 0.01
+    z_rim  = rim_z + 0.01
     z_top  = C.MCU_HILL_Z + 5.01
     y_ramp = C.S_CURVE_RAMP_Y_START
     y_far  = -5.0
@@ -327,7 +327,7 @@ def _fillet_bump_neg_x_corner(part: Part) -> Part:
 # Outer-top chamfer (thick-wall ledge descends outward to the ground)
 # ---------------------------------------------------------------------------
 
-def _chamfer_outer_top_edges(part: Part) -> Part:
+def _chamfer_outer_top_edges(part: Part, rim_z: float = C.MAIN_RIM_Z) -> Part:
     """Bevel the OUTER top perimeter (45°) so the thick wall's top edge descends
     toward the ground instead of reading as a hard block. The inner cavity rim is
     left sharp (flush with the switch plate) — only edges on the outer boundary
@@ -338,7 +338,7 @@ def _chamfer_outer_top_edges(part: Part) -> Part:
     rim it is the reverse. The slide-switch valley top edges sit below the rim, so
     the rim-Z filter skips them automatically. Size fallback + try/except mirror
     the other top-edge passes so an OCC failure never aborts the whole bevel."""
-    rim = C.MAIN_RIM_Z
+    rim = rim_z
     cx, cy = C.OUTER_WIDTH / 2, C.OUTER_DEPTH / 2
 
     def _solid(x: float, y: float, z: float) -> bool:
@@ -376,18 +376,24 @@ def _chamfer_outer_top_edges(part: Part) -> Part:
 # Public entry
 # ---------------------------------------------------------------------------
 
-def build_tray() -> Part:
-    shell  = _outer_shell()
-    cavity = _cavity_solid()
+def build_tray(rim_z: float = C.MAIN_RIM_Z) -> Part:
+    """Outer shell + inner cavity, walls flat at ``rim_z``.
+
+    ``rim_z`` defaults to ``MAIN_RIM_Z`` (12.5, flush with the switch plate) — the
+    single-tray case. The sandwich TOP part raises it to ``COVER_TOP_Z`` (13.5) so
+    the upper walls run high enough to carry the membrane ceiling; the outer-top
+    chamfer, +Y relief and slide-switch valley all track the rim automatically."""
+    shell  = _outer_shell(rim_z)
+    cavity = _cavity_solid(rim_z)
     hollow = cast(Part, shell - cavity)
-    hollow = cast(Part, hollow + _mcu_y_relief_bump())
-    hollow = cast(Part, hollow - _mcu_y_relief_widen())
+    hollow = cast(Part, hollow + _mcu_y_relief_bump(rim_z))
+    hollow = cast(Part, hollow - _mcu_y_relief_widen(rim_z))
     hollow = cast(Part, hollow - _neg_x_wall_cutter_plus_y())
-    hollow = cast(Part, hollow - _neg_x_wall_cutter_minus_y())
+    hollow = cast(Part, hollow - _neg_x_wall_cutter_minus_y(rim_z))
     hollow = _fillet_outer_concave_corners(hollow)
     hollow = _fillet_bump_neg_x_corner(hollow)
     filleted = _fillet_top_edges(hollow)
-    filleted = _chamfer_outer_top_edges(filleted)
+    filleted = _chamfer_outer_top_edges(filleted, rim_z)
     chamfered = _chamfer_bottom_edges(filleted)
     if isinstance(chamfered, Part):
         return chamfered

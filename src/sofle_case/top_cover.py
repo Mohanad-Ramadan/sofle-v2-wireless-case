@@ -33,8 +33,13 @@ def _load_plate_cutouts() -> list[list[tuple[float, float]]]:
     return [[tuple(p) for p in cut] for cut in raw]  # type: ignore[return-value]
 
 
-def _cover_body() -> Part:
-    """Plate-outline polygon extruded up from the plate top by COVER_THICKNESS."""
+def _cover_body(margin: float = 0.0) -> Part:
+    """Plate-outline polygon extruded up from the plate top by COVER_THICKNESS.
+
+    ``margin`` grows the outline outward (Kind.ARC) before extruding. The
+    standalone cover uses 0.0 (true plate footprint). The sandwich TOP part passes
+    ``COVER_FUSE_MARGIN`` so the membrane bites into the upper-wall material and
+    fuses into one solid instead of floating inside the cavity."""
     poly = [C.pcb_to_case(x, y) for x, y in _load_plate_polygon()]
     pts = poly[:-1] if poly[0] == poly[-1] else poly
     with BuildLine() as bl:
@@ -42,7 +47,9 @@ def _cover_body() -> Part:
     wire = cast(Wire, bl.line)
     with BuildPart() as bp:
         with BuildSketch(Plane.XY):
-            make_face(wire)  # type: ignore[arg-type]
+            face = make_face(wire)  # type: ignore[arg-type]
+            if margin:
+                face = offset(face, amount=margin, kind=Kind.ARC)
         extrude(amount=C.COVER_THICKNESS)
     assert bp.part is not None
     return cast(Part, Pos(0, 0, C.MAIN_RIM_Z) * bp.part)
@@ -76,9 +83,13 @@ def _screw_holes() -> Part:
     return cast(Part, bp.part)
 
 
-def build_top_cover() -> Part:
-    """Plate-shaped lid with switch windows and standoff screw holes removed."""
-    cover = _cover_body()
+def build_top_cover(fuse_margin: float = 0.0) -> Part:
+    """Plate-shaped lid with switch windows and standoff screw holes removed.
+
+    ``fuse_margin`` (default 0.0) grows the outline outward so the membrane fuses
+    to the upper walls when reused as the sandwich TOP part's ceiling. Left at 0.0
+    the result is the true-footprint standalone cover."""
+    cover = _cover_body(margin=fuse_margin)
 
     for cutout_pcb in _load_plate_cutouts():
         case_pts = [C.pcb_to_case(x, y) for x, y in cutout_pcb]
