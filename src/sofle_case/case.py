@@ -122,6 +122,11 @@ if __name__ == "__main__":
         parts.append(_mirror_part(build_switch_phantom()))
         names.append("switch_phantom")
 
+    if C.SHOW_TOP_COVER:
+        from sofle_case.top_cover import build_top_cover
+        parts.append(_mirror_part(build_top_cover()))
+        names.append("top_cover")
+
     parts.append(_corner_markers())
     names.append("corner_markers")
 

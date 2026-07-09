@@ -15,8 +15,9 @@ The core `sofle_case` Python package. Contains all parametric geometry (tray she
 | `tray.py` | Outer shell + inner cavity, all walls flat at `MAIN_RIM_Z` (flush with plate). +Y B+/B- relief bump + slide-switch S-curve cutters + fillets. Most-edited file. No MCU hill. |
 | `standoffs.py` | Stepped standoff: lower shoulder (Ø5.5mm) + upper pin (Ø3.5mm) + M2 tap bore (Ø1.8mm) + 0.3mm entry chamfer. |
 | `pcb_geometry.py` | Loads `data/pcb_outline.json` and `data/mounting_holes.json`; applies `pcb_to_case()` transform. |
+| `top_cover.py` | **Sandwich lid.** Thin (`COVER_THICKNESS`) plate-shaped layer over the switch plate, ~16.5 mm switch windows clearing the 15.6 mm MX housings, standoff screw holes; MCU/OLED bay open via the plate notch. Built via `build_top_cover()`; exported with `build.py --cover`. |
 | `pcb_phantom.py` | Visual phantom: main PCB + nice!nano MCU + slide switch body. For OCP viewer only. |
-| `plate_phantom.py` | Visual phantom: switch plate. For OCP viewer only. |
+| `plate_phantom.py` | Visual phantom: switch plate (from `data/plate_*.json`, re-parsed from the v2 top-plate gerber). For OCP viewer only. |
 | `switch_phantom.py` | Visual phantom: Cherry MX switch solids at every switch position. For OCP viewer only. |
 | `__init__.py` | Empty package marker. |
 

@@ -40,6 +40,19 @@ BOTTOM_CHAMFER  = 0.5   # 45° counter-chamfer on outer bottom edge (elephant-fo
 # clean symmetric 45° is used — the horizontal and vertical legs are equal.)
 OUTER_TOP_CHAMFER = 1.5   # mm, 45° outer-top bevel leg
 
+# ---------- Top cover (sandwich lid over the switch plate) ----------
+# A thin printed layer the shape of the switch plate, sitting on the plate top
+# (Z = MAIN_RIM_Z) and held by the same standoffs via taller M2 screws. Each
+# 14 mm plate cutout is grown to a ~16.5 mm window so the switch's 15.6 mm top
+# housing pokes through and the cover seats flat on the plate. Keycaps float
+# entirely above it — skirt at full press ~14.0 mm > cover top 13.5 mm — so 1.0 mm
+# is safe (1.5 mm would just kiss the skirt on a hard edge press). The plate's
+# own inner notch leaves the MCU/OLED/slide/JST bay open for free.
+MX_TOP_HOUSING_W        = 15.6   # mm; widest part of a Cherry MX switch (rests on plate) — drives the window size
+COVER_THICKNESS         = 1.0    # mm; lid thickness, top at MAIN_RIM_Z + 1.0 = 13.5
+COVER_WINDOW_OFFSET     = 1.25   # mm; grow each 14 mm plate cutout → 16.5 mm window (0.45 mm/side over the 15.6 housing)
+COVER_SCREW_CLEARANCE_DIA = 2.4  # mm; M2 screw shaft clearance through the cover
+
 # ---------- Standoff geometry ----------
 STANDOFF_OD_LOWER  = 5.5   # PCB-seat shoulder OD
 STANDOFF_OD_UPPER  = 3.9   # passes through PCB Ø4.1 hole (~0.2 mm clearance); widened from 3.5 to thicken the M2 self-tap boss wall
@@ -137,6 +150,7 @@ def pcb_to_case(x: float, y: float) -> tuple[float, float]:
 SHOW_PCB_PHANTOM    = True # True: adds PCB phantom to case.py __main__ viewer
 SHOW_PLATE_PHANTOM  = True # True: adds switch plate phantom to case.py __main__ viewer
 SHOW_SWITCH_PHANTOM = True # True: adds MX switch phantom to case.py __main__ viewer
+SHOW_TOP_COVER      = True # True: adds the sandwich top cover to case.py __main__ viewer
 
 # MCU physical stack heights — used by the PCB phantom (jack/header visuals) and
 # as a convenient over-tall bound for the slide-switch wall cutters.

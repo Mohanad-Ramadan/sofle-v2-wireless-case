@@ -22,6 +22,7 @@ pytest suite covering geometry correctness, dimensional fit, manifold integrity,
 | `test_pcb_geometry.py` | PCB polygon loads correctly, `pcb_to_case` transform is accurate |
 | `test_pcb_phantom.py` | PCB phantom builds without error |
 | `test_plate_phantom.py` | Plate phantom builds without error |
+| `test_top_cover.py` | Sandwich lid: single solid, sits on plate top, footprint matches plate, windows clear all switch housings, keycap headroom, screw holes open |
 | `test_switch_phantom.py` | Switch phantom builds without error |
 | `test_build_cli.py` | `scripts/build.py` invoked via subprocess; STL + STEP written with non-zero size |
 | `test_parse_gerber.py` | Gerber/drill parser output matches expected polygon + hole positions |

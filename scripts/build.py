@@ -21,7 +21,9 @@ from sofle_case.case import build_case_half, Side
               help="Open result in OCP CAD Viewer after building.")
 @click.option("--png", "export_png", is_flag=True, default=False,
               help="Screenshot the model to a PNG via OCP CAD Viewer (viewer must be running).")
-def main(side: str, out_dir: Path, show_viewer: bool, export_png: bool) -> None:
+@click.option("--cover", "build_cover", is_flag=True, default=False,
+              help="Also export the top cover (sandwich lid). Single part, shared by both halves.")
+def main(side: str, out_dir: Path, show_viewer: bool, export_png: bool, build_cover: bool) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     click.echo(f"building {side} half...")
     part = build_case_half(cast(Side, side))
@@ -36,9 +38,25 @@ def main(side: str, out_dir: Path, show_viewer: bool, export_png: bool) -> None:
     click.echo(f"  wrote {stl_path} ({stl_path.stat().st_size} bytes)")
     click.echo(f"  wrote {step_path} ({step_path.stat().st_size} bytes)")
 
+    cover = None
+    if build_cover:
+        from sofle_case.top_cover import build_top_cover
+        click.echo("building top cover...")
+        cover = build_top_cover()
+        cover_stl = out_dir / "sofle_top_cover.stl"
+        cover_step = out_dir / "sofle_top_cover.step"
+        if not export_stl(cover, str(cover_stl)):
+            raise RuntimeError(f"export_stl failed for {cover_stl}")
+        if not export_step(cover, str(cover_step)):
+            raise RuntimeError(f"export_step failed for {cover_step}")
+        click.echo(f"  wrote {cover_stl} ({cover_stl.stat().st_size} bytes)")
+        click.echo(f"  wrote {cover_step} ({cover_step.stat().st_size} bytes)")
+
     if show_viewer or export_png:
         from ocp_vscode import show
-        show(part, names=[f"sofle_case_{side}"])
+        parts = [part] + ([cover] if cover is not None else [])
+        names = [f"sofle_case_{side}"] + (["top_cover"] if cover is not None else [])
+        show(*parts, names=names)
 
     if export_png:
         import time
