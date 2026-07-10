@@ -62,7 +62,7 @@ def my_feature(at: tuple[float, float]) -> Part:
 **Coordinate systems:**
 - Case coords: origin at outer lower-left corner, Z=0 at outer bottom face.
 - PCB coords: KiCad convention (Y down). Use `C.pcb_to_case(x, y)` to convert.
-- Spline scalars in `constants.py` (e.g. `S_CURVE_RAMP_MINUS_Y_SCALARS`) are empirically tuned — change with care and re-run tests.
+- Empirical constants in `constants.py` are geometry-tuned — change with care and re-run tests.
 
 **OCP viewer block (required on every geometry module):**
 ```python

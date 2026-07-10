@@ -92,25 +92,14 @@ PCB_LEDGE_WIDTH   = 1.0   # mm; ring width if enabled
 # no case cutout is needed. USB_C_W is kept for the PCB phantom's jack stub.
 USB_C_W = 9.0
 
-# ---------- Slide-switch access valley (−X wall) ----------
-SLIDE_SWITCH_W     = 6.0
-SLIDE_SWITCH_TOP_W = 14.0
-SLIDE_SWITCH_Z_RANGE: tuple[float, float] = (11.8, MAIN_RIM_Z + 0.5)   # z_lo clears switch metal body top; z_hi punches past wall rim so slot is open
-SLIDE_SWITCH_CORNER_R = 0.1   # fillet radius at slot-rim junction on outer wall face
-
-# Spline tangent scalars passed to Spline(...) for the two side profiles.
-# Each tuple is (start_scalar, end_scalar) following the spline's traversal direction.
-#   Right spline traverses bottom → top: (bottom, top)
-#   Left  (ramp) spline traverses top → bottom: (top, bottom)
-# Larger scalar stretches the OCC interpolated tangent further → longer, more gradual
-# arc with bigger outward sweep. The ramp's top scalar 44.1641 is empirically solved
-# so the cutout's bb.min.Y lands exactly on Y=28.1806 — the case-Y of the tray
-# cavity's min-X vertex (thumb-cluster innermost cavity wall). At that Y the ramp's
-# outermost point fades into the cavity edge, hiding the slot's flare seam in print.
-# Ramp spline now runs from z_hi down to PLATE_TOP_Z only (shortened); re-solve with
-# binary search over slide_switch_cutout().bounding_box().min.Y against the cavity
-# min-X vertex Y from tray._cavity_solid().vertices().
-SLIDE_SWITCH_RAMP_TANGENT_SCALARS:  tuple[float, float] = (44.1641, 2.5)
+# ---------- Slide-switch access slot (−X wall) ----------
+# A plain rectangular top-open slot through the −X wall exposes the SK12D07VG3
+# slide actuator: cut from the rim down to SLIDE_SLOT_Z_FLOOR over the switch, so
+# the stem is visible from the −X elevation and the wall reads as one clean part.
+# (Replaces the earlier empirical S-curve ramp valley.)
+SLIDE_SWITCH_W     = 6.0   # mm; slide actuator nominal width (reference)
+SLIDE_SLOT_W       = 8.0   # mm; slot Y width — actuator + margin, centred on SW_SLIDE_POS
+SLIDE_SLOT_Z_FLOOR = 9.0   # mm; slot floor — exposes the actuator stem, clears the PCB seat
 
 # ---------- Battery pocket (405070 LiPo cell: 4.0mm thick, 50x70mm footprint) ----------
 # Recessed into the floor's added 1.8 mm thickness (see FLOOR_THICKNESS above),
@@ -205,17 +194,8 @@ MCU_Y_RELIEF_OVERLAP   = 1.0   # mm, fusion overlap into existing wall material
 # clear of the nice!nano's right edge (case X≈35).
 MCU_Y_RELIEF_CEILING_X = 20.0  # mm, PCB coords — east limit of the ceiling-band cavity
 
-# ---------- Slide-switch wall-cutter X reach (−X wall) ----------
-# −X inner-wall X bound the slide-switch valley cutters extrude to, and the X
-# ceiling for selecting the valley's ramp edges to fillet. Derived from the −X
-# wall corner (pcb_to_case(0,0)[0]) + a 1.5 mm margin so it tracks the PCB
-# re-centring when WALL_THICKNESS changes (18.0 at WALL=7.5).
+# ---------- Slide-switch slot X reach (−X wall) ----------
+# Inner-X bound the slide-switch slot cutter extrudes to. Derived from the −X wall
+# corner (pcb_to_case(0,0)[0]) + a 1.5 mm margin so it tracks the PCB re-centring
+# when WALL_THICKNESS changes (14.25 at WALL=3.75).
 MCU_HILL_NEG_X_INNER_BOUND_X: float    = pcb_to_case(0, 0)[0] + 1.5
-
-# ---------- S-curve ramp on −X wall ----------
-# Empirical −Y ramp start, anchored in PCB coords (case-Y 31.0 in the original
-# WALL=2.5 frame → PCB-Y −82.5) so it tracks the PCB re-centring (36.0 at WALL=7.5).
-S_CURVE_RAMP_Y_START: float             = pcb_to_case(0, -82.5)[1]
-
-S_CURVE_RAMP_MINUS_Y_SCALARS: tuple[float, float] = (2.0, 0.3)     # −Y spline tangent scalars (start, end)
-S_CURVE_RAMP_PLUS_Y_SCALARS: tuple[float, float] = (1.0, 1.0)      # +Y spline tangent scalars (start, end)

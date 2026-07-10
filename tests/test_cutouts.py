@@ -1,11 +1,4 @@
-from build123d import Part
-
-
-def test_neg_x_wall_cutter_plus_y_returns_part():
-    from sofle_case.tray import _neg_x_wall_cutter_plus_y
-    assert isinstance(_neg_x_wall_cutter_plus_y(), Part)
-
-
-def test_neg_x_wall_cutter_minus_y_returns_part():
-    from sofle_case.tray import _neg_x_wall_cutter_minus_y
-    assert isinstance(_neg_x_wall_cutter_minus_y(), Part)
+def test_slide_switch_slot_is_a_solid():
+    from sofle_case.tray import _slide_switch_slot
+    slot = _slide_switch_slot()
+    assert slot.volume > 0, "slide-switch slot cutter is empty"

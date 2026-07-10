@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import cast
 from build123d import (
     Part, Wire, Pos, Polyline, make_face, extrude, offset, Kind, Solid,
-    Plane, BuildPart, BuildSketch, BuildLine, Axis, fillet, chamfer, Line, Spline,
+    Plane, BuildPart, BuildSketch, BuildLine, Axis, fillet, chamfer,
 )
 from OCP.Standard import Standard_Failure
 from . import constants as C
@@ -170,62 +170,22 @@ def _mcu_y_relief_widen(rim_z: float = C.MAIN_RIM_Z) -> Part:
     return widen
 
 
-def _neg_x_wall_cutter_plus_y() -> Part:
-    sw_cy  = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
-    mcu_cy = C.pcb_to_case(*C.MCU_POS)[1]
-    hn     = C.SLIDE_SWITCH_W / 2
-    z_lo   = C.SLIDE_SWITCH_Z_RANGE[0]
-    z_bot  = z_lo - hn
-    z_plat = C.MCU_HILL_Z + 0.01
-    z_top  = z_plat + 5.0
-    y_mcu  = mcu_cy - C.MCU_BODY_L / 2
-    y_far  = C.OUTER_DEPTH + 5.0
-    with BuildPart() as bp:
-        with BuildSketch(Plane.YZ):
-            with BuildLine():
-                Line((sw_cy, z_top), (sw_cy, z_bot))
-                Spline(
-                    (sw_cy, z_bot),
-                    (y_mcu, z_plat),
-                    tangents=[(1, 0), (1, 0)],
-                    tangent_scalars=list(C.S_CURVE_RAMP_PLUS_Y_SCALARS),
-                )
-                Line((y_mcu, z_plat), (y_far, z_plat))
-                Line((y_far, z_plat), (y_far, z_top))
-                Line((y_far, z_top), (sw_cy, z_top))
-            make_face()
-        extrude(amount=C.MCU_HILL_NEG_X_INNER_BOUND_X + 2.0)
-    assert bp.part is not None
-    return cast(Part, Pos(-1.0, 0, 0) * bp.part)
+def _slide_switch_slot(rim_z: float = C.MAIN_RIM_Z) -> Part:
+    """Plain rectangular top-open slot in the −X wall over the slide switch.
 
-
-def _neg_x_wall_cutter_minus_y(rim_z: float = C.MAIN_RIM_Z) -> Part:
-    sw_cy  = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
-    hn     = C.SLIDE_SWITCH_W / 2
-    z_lo   = C.SLIDE_SWITCH_Z_RANGE[0]
-    z_bot  = z_lo - hn
-    z_rim  = rim_z + 0.01
-    z_top  = C.MCU_HILL_Z + 5.01
-    y_ramp = C.S_CURVE_RAMP_Y_START
-    y_far  = -5.0
-
-    with BuildPart() as bp:
-        with BuildSketch(Plane.YZ):
-            with BuildLine():
-                Line((sw_cy, z_top), (y_far, z_top))
-                Line((y_far, z_top), (y_far, z_rim))
-                Line((y_far, z_rim), (y_ramp, z_rim))
-                Spline(
-                    (y_ramp, z_rim),
-                    (sw_cy, z_bot),
-                    tangents=[(1, 0), (1, 0)],
-                    tangent_scalars=list(C.S_CURVE_RAMP_MINUS_Y_SCALARS),
-                )
-                Line((sw_cy, z_bot), (sw_cy, z_top))
-            make_face()
-        extrude(amount=C.MCU_HILL_NEG_X_INNER_BOUND_X + 2.0)
-    assert bp.part is not None
-    return cast(Part, Pos(-1.0, 0, 0) * bp.part)
+    Replaces the old S-curve access valley: a single vertical-walled box that
+    spans the actuator in Y (SLIDE_SLOT_W, centred on SW_SLIDE_POS), cuts through
+    the full −X wall thickness in X, and runs from SLIDE_SLOT_Z_FLOOR up past the
+    rim so the top is open and the stem is visible from the −X elevation. The X
+    reach (MCU_HILL_NEG_X_INNER_BOUND_X) clears the inner wall face; x_lo starts
+    outside the outer face so the slot is fully open to the outside."""
+    _, sw_cy = C.pcb_to_case(*C.SW_SLIDE_POS)
+    hw = C.SLIDE_SLOT_W / 2
+    return _axis_box(
+        -1.0, C.MCU_HILL_NEG_X_INNER_BOUND_X + 2.0,
+        sw_cy - hw, sw_cy + hw,
+        C.SLIDE_SLOT_Z_FLOOR, rim_z + 1.0,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -271,35 +231,6 @@ def _fillet_outer_concave_corners(part: Part) -> Part:
 
 
 # ---------------------------------------------------------------------------
-# Top fillet
-# ---------------------------------------------------------------------------
-
-def _fillet_top_edges(part: Part) -> Part:
-    """Fillet the slide-switch S-curve valley's top edges on the −X wall.
-
-    The flat perimeter rim is intentionally left SHARP so the wall top sits flush
-    with the switch plate (MAIN_RIM_Z == PLATE_TOP_Z) — a bevel there would read
-    as a rounded lip standing off the plate. Only the slide-switch valley (which
-    dips below the rim for finger access) gets its spline edges softened."""
-    r = C.TOP_CHAMFER
-
-    # Slide-switch S-curve ramp spline edges on −X wall (outer + inner faces, ±Y)
-    ramp = [
-        e for e in part.edges()
-        if (bb := e.bounding_box()).max.X <= C.MCU_HILL_NEG_X_INNER_BOUND_X
-        and bb.max.Z - bb.min.Z > 5.0
-        and bb.max.Y - bb.min.Y > 5.0
-    ]
-    if ramp:
-        try:
-            part = cast(Part, fillet(ramp, radius=r))
-        except (ValueError, Standard_Failure):
-            pass
-
-    return part
-
-
-# ---------------------------------------------------------------------------
 # Bottom counter-chamfer (elephant-foot pre-compensation)
 # ---------------------------------------------------------------------------
 
@@ -312,7 +243,7 @@ def _chamfer_bottom_edges(part: Part) -> Part:
 
     Runs last in build_tray() so it does not perturb the Z-based edge selection
     used by the fillet passes. Falls back to a smaller length, then to no
-    chamfer, rather than aborting the build (mirrors _fillet_top_edges)."""
+    chamfer, rather than aborting the build (mirrors the other edge passes)."""
     bottom = part.edges().filter_by_position(Axis.Z, minimum=-0.01, maximum=0.01)
     if not bottom:
         return part
@@ -421,12 +352,10 @@ def build_tray(rim_z: float = C.MAIN_RIM_Z) -> Part:
     hollow = cast(Part, shell - cavity)
     hollow = cast(Part, hollow + _mcu_y_relief_bump(rim_z))
     hollow = cast(Part, hollow - _mcu_y_relief_widen(rim_z))
-    hollow = cast(Part, hollow - _neg_x_wall_cutter_plus_y())
-    hollow = cast(Part, hollow - _neg_x_wall_cutter_minus_y(rim_z))
+    hollow = cast(Part, hollow - _slide_switch_slot(rim_z))
     hollow = _fillet_outer_concave_corners(hollow)
     hollow = _fillet_bump_neg_x_corner(hollow)
-    filleted = _fillet_top_edges(hollow)
-    filleted = _chamfer_outer_top_edges(filleted, rim_z)
+    filleted = _chamfer_outer_top_edges(hollow, rim_z)
     chamfered = _chamfer_bottom_edges(filleted)
     if isinstance(chamfered, Part):
         return chamfered
