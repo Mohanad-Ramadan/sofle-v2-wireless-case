@@ -108,6 +108,29 @@ def test_top_windows_clear_switch_housings():
     assert (top & build_switch_phantom()).volume < 1e-3
 
 
+def test_top_ceiling_closed_over_mcu_switch_column():
+    """Regression: the switch column next to the MCU must NOT be open to air.
+
+    The +Y relief widened the cavity up to the new rim, scooping the ceiling open
+    across the whole relief; the switch-column side (east of the bay) is now kept
+    solid. Probe the ceiling band just under the top face, in the +Y strip beyond
+    the switch windows — it must be solid over the switch column (case X≳40) yet
+    still OPEN over the MCU bay (case X≲34, where the nice!nano pokes through)."""
+    from build123d import Solid
+    top = build_top_part("right")
+
+    def solid_at(x, y, z, s=0.3):
+        box = Solid.make_box(s, s, s).translate((x - s / 2, y - s / 2, z - s / 2))
+        return (top & box).volume > 1e-7
+
+    z = C.COVER_TOP_Z - 0.5  # inside the ceiling band (12.5 → 13.5)
+    for y in (120.0, 121.0):  # the +Y strip that was open to air
+        for x in (40.0, 46.0, 52.0):  # over the switch column next to the MCU
+            assert solid_at(x, y, z), f"ceiling open to air at ({x}, {y}, {z})"
+    # …but the MCU bay must stay open (nice!nano clearance)
+    assert not solid_at(28.0, 116.0, z), "MCU bay wrongly closed over the nice!nano"
+
+
 @pytest.mark.parametrize("builder", [build_top_part, build_bottom_part])
 def test_split_left_equals_right(builder):
     left, right = builder("left"), builder("right")

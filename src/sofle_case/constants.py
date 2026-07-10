@@ -194,6 +194,13 @@ MCU_Y_RELIEF_X_HI      = 41.0  # mm, PCB coords — polygon's own Y=0.0→2.5 st
 # (well within WALL_THICKNESS), and starting the box at Z=0 so it overlaps
 # the floor slab, guarantees a real fuse once the cavity is widened behind it.
 MCU_Y_RELIEF_OVERLAP   = 1.0   # mm, fusion overlap into existing wall material
+# The +Y relief widens the cavity for the nice!nano + B+/B- wires. In the sandwich
+# TOP part the walls run past the plate top, so the band above MAIN_RIM_Z becomes
+# the printed ceiling. Only the MCU bay (PCB X ≤ this) may stay hollow up there —
+# the switch column to the east must keep its ceiling or the top shell is open to
+# air. 20.0 (case X≈36.5) is the plate's own switch/bay boundary and sits ~1.5 mm
+# clear of the nice!nano's right edge (case X≈35).
+MCU_Y_RELIEF_CEILING_X = 20.0  # mm, PCB coords — east limit of the ceiling-band cavity
 
 # ---------- Slide-switch wall-cutter X reach (−X wall) ----------
 # −X inner-wall X bound the slide-switch valley cutters extrude to, and the X

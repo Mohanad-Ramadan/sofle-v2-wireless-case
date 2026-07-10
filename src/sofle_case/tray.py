@@ -134,16 +134,32 @@ def _mcu_y_relief_widen(rim_z: float = C.MAIN_RIM_Z) -> Part:
     −X cut face is thus *contiguous* with the wall face, not overlapping it, so
     the two merge into one continuous −X inner wall up to the corner with no
     coincident face and no residual ledge. x_hi overlaps the base box so there
-    is no gap between the two cuts."""
+    is no gap between the two cuts.
+
+    Ceiling band (sandwich TOP only, rim_z > MAIN_RIM_Z): below the plate top the
+    full X-span is hollowed as before (clearance for the nice!nano + B+/B- wires).
+    Above the plate top — the band that becomes the TOP part's ceiling — only the
+    MCU *bay* (X ≤ bay_x) is hollowed; the switch-column side keeps its solid bump
+    material so the top-part shell closes over it. Without this split the widen
+    scooped the ceiling open across the whole relief and left the switch column
+    next to the MCU open to air. bay_x is the plate's own switch/bay boundary
+    (MCU_Y_RELIEF_CEILING_X), which also clears the nice!nano's right edge."""
     _, x_full_hi = _mcu_y_relief_x_range()
     inner_x     = C.pcb_to_case(0, 0)[0] - C.PCB_XY_CLEARANCE          # −X inner wall face
     corner_y    = C.pcb_to_case(0, 0)[1]                              # polygon vertex Y; −X wall face ends here
     y_new_inner = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.PCB_XY_CLEARANCE
     _, y_safe_lo = C.pcb_to_case(0, C.MCU_POS[1])                      # safely inside cavity
-    z_hi = rim_z + 0.01                                               # widen the cavity up to the rim
-    base   = _axis_box(inner_x + 0.3, x_full_hi, y_safe_lo, y_new_inner, C.FLOOR_THICKNESS, z_hi)
-    corner = _axis_box(inner_x, inner_x + 0.35, corner_y, y_new_inner, C.FLOOR_THICKNESS, z_hi)
-    return cast(Part, base + corner)
+    z_mid = C.MAIN_RIM_Z + 0.01                                       # plate top: full-X clearance up to here
+    base   = _axis_box(inner_x + 0.3, x_full_hi, y_safe_lo, y_new_inner, C.FLOOR_THICKNESS, z_mid)
+    corner = _axis_box(inner_x, inner_x + 0.35, corner_y, y_new_inner, C.FLOOR_THICKNESS, z_mid)
+    widen  = cast(Part, base + corner)
+    if rim_z > C.MAIN_RIM_Z + 1e-6:
+        bay_x = C.pcb_to_case(C.MCU_Y_RELIEF_CEILING_X, 0)[0]
+        z_hi  = rim_z + 0.01
+        u_base   = _axis_box(inner_x + 0.3, bay_x, y_safe_lo, y_new_inner, z_mid, z_hi)
+        u_corner = _axis_box(inner_x, inner_x + 0.35, corner_y, y_new_inner, z_mid, z_hi)
+        widen = cast(Part, widen + u_base + u_corner)
+    return widen
 
 
 def _neg_x_wall_cutter_plus_y() -> Part:
