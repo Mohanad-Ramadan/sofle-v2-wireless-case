@@ -138,12 +138,19 @@ def _mcu_y_relief_widen(rim_z: float = C.MAIN_RIM_Z) -> Part:
 
     Ceiling band (sandwich TOP only, rim_z > MAIN_RIM_Z): below the plate top the
     full X-span is hollowed as before (clearance for the nice!nano + B+/B- wires).
-    Above the plate top — the band that becomes the TOP part's ceiling — only the
-    MCU *bay* (X ≤ bay_x) is hollowed; the switch-column side keeps its solid bump
-    material so the top-part shell closes over it. Without this split the widen
-    scooped the ceiling open across the whole relief and left the switch column
-    next to the MCU open to air. bay_x is the plate's own switch/bay boundary
-    (MCU_Y_RELIEF_CEILING_X), which also clears the nice!nano's right edge."""
+    Above the plate top — the band that becomes the TOP part's ceiling — the hollow
+    is bounded on TWO axes so the top closes down to just the battery-wire channel:
+      • X ≤ bay_x — the switch-column side (east of the bay) keeps its solid bump
+        material as ceiling; without this the switch column next to the MCU was
+        left open to air.
+      • Y ≤ board_y_hi (the nice!nano's +Y face) — the +Y relief strip out toward
+        the USB-C jack is NOT hollowed, so the ceiling closes over it. The USB-C
+        jack exits sideways over the +Y wall (into open air above the rim) and
+        needs no ceiling hole; the battery wire routes inward under the board and
+        drops through the bay, which stays open over the board footprint.
+    bay_x is the plate's own switch/bay boundary (MCU_Y_RELIEF_CEILING_X), which
+    also clears the nice!nano's right edge; board_y_hi is the module's +Y edge so
+    the ceiling starts exactly where the board ends (no board-edge interference)."""
     _, x_full_hi = _mcu_y_relief_x_range()
     inner_x     = C.pcb_to_case(0, 0)[0] - C.PCB_XY_CLEARANCE          # −X inner wall face
     corner_y    = C.pcb_to_case(0, 0)[1]                              # polygon vertex Y; −X wall face ends here
@@ -155,9 +162,10 @@ def _mcu_y_relief_widen(rim_z: float = C.MAIN_RIM_Z) -> Part:
     widen  = cast(Part, base + corner)
     if rim_z > C.MAIN_RIM_Z + 1e-6:
         bay_x = C.pcb_to_case(C.MCU_Y_RELIEF_CEILING_X, 0)[0]
+        board_y_hi = C.pcb_to_case(*C.MCU_POS)[1] + C.MCU_BODY_L / 2   # nice!nano +Y face
         z_hi  = rim_z + 0.01
-        u_base   = _axis_box(inner_x + 0.3, bay_x, y_safe_lo, y_new_inner, z_mid, z_hi)
-        u_corner = _axis_box(inner_x, inner_x + 0.35, corner_y, y_new_inner, z_mid, z_hi)
+        u_base   = _axis_box(inner_x + 0.3, bay_x, y_safe_lo, board_y_hi, z_mid, z_hi)
+        u_corner = _axis_box(inner_x, inner_x + 0.35, corner_y, board_y_hi, z_mid, z_hi)
         widen = cast(Part, widen + u_base + u_corner)
     return widen
 

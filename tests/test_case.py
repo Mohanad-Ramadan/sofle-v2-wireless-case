@@ -109,13 +109,14 @@ def test_top_windows_clear_switch_housings():
 
 
 def test_top_ceiling_closed_over_mcu_switch_column():
-    """Regression: the switch column next to the MCU must NOT be open to air.
+    """Regression: the TOP part's ceiling near the MCU is closed except the
+    battery-wire channel over the nice!nano footprint.
 
     The +Y relief widened the cavity up to the new rim, scooping the ceiling open
-    across the whole relief; the switch-column side (east of the bay) is now kept
-    solid. Probe the ceiling band just under the top face, in the +Y strip beyond
-    the switch windows — it must be solid over the switch column (case X≳40) yet
-    still OPEN over the MCU bay (case X≲34, where the nice!nano pokes through)."""
+    across the whole relief. The ceiling band is now solid on two axes — over the
+    switch column (east of the bay) and over the +Y strip toward the USB-C jack —
+    leaving open only the MCU/OLED bay over the board, where the wire drops through
+    to the seam. Probe the ceiling band just under the top face."""
     from build123d import Solid
     top = build_top_part("right")
 
@@ -124,11 +125,17 @@ def test_top_ceiling_closed_over_mcu_switch_column():
         return (top & box).volume > 1e-7
 
     z = C.COVER_TOP_Z - 0.5  # inside the ceiling band (12.5 → 13.5)
-    for y in (120.0, 121.0):  # the +Y strip that was open to air
-        for x in (40.0, 46.0, 52.0):  # over the switch column next to the MCU
-            assert solid_at(x, y, z), f"ceiling open to air at ({x}, {y}, {z})"
-    # …but the MCU bay must stay open (nice!nano clearance)
-    assert not solid_at(28.0, 116.0, z), "MCU bay wrongly closed over the nice!nano"
+    # Switch column next to the MCU must be solid (was open to air).
+    for y in (120.0, 121.0):
+        for x in (40.0, 46.0, 52.0):
+            assert solid_at(x, y, z), f"switch-column ceiling open at ({x}, {y})"
+    # The +Y strip toward the USB-C jack (beyond the board's +Y edge ≈118.8) is
+    # closed — the jack exits sideways over the wall and needs no ceiling hole.
+    for x in (22.0, 26.0, 31.0):
+        assert solid_at(x, 120.0, z), f"USB-C +Y strip open at ({x}, 120)"
+    # …but the bay over the board stays OPEN as the wire channel down to the seam.
+    for x in (22.0, 26.0, 31.0):
+        assert not solid_at(x, 110.0, z), f"wire-channel bay wrongly closed at ({x}, 110)"
 
 
 @pytest.mark.parametrize("builder", [build_top_part, build_bottom_part])
