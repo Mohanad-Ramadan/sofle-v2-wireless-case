@@ -234,13 +234,22 @@ def _neg_x_wall_cutter_minus_y(rim_z: float = C.MAIN_RIM_Z) -> Part:
 
 def _fillet_outer_concave_corners(part: Part) -> Part:
     """Fillet sharp V-notches left by Kind.ARC offset at concave polygon vertices.
-    Per-corner try/except so one failure doesn't abort the rest."""
-    targets: list[tuple[float, float, float, float, float]] = [
-        ( 6.0, 33.0,  9.0, 35.5, 0.5),   # [0] (9, 31.5)   — nearly-flat, tiny notch
-        (34.5,  9.0, 37.5, 11.5, 0.8),   # [3] (34.5, 13)  — ~5° turn, short segments
-        (51.5, 16.5, 54.0, 19.5, 2.0),   # [4] (52, 21)    — ~24° turn
-        (107.5,16.5,110.5, 19.5, 2.0),   # [5] (108.5, 21) — convex; try, may be no-op
+    Per-corner try/except so one failure doesn't abort the rest.
+
+    Targets are anchored in PCB coords (converted via pcb_to_case) so they track
+    the PCB re-centring when WALL_THICKNESS changes — otherwise the search boxes,
+    fixed in case coords, drift off the vertices and the fillets silently stop
+    applying. Each entry is (pcb_x, pcb_y, half_x, half_y, r) around the vertex."""
+    pcb_targets: list[tuple[float, float, float, float, float]] = [
+        ( -9.00, -84.25, 1.5, 1.25, 0.5),   # [0] near-flat, tiny notch
+        ( 19.50, -108.25, 1.5, 1.25, 0.8),  # [3] ~5° turn, short segments
+        ( 36.25, -100.50, 1.25, 1.5, 2.0),  # [4] ~24° turn
+        ( 92.50, -100.50, 1.5, 1.5, 2.0),   # [5] convex; try, may be no-op
     ]
+    targets: list[tuple[float, float, float, float, float]] = []
+    for px, py, hx, hy, r in pcb_targets:
+        cx, cy = C.pcb_to_case(px, py)
+        targets.append((cx - hx, cy - hy, cx + hx, cy + hy, r))
     for xlo, ylo, xhi, yhi, r in targets:
         z_edges = [
             e for e in (

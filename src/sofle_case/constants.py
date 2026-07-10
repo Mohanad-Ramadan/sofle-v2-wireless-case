@@ -27,7 +27,10 @@ PLATE_THICKNESS = PLATE_TOP_Z - PLATE_SEAT_Z  # = 1.5 mm
 # (see the PCB transform section below) so the footprint always tracks
 # WALL_THICKNESS — thicken the wall and the envelope grows outward automatically
 # while the PCB stays centred.
-WALL_THICKNESS  = 7.5   # chunky wall; grows the footprint outward (was 2.5)
+WALL_THICKNESS  = 3.75  # slim wall; grows the footprint outward (was 7.5)
+# NOTE: CORNER_RADIUS is unused/dead — the visible outer corner radius is the
+# Kind.ARC offset in tray._outer_extruded (= WALL_THICKNESS + PCB_XY_CLEARANCE),
+# so the corner tracks the wall (≈4.25 at WALL=3.75). Kept only for reference.
 CORNER_RADIUS   = 3.5
 TOP_CHAMFER     = 0.8
 BOTTOM_CHAMFER  = 0.5   # 45° counter-chamfer on outer bottom edge (elephant-foot pre-compensation)

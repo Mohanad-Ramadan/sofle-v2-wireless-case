@@ -32,9 +32,9 @@ def test_tray_is_single_solid():
     assert len(t.solids()) == 1, f"tray has {len(t.solids())} solids; expected 1 fused solid"
 
 
-def test_walls_are_thick():
-    """Walls are the full WALL_THICKNESS (7.5 mm). Probe the flat +X wall below
-    the outer-top chamfer: solid 7 mm in from the outer face, cavity air 9 mm in."""
+def test_walls_are_full_thickness():
+    """The flat +X wall is WALL_THICKNESS thick: solid just inside the outer face,
+    cavity air just past the inner face (tracks WALL_THICKNESS, not a literal)."""
     from build123d import Solid
     t = build_tray()
     y, z = 65.0, 6.0   # +X flat wall region, above the floor, below the chamfer
@@ -44,9 +44,8 @@ def test_walls_are_thick():
         p = Solid.make_box(0.4, 0.4, 0.4).translate((x - 0.2, y - 0.2, z - 0.2))
         return (t & p).volume > 1e-6
 
-    assert C.WALL_THICKNESS == 7.5
-    assert solid(x_out - 7.0), "+X wall is thinner than 7 mm"
-    assert not solid(x_out - 9.0), "no cavity behind the +X wall (wall/cavity wrong)"
+    assert solid(x_out - (C.WALL_THICKNESS - 1.0)), "+X wall thinner than expected"
+    assert not solid(x_out - (C.WALL_THICKNESS + 1.5)), "no cavity behind the +X wall"
 
 
 def test_outer_top_chamfer_present():
