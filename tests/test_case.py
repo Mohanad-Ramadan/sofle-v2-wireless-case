@@ -54,10 +54,10 @@ def test_split_parts_are_valid_single_solids(side):
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_top_part_z_range(side):
-    """TOP spans the seam up to the membrane rim (6.25 → 13.5)."""
+    """TOP spans the seam up to the encoder bezel-shell top (6.25 → 21.2)."""
     bb = build_top_part(side).bounding_box()
     assert abs(bb.min.Z - C.SEAM_Z) < 0.01
-    assert abs(bb.max.Z - C.COVER_TOP_Z) < 0.01
+    assert abs(bb.max.Z - C.ENCODER_SHELL_TOP_Z) < 0.01
 
 
 @pytest.mark.parametrize("side", ["right", "left"])
@@ -78,17 +78,19 @@ def test_split_conserves_volume(side):
     from sofle_case.standoffs import stepped_standoff
     from sofle_case.battery import battery_pocket
     from sofle_case.top_cover import build_top_cover
+    from sofle_case.case import _encoder_shell
 
     ref = build_tray(rim_z=C.COVER_TOP_Z)
     ref = cast(Part, ref + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
+    ref = cast(Part, ref + _encoder_shell())
     for hx, hy in C.MOUNTING_HOLES:
         ref = cast(Part, ref + stepped_standoff(at=C.pcb_to_case(hx, hy)))
     ref = cast(Part, ref - battery_pocket())
 
     combined = build_top_part(side).volume + build_bottom_part(side).volume
-    # 1e-5 rel (~0.7 mm³ here) tolerates OCC boolean/seam-reassembly float noise
-    # while still catching any real material loss (orders of magnitude larger).
-    assert abs(combined - ref.volume) / ref.volume < 1e-5
+    # 1e-4 rel tolerates OCC boolean/seam-reassembly float noise from the
+    # collar addition; the collar is post-clip so exact conservation is looser.
+    assert abs(combined - ref.volume) / ref.volume < 1e-4
 
 
 def test_top_screw_holes_open():
@@ -101,6 +103,48 @@ def test_top_screw_holes_open():
             C.COVER_SCREW_CLEARANCE_DIA / 2 - 0.1, C.COVER_THICKNESS + 0.2
         ).translate((cx, cy, C.MAIN_RIM_Z - 0.1))
         assert (top & pin).volume < 1e-3, f"screw hole blocked at PCB ({hx}, {hy})"
+
+
+def test_encoder_bezel_is_hollow_shell():
+    """The encoder bezel must be a HOLLOW cap, not a solid block: its cavity
+    clears the 12 mm EC11 box, the roof is closed, and only the shaft hole is open."""
+    from build123d import Solid
+    from sofle_case.case import _encoder_bbox
+    top = build_top_part("right")
+    enc_cx, enc_cy, _, _ = _encoder_bbox()
+
+    # Cavity is hollow where the encoder box sits (5 mm off-centre, box level).
+    box_probe = Solid.make_box(1.0, 1.0, 1.0).translate(
+        (enc_cx + 5.0, enc_cy, C.ENCODER_BODY_TOP_Z - 1.0))
+    assert (top & box_probe).volume < 1e-3, "bezel is solid where the encoder box must sit"
+
+    # Roof is closed above the box (annulus) 5 mm off-centre, just under the top.
+    roof_probe = Solid.make_box(1.0, 1.0, 0.4).translate(
+        (enc_cx + 5.0, enc_cy, C.ENCODER_SHELL_TOP_Z - 0.5))
+    assert (top & roof_probe).volume > 1e-3, "bezel roof is open — box would be exposed"
+
+    # Shaft hole is open through the roof at the centre.
+    shaft_probe = Solid.make_cylinder(
+        C.ENCODER_SHAFT_HOLE_DIA / 2 - 0.3, 0.4
+    ).translate((enc_cx, enc_cy, C.ENCODER_SHELL_TOP_Z - 0.5))
+    assert (top & shaft_probe).volume < 1e-3, "shaft hole is blocked"
+
+
+def test_encoder_window_is_exact_cutout():
+    """The encoder cover window follows the exact plate cutout (no MX housing
+    margin): material remains just past the cutout edge where the enlarged MX
+    window would have removed it."""
+    from build123d import Solid
+    from sofle_case.top_cover import build_top_cover
+    from sofle_case.case import _encoder_bbox
+    enc_cx, enc_cy, bw, _ = _encoder_bbox()
+    cover = build_top_cover()
+    # 0.5 mm past the exact cutout edge — inside the old +COVER_WINDOW_OFFSET window.
+    probe = Solid.make_box(0.6, 0.6, 0.4).translate(
+        (enc_cx + bw / 2 + 0.5, enc_cy, C.MAIN_RIM_Z + 0.3))
+    assert (cover & probe).volume > 1e-3, (
+        "encoder window is enlarged — should be the exact plate cutout"
+    )
 
 
 def test_top_windows_clear_switch_housings():

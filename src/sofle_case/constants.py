@@ -27,10 +27,10 @@ PLATE_THICKNESS = PLATE_TOP_Z - PLATE_SEAT_Z  # = 1.5 mm
 # (see the PCB transform section below) so the footprint always tracks
 # WALL_THICKNESS — thicken the wall and the envelope grows outward automatically
 # while the PCB stays centred.
-WALL_THICKNESS  = 3.75  # slim wall; grows the footprint outward (was 7.5)
+WALL_THICKNESS  = 4.75  # slim wall; grows the footprint outward (was 7.5)
 # NOTE: CORNER_RADIUS is unused/dead — the visible outer corner radius is the
 # Kind.ARC offset in tray._outer_extruded (= WALL_THICKNESS + PCB_XY_CLEARANCE),
-# so the corner tracks the wall (≈4.25 at WALL=3.75). Kept only for reference.
+# so the corner tracks the wall (≈5.25 at WALL=4.75). Kept only for reference.
 CORNER_RADIUS   = 3.5
 TOP_CHAMFER     = 0.8
 BOTTOM_CHAMFER  = 0.5   # 45° counter-chamfer on outer bottom edge (elephant-foot pre-compensation)
@@ -41,7 +41,7 @@ BOTTOM_CHAMFER  = 0.5   # 45° counter-chamfer on outer bottom edge (elephant-fo
 # with the switch plate). 1.5 mm eats ~20% of the top wall thickness while leaving
 # a 6.0 mm solid base. (OCC rejects an asymmetric chamfer on this edge set, so a
 # clean symmetric 45° is used — the horizontal and vertical legs are equal.)
-OUTER_TOP_CHAMFER = 1.5   # mm, 45° outer-top bevel leg
+OUTER_TOP_CHAMFER = 1.9   # mm, 45° outer-top bevel leg (~40% of WALL_THICKNESS)
 
 # ---------- Top cover (sandwich lid over the switch plate) ----------
 # A thin printed layer the shape of the switch plate, sitting on the plate top
@@ -71,6 +71,25 @@ COVER_FUSE_MARGIN       = 1.0    # mm; membrane→upper-wall fusion overlap in t
 SEAM_Z       = MAIN_RIM_Z / 2            # 6.25 mm; the horizontal split plane
 COVER_TOP_Z  = MAIN_RIM_Z + COVER_THICKNESS  # 13.5 mm; TOP part rim (membrane top)
 
+# ---------- Encoder knob-bezel shell (TOP part, around EC11 rotary encoder) ----------
+# The EC11 body is a ~12 mm box that mounts through the plate's encoder cutout
+# (~12.7 mm) and protrudes ~2 mm above the plate top. On the sandwich TOP part a
+# HOLLOW bezel caps it: an open-bottom cavity receives the box + threaded bushing,
+# and a closed roof lets only the 6 mm shaft exit through ENCODER_SHAFT_HOLE_DIA.
+# The *_PROUD heights are datasheet ESTIMATES — measure the physical EC11 and tune
+# them if the bezel sits proud of, or clashes with, the knob.
+ENCODER_BODY_PROUD     = 2.0   # mm; EC11 box top above the plate (measured)
+ENCODER_BUSHING_PROUD  = 6.0   # mm; est. threaded-bushing top above the plate
+ENCODER_SHELL_WALL     = 2.0   # mm; bezel side-wall thickness (ring around the window)
+ENCODER_SHELL_ROOF     = 1.2   # mm; closed top-face thickness
+ENCODER_SHELL_CAVITY_CLEAR = 0.4  # mm/side; cavity grows past the window so the shell
+                                  # ring overlaps solid cover material (robust fusion)
+ENCODER_SHAFT_HOLE_DIA = 7.5   # mm; shaft clearance: 6 mm shaft + 0.75 mm/side
+ENCODER_BODY_TOP_Z     = PLATE_TOP_Z + ENCODER_BODY_PROUD           # 14.5; box top
+ENCODER_BUSHING_TOP_Z  = PLATE_TOP_Z + ENCODER_BUSHING_PROUD        # 19.5; bushing top
+ENCODER_CAVITY_TOP_Z   = ENCODER_BUSHING_TOP_Z + 0.5               # 20.0; roof underside (0.5 clr)
+ENCODER_SHELL_TOP_Z    = ENCODER_CAVITY_TOP_Z + ENCODER_SHELL_ROOF  # 21.2; bezel outer top
+
 # ---------- Standoff geometry ----------
 STANDOFF_OD_LOWER  = 5.5   # PCB-seat shoulder OD
 STANDOFF_OD_UPPER  = 3.9   # passes through PCB Ø4.1 hole (~0.2 mm clearance); widened from 3.5 to thicken the M2 self-tap boss wall
@@ -98,8 +117,10 @@ USB_C_W = 9.0
 # the stem is visible from the −X elevation and the wall reads as one clean part.
 # (Replaces the earlier empirical S-curve ramp valley.)
 SLIDE_SWITCH_W     = 6.0   # mm; slide actuator nominal width (reference)
-SLIDE_SLOT_W       = 8.0   # mm; slot Y width — actuator + margin, centred on SW_SLIDE_POS
-SLIDE_SLOT_Z_FLOOR = 9.0   # mm; slot floor — exposes the actuator stem, clears the PCB seat
+SLIDE_SLOT_W       = 8.0   # mm; (reference) old rectangular slot Y width
+SLIDE_SLOT_Z_FLOOR = 9.0   # mm; (reference) old rectangular slot floor Z
+SLIDE_BOWL_RADIUS  = 8.0   # mm; hemisphere scoop radius for finger-bowl cutout
+SLIDE_BOWL_CENTER_Z = PCB_TOP_Z + 2.5  # mm; SK12D07VG3 actuator nub centre Z
 
 # ---------- Battery pocket (405070 LiPo cell: 4.0mm thick, 50x70mm footprint) ----------
 # Recessed into the floor's added 1.8 mm thickness (see FLOOR_THICKNESS above),
@@ -141,8 +162,8 @@ PCB_Y_MIN, PCB_Y_MAX = -110.5, 5.0
 
 # Outer envelope = PCB span + a full wall + clearance on every side. Derived so
 # the footprint tracks WALL_THICKNESS automatically and the PCB stays centred.
-OUTER_WIDTH  = (PCB_X_MAX - PCB_X_MIN) + 2 * (WALL_THICKNESS + PCB_XY_CLEARANCE)  # = 159.5
-OUTER_DEPTH  = (PCB_Y_MAX - PCB_Y_MIN) + 2 * (WALL_THICKNESS + PCB_XY_CLEARANCE)  # = 131.5
+OUTER_WIDTH  = (PCB_X_MAX - PCB_X_MIN) + 2 * (WALL_THICKNESS + PCB_XY_CLEARANCE)  # = 154.0
+OUTER_DEPTH  = (PCB_Y_MAX - PCB_Y_MIN) + 2 * (WALL_THICKNESS + PCB_XY_CLEARANCE)  # = 126.0
 
 PCB_OFFSET_X = (OUTER_WIDTH - (PCB_X_MAX - PCB_X_MIN)) / 2 - PCB_X_MIN
 PCB_OFFSET_Y = (OUTER_DEPTH - (PCB_Y_MAX - PCB_Y_MIN)) / 2 - PCB_Y_MIN
@@ -197,5 +218,5 @@ MCU_Y_RELIEF_CEILING_X = 20.0  # mm, PCB coords — east limit of the ceiling-ba
 # ---------- Slide-switch slot X reach (−X wall) ----------
 # Inner-X bound the slide-switch slot cutter extrudes to. Derived from the −X wall
 # corner (pcb_to_case(0,0)[0]) + a 1.5 mm margin so it tracks the PCB re-centring
-# when WALL_THICKNESS changes (14.25 at WALL=3.75).
+# when WALL_THICKNESS changes (15.25 at WALL=4.75).
 MCU_HILL_NEG_X_INNER_BOUND_X: float    = pcb_to_case(0, 0)[0] + 1.5

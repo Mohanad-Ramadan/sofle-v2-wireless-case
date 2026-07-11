@@ -55,9 +55,22 @@ def _cover_body(margin: float = 0.0) -> Part:
     return cast(Part, Pos(0, 0, C.MAIN_RIM_Z) * bp.part)
 
 
-def _window_solid(case_pts: list[tuple[float, float]]) -> Part:
-    """A single switch window: the plate cutout grown outward by COVER_WINDOW_OFFSET,
-    extruded through the full cover thickness (with a small over-cut top and bottom)."""
+def _is_encoder_cutout(case_pts: list[tuple[float, float]]) -> bool:
+    """True if this cutout is the EC11 encoder's, matched by centroid proximity
+    to SW_ENCODER_POS (within 1 mm)."""
+    enc_cx, enc_cy = C.pcb_to_case(*C.SW_ENCODER_POS)
+    cx = sum(p[0] for p in case_pts) / len(case_pts)
+    cy = sum(p[1] for p in case_pts) / len(case_pts)
+    return ((cx - enc_cx) ** 2 + (cy - enc_cy) ** 2) ** 0.5 < 1.0
+
+
+def _window_solid(case_pts: list[tuple[float, float]], margin: float) -> Part:
+    """A single window: the plate cutout grown outward by ``margin`` (Kind.ARC),
+    extruded through the full cover thickness (with a small over-cut top and bottom).
+
+    MX switch windows use ``COVER_WINDOW_OFFSET`` so the 15.6 mm top housing clears.
+    The encoder window uses ``margin=0`` — its exact plate cutout — because the EC11
+    body already passes through that opening and the bezel shell caps it from above."""
     pts = case_pts[:-1] if case_pts[0] == case_pts[-1] else case_pts
     with BuildLine() as bl:
         Polyline(*pts, close=True)
@@ -65,7 +78,8 @@ def _window_solid(case_pts: list[tuple[float, float]]) -> Part:
     with BuildPart() as bp:
         with BuildSketch(Plane.XY):
             face = make_face(wire)  # type: ignore[arg-type]
-            face = offset(face, amount=C.COVER_WINDOW_OFFSET, kind=Kind.ARC)
+            if margin:
+                face = offset(face, amount=margin, kind=Kind.ARC)
         extrude(amount=C.COVER_THICKNESS + 0.2)
     assert bp.part is not None
     return cast(Part, Pos(0, 0, C.MAIN_RIM_Z - 0.1) * bp.part)
@@ -95,7 +109,8 @@ def build_top_cover(fuse_margin: float = 0.0) -> Part:
         case_pts = [C.pcb_to_case(x, y) for x, y in cutout_pcb]
         if len(case_pts) < 3:
             continue
-        cover = cast(Part, cover - _window_solid(case_pts))
+        margin = 0.0 if _is_encoder_cutout(case_pts) else C.COVER_WINDOW_OFFSET
+        cover = cast(Part, cover - _window_solid(case_pts, margin))
 
     cover = cast(Part, cover - _screw_holes())
 

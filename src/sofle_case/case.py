@@ -7,13 +7,14 @@ together through the standoffs. See ``.omc/specs/deep-dive-sandwich-case-top-bot
 from __future__ import annotations
 from typing import Literal, cast
 from build123d import Part, mirror, Plane, Pos, fillet, Axis, BuildPart, Locations, Cylinder, Sphere, Solid
+from OCP.Standard import Standard_Failure
 from OCP.ShapeFix import ShapeFix_Shape
 from OCP.TopoDS import TopoDS
 from . import constants as C
 from .tray import build_tray
 from .standoffs import stepped_standoff
 from .battery import battery_pocket
-from .top_cover import build_top_cover
+from .top_cover import build_top_cover, _load_plate_cutouts
 
 
 Side = Literal["left", "right"]
@@ -122,6 +123,92 @@ def build_bottom_part(side: Side) -> Part:
     return bottom
 
 
+def _encoder_bbox() -> tuple[float, float, float, float]:
+    """Locate the EC11 encoder cutout and return (enc_cx, enc_cy, bbox_w, bbox_h)
+    in case coords, matched by centroid proximity to SW_ENCODER_POS."""
+    enc_cx, enc_cy = C.pcb_to_case(*C.SW_ENCODER_POS)
+    matched = None
+    for cut_pcb in _load_plate_cutouts():
+        case_pts = [C.pcb_to_case(x, y) for x, y in cut_pcb]
+        cx = sum(p[0] for p in case_pts) / len(case_pts)
+        cy = sum(p[1] for p in case_pts) / len(case_pts)
+        if ((cx - enc_cx) ** 2 + (cy - enc_cy) ** 2) ** 0.5 < 1.0:
+            matched = case_pts
+            break
+    assert matched is not None, "encoder cutout not found within 1mm of SW_ENCODER_POS"
+    xs = [p[0] for p in matched]
+    ys = [p[1] for p in matched]
+    bbox_w, bbox_h = max(xs) - min(xs), max(ys) - min(ys)
+    assert 10 < bbox_w < 16 and 10 < bbox_h < 16, (
+        f"encoder cutout bbox {bbox_w:.1f}x{bbox_h:.1f} outside expected 10-16mm range"
+    )
+    return enc_cx, enc_cy, bbox_w, bbox_h
+
+
+def _encoder_shell() -> Part:
+    """Hollow knob-bezel shell over the EC11 encoder in the TOP part.
+
+    A raised housing that CAPS the encoder rather than filling around it. From
+    the bottom up: an open cavity (footprint = plate cutout + clearance) receives
+    the encoder box + threaded bushing as they protrude above the cover; the roof
+    closes the top except for a Ø ENCODER_SHAFT_HOLE_DIA hole through which only
+    the 6 mm shaft exits.
+
+    The shell base overlaps the cover membrane (starts at MAIN_RIM_Z) and its
+    cavity is grown ENCODER_SHELL_CAVITY_CLEAR past the exact window so the ring
+    bites into solid cover material — a robust fusion, no coincident faces.
+    Vertical corners and the top lip are filleted here; the concave arc where the
+    bezel meets the cover surface is added post-union in build_top_part()."""
+    enc_cx, enc_cy, bbox_w, bbox_h = _encoder_bbox()
+
+    clr = C.ENCODER_SHELL_CAVITY_CLEAR
+    cav_w = bbox_w + 2 * clr
+    cav_h = bbox_h + 2 * clr
+    outer_w = cav_w + 2 * C.ENCODER_SHELL_WALL
+    outer_h = cav_h + 2 * C.ENCODER_SHELL_WALL
+
+    shell_h = C.ENCODER_SHELL_TOP_Z - C.MAIN_RIM_Z
+    outer = Solid.make_box(outer_w, outer_h, shell_h).translate(
+        (enc_cx - outer_w / 2, enc_cy - outer_h / 2, C.MAIN_RIM_Z)
+    )
+
+    # Open cavity: from just below the membrane up to the roof underside.
+    cav_z0 = C.MAIN_RIM_Z - 0.2
+    cav_z1 = C.ENCODER_CAVITY_TOP_Z
+    cavity = Solid.make_box(cav_w, cav_h, cav_z1 - cav_z0).translate(
+        (enc_cx - cav_w / 2, enc_cy - cav_h / 2, cav_z0)
+    )
+    # Shaft hole through the roof.
+    shaft = Solid.make_cylinder(
+        C.ENCODER_SHAFT_HOLE_DIA / 2, C.ENCODER_SHELL_TOP_Z - cav_z1 + 0.4
+    ).translate((enc_cx, enc_cy, cav_z1 - 0.2))
+
+    shell = cast(Part, outer - cavity - shaft)
+
+    top_z = C.ENCODER_SHELL_TOP_Z
+
+    # Round the vertical outer corners into arcs (rounded-rectangle bezel).
+    vert = [e for e in shell.edges()
+            if abs(e.tangent_at(0.5).Z) > 0.9 and e.length > shell_h * 0.8]
+    if vert:
+        try:
+            shell = cast(Part, fillet(vert, radius=3.0))
+        except (ValueError, Standard_Failure):
+            pass
+
+    # Smooth the top lip (outer perimeter + inner shaft-hole circle).
+    top_edges = [e for e in shell.edges()
+                 if abs(e.center().Z - top_z) < 0.2
+                 and (e.bounding_box().max.Z - e.bounding_box().min.Z) < 0.3]
+    if top_edges:
+        try:
+            shell = cast(Part, fillet(top_edges, radius=0.8))
+        except (ValueError, Standard_Failure):
+            pass
+
+    return shell
+
+
 def build_top_part(side: Side) -> Part:
     """TOP clamshell half: upper walls (``SEAM_Z → COVER_TOP_Z``) + switch membrane.
 
@@ -136,6 +223,25 @@ def build_top_part(side: Side) -> Part:
 
     top = _clip_z(build_tray(rim_z=C.COVER_TOP_Z), C.SEAM_Z, C.COVER_TOP_Z + 1.0)
     top = cast(Part, top + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
+    top = cast(Part, top + _encoder_shell())
+
+    # Concave arc where the bezel base meets the cover surface (Z ≈ COVER_TOP_Z),
+    # so there is no hard 90° step — the shell flares smoothly out of the lid.
+    enc_cx, enc_cy = C.pcb_to_case(*C.SW_ENCODER_POS)
+    bezel_reach = 14.0
+    base_edges = [
+        e for e in top.edges()
+        if abs(e.center().Z - C.COVER_TOP_Z) < 0.2
+        and (e.bounding_box().max.Z - e.bounding_box().min.Z) < 0.3
+        and ((e.center().X - enc_cx) ** 2
+             + (e.center().Y - enc_cy) ** 2) ** 0.5 < bezel_reach
+    ]
+    if base_edges:
+        try:
+            top = cast(Part, fillet(base_edges, radius=1.5))
+        except (ValueError, Standard_Failure):
+            pass
+
     top = _as_part(top)
 
     if side == "left":
