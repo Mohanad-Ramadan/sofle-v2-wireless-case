@@ -14,7 +14,21 @@ def test_build_left_writes_outputs(tmp_path):
          "left", "--out", str(out)],
         check=True, cwd=str(ROOT),
     )
-    stl = out / "sofle_case_left.stl"
-    step = out / "sofle_case_left.step"
-    assert stl.exists() and stl.stat().st_size > 1000
-    assert step.exists() and step.stat().st_size > 1000
+    # The CLI builds the sandwich clamshell: a TOP and a BOTTOM part per side.
+    for part in ("top", "bottom"):
+        stl = out / f"sofle_left_{part}.stl"
+        step = out / f"sofle_left_{part}.step"
+        assert stl.exists() and stl.stat().st_size > 1000, f"missing {stl}"
+        assert step.exists() and step.stat().st_size > 1000, f"missing {step}"
+
+
+def test_build_legacy_flag_writes_single_piece(tmp_path):
+    out = tmp_path / "output"
+    out.mkdir()
+    subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "build.py"),
+         "right", "--out", str(out), "--legacy"],
+        check=True, cwd=str(ROOT),
+    )
+    stl = out / "sofle_case_right.stl"
+    assert stl.exists() and stl.stat().st_size > 1000, f"missing {stl}"
