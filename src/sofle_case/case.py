@@ -146,19 +146,17 @@ def _encoder_bbox() -> tuple[float, float, float, float]:
 
 
 def _encoder_shell() -> Part:
-    """Hollow knob-bezel shell over the EC11 encoder in the TOP part.
+    """Single-body plateau over the EC11 encoder in the TOP part.
 
-    A raised housing that CAPS the encoder rather than filling around it. From
-    the bottom up: an open cavity (footprint = plate cutout + clearance) receives
-    the encoder box + threaded bushing as they protrude above the cover; the roof
-    closes the top except for a Ø ENCODER_SHAFT_HOLE_DIA hole through which only
-    the 6 mm shaft exits.
+    One low mound centred on the encoder: hollow inside to clear the ~12 mm box
+    that protrudes above the cover, a closed roof, and a plain shaft hole. It
+    leaves the cover tangentially (concave ogee foot) and rounds over at the top
+    edge, so it reads as a single plateau — not a two-tier bezel. The box is
+    hidden; the bushing and 6 mm shaft exit through the ENCODER_SHAFT_HOLE_DIA hole.
 
-    The shell base overlaps the cover membrane (starts at MAIN_RIM_Z) and its
-    cavity is grown ENCODER_SHELL_CAVITY_CLEAR past the exact window so the ring
-    bites into solid cover material — a robust fusion, no coincident faces.
-    Vertical corners and the top lip are filleted here; the concave arc where the
-    bezel meets the cover surface is added post-union in build_top_part()."""
+    The base overlaps the cover membrane (starts at MAIN_RIM_Z) and the cavity is
+    grown ENCODER_SHELL_CAVITY_CLEAR past the exact window so the ring bites into
+    solid cover material for a robust fusion."""
     enc_cx, enc_cy, bbox_w, bbox_h = _encoder_bbox()
 
     clr = C.ENCODER_SHELL_CAVITY_CLEAR
@@ -167,12 +165,26 @@ def _encoder_shell() -> Part:
     outer_w = cav_w + 2 * C.ENCODER_SHELL_WALL
     outer_h = cav_h + 2 * C.ENCODER_SHELL_WALL
 
-    shell_h = C.ENCODER_SHELL_TOP_Z - C.MAIN_RIM_Z
-    outer = Solid.make_box(outer_w, outer_h, shell_h).translate(
+    plateau_h = C.ENCODER_SHELL_TOP_Z - C.MAIN_RIM_Z
+    outer = Solid.make_box(outer_w, outer_h, plateau_h).translate(
         (enc_cx - outer_w / 2, enc_cy - outer_h / 2, C.MAIN_RIM_Z)
     )
 
-    # Open cavity: from just below the membrane up to the roof underside.
+    # Lid-stub: a thin flange at the cover level (MAIN_RIM_Z → COVER_TOP_Z) that
+    # gives the concave foot a clean local surface to roll onto, so the foot is
+    # filleted HERE in the isolated shell instead of hunting it among the fused
+    # lid's messy faces (fuse-margin, neighbour windows) where OCC can't blend it.
+    # Once fused to the cover the stub is coplanar with the membrane and vanishes
+    # into the lid; it is sized to stay clear of the neighbouring switch window.
+    foot_margin = C.ENCODER_BEZEL_FOOT_R + 0.3
+    stub_w = outer_w + 2 * foot_margin
+    stub_h = outer_h + 2 * foot_margin
+    stub = Solid.make_box(stub_w, stub_h, C.COVER_TOP_Z - C.MAIN_RIM_Z).translate(
+        (enc_cx - stub_w / 2, enc_cy - stub_h / 2, C.MAIN_RIM_Z)
+    )
+    body = cast(Part, outer + stub)
+
+    # Open cavity: from just below the membrane up to the roof underside (clears box).
     cav_z0 = C.MAIN_RIM_Z - 0.2
     cav_z1 = C.ENCODER_CAVITY_TOP_Z
     cavity = Solid.make_box(cav_w, cav_h, cav_z1 - cav_z0).translate(
@@ -183,26 +195,58 @@ def _encoder_shell() -> Part:
         C.ENCODER_SHAFT_HOLE_DIA / 2, C.ENCODER_SHELL_TOP_Z - cav_z1 + 0.4
     ).translate((enc_cx, enc_cy, cav_z1 - 0.2))
 
-    shell = cast(Part, outer - cavity - shaft)
+    shell = cast(Part, body - cavity - shaft)
 
     top_z = C.ENCODER_SHELL_TOP_Z
 
-    # Round the vertical outer corners into arcs (rounded-rectangle bezel).
+    # Round the vertical corners into arcs (rounded-rectangle plan).
     vert = [e for e in shell.edges()
-            if abs(e.tangent_at(0.5).Z) > 0.9 and e.length > shell_h * 0.8]
+            if abs(e.tangent_at(0.5).Z) > 0.9 and e.length > 2.0]
     if vert:
         try:
             shell = cast(Part, fillet(vert, radius=3.0))
         except (ValueError, Standard_Failure):
             pass
 
-    # Smooth the top lip (outer perimeter + inner shaft-hole circle).
-    top_edges = [e for e in shell.edges()
+    def _near_plateau_wall(e) -> bool:
+        """Edge on the plateau's outer wall loop (radial ≈ outer half), excluding
+        the cavity/shaft (inner) and the stub (farther out)."""
+        m = e.center()
+        cheby = max(abs(m.X - enc_cx), abs(m.Y - enc_cy))
+        return cav_w / 2 + 0.3 < cheby < outer_w / 2 + 0.5
+
+    # Convex round-over of the plateau's top edge (roof ↔ outer wall).
+    top_round = [e for e in shell.edges()
                  if abs(e.center().Z - top_z) < 0.2
-                 and (e.bounding_box().max.Z - e.bounding_box().min.Z) < 0.3]
-    if top_edges:
+                 and (e.bounding_box().max.Z - e.bounding_box().min.Z) < 0.3
+                 and _near_plateau_wall(e)]
+    if top_round:
         try:
-            shell = cast(Part, fillet(top_edges, radius=0.8))
+            shell = cast(Part, fillet(top_round, radius=C.ENCODER_BEZEL_TOP_R))
+        except (ValueError, Standard_Failure):
+            pass
+
+    # Concave foot: roll the plateau's outer wall into the lid-stub top at the
+    # cover level (Z = COVER_TOP_Z), completing the tangent ogee.
+    foot = [e for e in shell.edges()
+            if abs(e.center().Z - C.COVER_TOP_Z) < 0.2
+            and (e.bounding_box().max.Z - e.bounding_box().min.Z) < 0.3
+            and _near_plateau_wall(e)]
+    if foot:
+        try:
+            shell = cast(Part, fillet(foot, radius=C.ENCODER_BEZEL_FOOT_R))
+        except (ValueError, Standard_Failure):
+            pass
+
+    # Soften the shaft-hole lip.
+    lip = [e for e in shell.edges()
+           if abs(e.center().Z - top_z) < 0.2
+           and (e.bounding_box().max.Z - e.bounding_box().min.Z) < 0.3
+           and max(abs(e.center().X - enc_cx),
+                   abs(e.center().Y - enc_cy)) < C.ENCODER_SHAFT_HOLE_DIA / 2 + 0.5]
+    if lip:
+        try:
+            shell = cast(Part, fillet(lip, radius=0.6))
         except (ValueError, Standard_Failure):
             pass
 
@@ -224,24 +268,6 @@ def build_top_part(side: Side) -> Part:
     top = _clip_z(build_tray(rim_z=C.COVER_TOP_Z), C.SEAM_Z, C.COVER_TOP_Z + 1.0)
     top = cast(Part, top + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     top = cast(Part, top + _encoder_shell())
-
-    # Concave arc where the bezel base meets the cover surface (Z ≈ COVER_TOP_Z),
-    # so there is no hard 90° step — the shell flares smoothly out of the lid.
-    enc_cx, enc_cy = C.pcb_to_case(*C.SW_ENCODER_POS)
-    bezel_reach = 14.0
-    base_edges = [
-        e for e in top.edges()
-        if abs(e.center().Z - C.COVER_TOP_Z) < 0.2
-        and (e.bounding_box().max.Z - e.bounding_box().min.Z) < 0.3
-        and ((e.center().X - enc_cx) ** 2
-             + (e.center().Y - enc_cy) ** 2) ** 0.5 < bezel_reach
-    ]
-    if base_edges:
-        try:
-            top = cast(Part, fillet(base_edges, radius=1.5))
-        except (ValueError, Standard_Failure):
-            pass
-
     top = _as_part(top)
 
     if side == "left":

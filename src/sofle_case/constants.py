@@ -71,24 +71,27 @@ COVER_FUSE_MARGIN       = 1.0    # mm; membrane→upper-wall fusion overlap in t
 SEAM_Z       = MAIN_RIM_Z / 2            # 6.25 mm; the horizontal split plane
 COVER_TOP_Z  = MAIN_RIM_Z + COVER_THICKNESS  # 13.5 mm; TOP part rim (membrane top)
 
-# ---------- Encoder knob-bezel shell (TOP part, around EC11 rotary encoder) ----------
+# ---------- Encoder plateau (TOP part, around EC11 rotary encoder) ----------
 # The EC11 body is a ~12 mm box that mounts through the plate's encoder cutout
 # (~12.7 mm) and protrudes ~2 mm above the plate top. On the sandwich TOP part a
-# HOLLOW bezel caps it: an open-bottom cavity receives the box + threaded bushing,
-# and a closed roof lets only the 6 mm shaft exit through ENCODER_SHAFT_HOLE_DIA.
-# The *_PROUD heights are datasheet ESTIMATES — measure the physical EC11 and tune
-# them if the bezel sits proud of, or clashes with, the knob.
+# single-body PLATEAU caps it: one low mound, hollow inside to clear the box, with
+# a closed roof and a plain shaft hole. The plateau leaves the cover tangentially
+# (concave ogee foot) and rounds over at the top edge — no hard step, no second
+# tier. The box is hidden; the bushing + 6 mm shaft exit through the shaft hole.
 ENCODER_BODY_PROUD     = 2.0   # mm; EC11 box top above the plate (measured)
-ENCODER_BUSHING_PROUD  = 6.0   # mm; est. threaded-bushing top above the plate
-ENCODER_SHELL_WALL     = 2.0   # mm; bezel side-wall thickness (ring around the window)
-ENCODER_SHELL_ROOF     = 1.2   # mm; closed top-face thickness
-ENCODER_SHELL_CAVITY_CLEAR = 0.4  # mm/side; cavity grows past the window so the shell
-                                  # ring overlaps solid cover material (robust fusion)
-ENCODER_SHAFT_HOLE_DIA = 7.5   # mm; shaft clearance: 6 mm shaft + 0.75 mm/side
-ENCODER_BODY_TOP_Z     = PLATE_TOP_Z + ENCODER_BODY_PROUD           # 14.5; box top
-ENCODER_BUSHING_TOP_Z  = PLATE_TOP_Z + ENCODER_BUSHING_PROUD        # 19.5; bushing top
-ENCODER_CAVITY_TOP_Z   = ENCODER_BUSHING_TOP_Z + 0.5               # 20.0; roof underside (0.5 clr)
-ENCODER_SHELL_TOP_Z    = ENCODER_CAVITY_TOP_Z + ENCODER_SHELL_ROOF  # 21.2; bezel outer top
+ENCODER_BODY_TOP_Z     = PLATE_TOP_Z + ENCODER_BODY_PROUD   # 14.5; box top (cavity must clear this)
+ENCODER_SHELL_WALL     = 1.5   # mm; plateau side-wall thickness (thin → smaller footprint)
+ENCODER_SHELL_ROOF     = 1.5   # mm; closed top-face thickness
+ENCODER_SHELL_CAVITY_CLEAR = 0.4  # mm/side; cavity grows past the window so the ring
+                                  # overlaps solid cover material (robust fusion)
+ENCODER_SHAFT_HOLE_DIA = 7.5   # mm; shaft hole: clears the 6 mm shaft + 7 mm bushing
+ENCODER_PLATEAU_H      = 4.5   # mm; plateau height above the cover surface
+ENCODER_SHELL_TOP_Z    = COVER_TOP_Z + ENCODER_PLATEAU_H            # 18.0; plateau top
+ENCODER_CAVITY_TOP_Z   = ENCODER_SHELL_TOP_Z - ENCODER_SHELL_ROOF   # 16.5; roof underside (clears box)
+# Tangent blends so the plateau reads as a mound, not a box:
+ENCODER_BEZEL_FOOT_R   = 1.5   # mm; concave foot radius (plateau → cover)
+ENCODER_BEZEL_TOP_R    = 1.5   # mm; convex round-over of the plateau top edge
+# NB: PLATEAU_H MUST exceed FOOT_R + TOP_R or the two rolls collide and OCC aborts.
 
 # ---------- Standoff geometry ----------
 STANDOFF_OD_LOWER  = 5.5   # PCB-seat shoulder OD

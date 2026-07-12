@@ -54,7 +54,7 @@ def test_split_parts_are_valid_single_solids(side):
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_top_part_z_range(side):
-    """TOP spans the seam up to the encoder bezel-shell top (6.25 → 21.2)."""
+    """TOP spans the seam up to the encoder plateau top (6.25 → 18.0)."""
     bb = build_top_part(side).bounding_box()
     assert abs(bb.min.Z - C.SEAM_Z) < 0.01
     assert abs(bb.max.Z - C.ENCODER_SHELL_TOP_Z) < 0.01
@@ -128,6 +128,27 @@ def test_encoder_bezel_is_hollow_shell():
         C.ENCODER_SHAFT_HOLE_DIA / 2 - 0.3, 0.4
     ).translate((enc_cx, enc_cy, C.ENCODER_SHELL_TOP_Z - 0.5))
     assert (top & shaft_probe).volume < 1e-3, "shaft hole is blocked"
+
+
+def test_encoder_bezel_base_is_plateau_not_box():
+    """The plateau leaves the cover as a tangent ogee: the concave foot flares out
+    wider than the straight wall. Probe just beyond the wall — solid at the foot
+    (bulge), empty at the straight mid-wall."""
+    from build123d import Solid
+    from sofle_case.case import _encoder_bbox
+    top = build_top_part("right")
+    enc_cx, enc_cy, bw, _ = _encoder_bbox()
+    wall_half = bw / 2 + C.ENCODER_SHELL_CAVITY_CLEAR + C.ENCODER_SHELL_WALL
+    # Just past the straight wall — only the flared foot reaches this radius.
+    probe_x = enc_cx + wall_half + 0.3
+
+    foot = Solid.make_box(0.4, 0.4, 0.2).translate(
+        (probe_x, enc_cy, C.COVER_TOP_Z + 0.15))
+    assert (top & foot).volume > 1e-4, "no foot flare — base is a plain box"
+
+    mid_z = (C.COVER_TOP_Z + C.ENCODER_CAVITY_TOP_Z) / 2
+    wall = Solid.make_box(0.4, 0.4, 0.3).translate((probe_x, enc_cy, mid_z))
+    assert (top & wall).volume < 1e-4, "straight wall as wide as the foot — no ogee flare"
 
 
 def test_encoder_window_is_exact_cutout():
