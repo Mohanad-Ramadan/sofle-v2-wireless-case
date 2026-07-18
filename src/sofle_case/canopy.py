@@ -59,10 +59,12 @@ CANOPY_WEST_OUTER_X = (C.pcb_to_case(0, 0)[0] - C.WALL_THICKNESS - C.PCB_XY_CLEA
 CANOPY_NORTH_OUTER_Y = (C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1]
                         + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE - C.OUTER_TOP_CHAMFER)       # ≈ 121.6
 CANOPY_EAST_X       = 34.6                       # switch-column boundary (bay east edge)
-CANOPY_ENCODER_GAP  = 2.0
-CANOPY_ENCODER_HALF = 10.0
+CANOPY_ENCODER_HALF = 10.0                       # encoder centre → plateau north edge (measured)
+CANOPY_ENCODER_CLEAR = 0.2                       # small print gap where the tongue butts the plateau
+# The tongue's south edge lands right on the encoder plateau's north face so the bay is closed
+# there (no open strip) and the two read as one — with a hair of print clearance.
 CANOPY_SOUTH_Y      = (C.pcb_to_case(*C.SW_ENCODER_POS)[1]
-                       + CANOPY_ENCODER_HALF + CANOPY_ENCODER_GAP)                          # ≈ 61.8
+                       + CANOPY_ENCODER_HALF + CANOPY_ENCODER_CLEAR)                        # ≈ 60.0
 CANOPY_RAMP_FOOT_Y  = 64.0                       # tongue → ramp transition (slip starts south)
 CANOPY_RAMP_TOP_OLED_GAP = 0.5
 CANOPY_RAMP_TOP_Y   = C.pcb_to_case(*C.J_OLED_POS)[1] - CANOPY_RAMP_TOP_OLED_GAP            # ≈ 81.6
