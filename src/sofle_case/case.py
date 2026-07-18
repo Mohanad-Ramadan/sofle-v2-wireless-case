@@ -314,6 +314,12 @@ if __name__ == "__main__":
     parts = [build_bottom_part(_SIDE), build_top_part(_SIDE)]
     names = ["bottom", "top"]
 
+    # The bay canopy is a separate PARKED part (not fused into the TOP); show it here for
+    # context only. It is built in right-half coords, so _mirror_part aligns it for the left.
+    from sofle_case.canopy import build_canopy
+    parts.append(_mirror_part(build_canopy()))
+    names.append("canopy")
+
     if C.SHOW_PCB_PHANTOM:
         from sofle_case.pcb_phantom import build_pcb_phantom
         parts.append(_mirror_part(build_pcb_phantom()))
