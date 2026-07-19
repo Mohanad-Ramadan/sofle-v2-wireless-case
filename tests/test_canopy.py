@@ -1,14 +1,10 @@
-"""Tests for the PARKED standalone fastback canopy (the MCU cover).
+"""Tests for the fastback canopy — now FUSED into the TOP cover.
 
-The upper case is in its pre-cover state, so this module is not wired into the case build —
-these tests validate the canopy shape in isolation. Its parameters live on the canopy module
-(``CAN.CANOPY_*``), not in constants.py.
-
-Design: the cap SETS ON the case top. South→north: a low tongue resting on the cover → an
-ease-OUT ramp that rises fast off the foot (clears the bay components) then eases into the
-flat roof → flat roof at the ridge → short round-over + vertical north wall. The N/W walls
-land on the flat wall-top at the chamfer FIRST point (chamfer left exposed); nothing drops
-below the seat plane; the NW corner is rounded to the case's own corner radius.
+The canopy's ramp merges tangentially DOWN into the cover surface (no tongue) and
+``build_top_part`` adds it onto the TOP, so the MCU hood is integral to the cover. Parameters
+live on the canopy module (``CAN.CANOPY_*``). South→north: the ramp foot merges into the cover
+→ a tangent S-curve slip → flat roof at the ridge → short round-over + vertical north wall with
+the USB-C port; N/W walls land at the chamfer FIRST point, NW corner rounded to the case radius.
 """
 import pytest
 from build123d import Solid, GeomType
@@ -17,6 +13,8 @@ from OCP.BRepCheck import BRepCheck_Analyzer
 from sofle_case import constants as C
 from sofle_case import canopy as CAN
 from sofle_case.canopy import build_canopy
+from sofle_case.case import build_top_part
+from sofle_case.pcb_phantom import build_pcb_phantom
 
 
 def _mcu_cx() -> float:
@@ -47,60 +45,36 @@ def test_canopy_is_valid_single_solid(hollow):
     assert BRepCheck_Analyzer(c.wrapped).IsValid()
 
 
-def test_canopy_rests_on_seat_nothing_below():
-    """The cap sets ON the case top: its lowest surface is the seat plane, nothing drops
-    below it (no chamfer fill)."""
+def test_canopy_foot_merges_into_cover_no_tongue():
+    """The ramp foot merges tangentially into the cover surface — the roofline is AT the cover
+    top at the foot (not a raised tongue), and it stays near the cover just north of the foot
+    (horizontal tangent), then climbs."""
     c = build_canopy()
-    assert abs(c.bounding_box().min.Z - CAN.CANOPY_SEAT_Z) < 0.01, "canopy drops below the seat plane"
+    assert abs(c.bounding_box().min.Y - CAN.CANOPY_RAMP_FOOT_Y) < 0.05, "canopy extends south of the foot"
+    z_foot = _roof_top(c, _mcu_cx(), CAN.CANOPY_RAMP_FOOT_Y + 0.3)
+    assert z_foot is not None and abs(z_foot - CAN.CANOPY_FOOT_Z) < 0.3, f"foot not at cover: {z_foot}"
+    # tangent-flat at the foot: only just above the cover a little way north (no standing slab)
+    z_near = _roof_top(c, _mcu_cx(), CAN.CANOPY_RAMP_FOOT_Y + 1.5)
+    assert z_near is not None and z_near < CAN.CANOPY_FOOT_Z + 0.6, f"foot not tangent (steps up): {z_near}"
 
 
-def test_canopy_tongue_rests_on_cover():
-    """The south tongue is a thin slab resting on the cover: its top is one wall above the
-    seat (its underside sits on the cover)."""
-    c = build_canopy()
-    for y in (CAN.CANOPY_SOUTH_Y + 1, (CAN.CANOPY_SOUTH_Y + CAN.CANOPY_RAMP_FOOT_Y) / 2):
-        z = _roof_top(c, _mcu_cx(), y)
-        assert z is not None and abs(z - CAN.CANOPY_TONGUE_TOP_Z) < 0.05, f"tongue not flat at y={y}: {z}"
-
-
-def test_canopy_ramp_rises_fast_off_foot():
-    """The 'mirrored slide' ramp is an ease-OUT: monotonic, well ABOVE the straight foot→ridge
-    line early (rises fast so the underside clears components), and tangent into the flat roof."""
+def test_canopy_ramp_is_smooth_and_tangent():
+    """The ramp climbs monotonically from the cover to the ridge, is a real curved (Spline)
+    surface (no facet steps), and is tangent at BOTH ends (S-curve)."""
     c = build_canopy()
     foot, top = CAN.CANOPY_RAMP_FOOT_Y, CAN.CANOPY_RAMP_TOP_Y
-    z_low, z_ridge = CAN.CANOPY_TONGUE_TOP_Z, CAN.CANOPY_RIDGE_TOP_Z
-    ys = [foot + t * (top - foot) for t in (0.0, 0.25, 0.5, 0.75, 1.0)]
-    zs = [_roof_top(c, _mcu_cx(), y) for y in ys]
+    zs = [_roof_top(c, _mcu_cx(), foot + t * (top - foot)) for t in (0.0, 0.25, 0.5, 0.75, 1.0)]
     assert all(z is not None for z in zs)
     assert all(b >= a - 1e-6 for a, b in zip(zs, zs[1:])), f"ramp not monotonic: {zs}"
-    assert abs(zs[0] - z_low) < 0.2, "ramp foot not at the tongue level"
-    assert abs(zs[-1] - z_ridge) < 0.2, "ramp top not at the ridge"
-
-    def straight(t):
-        return z_low + (z_ridge - z_low) * t
-
-    z20 = _roof_top(c, _mcu_cx(), foot + 0.2 * (top - foot))
-    assert z20 > straight(0.2) + 0.15, f"ramp does not rise fast off the foot: {z20} vs {straight(0.2):.2f}"
-    # tangent into the roof: nearly at the ridge by 85% of the run
-    z85 = _roof_top(c, _mcu_cx(), foot + 0.85 * (top - foot))
-    assert z85 > z_low + 0.9 * (z_ridge - z_low), "ramp does not ease flat into the roof"
-
-
-def test_canopy_ramp_underside_clears_foot_components():
-    """The mirrored ramp lifts the underside clear over the ramp-foot region (slide/reset/JST
-    at ~Y70): the underside there is well above the old low belly (~12.6)."""
-    c = build_canopy()
-    # lowest solid Z in the topmost band at the MCU column over y=70 (the shell underside)
-    y = 70.0
-    zs = [z / 10 for z in range(130, 230)]
-    solid = [z for z in zs if _solid_at(c, _mcu_cx(), y, z, s=0.2)]
-    assert solid, "no shell over the ramp foot"
-    assert min(solid) > 14.5, f"underside still low over the ramp foot: {min(solid)}"
+    assert abs(zs[0] - CAN.CANOPY_FOOT_Z) < 0.3 and abs(zs[-1] - CAN.CANOPY_RIDGE_TOP_Z) < 0.2
+    ramp_curved = [f for f in _curved_faces(c)
+                   if foot < f.center().Y < top and C.COVER_TOP_Z < f.center().Z < CAN.CANOPY_RIDGE_TOP_Z]
+    assert ramp_curved, "ramp has no smooth curved face (faceted?)"
 
 
 def test_canopy_flat_roof_at_ridge():
     c = build_canopy()
-    for y in (90.0, 105.0, 115.0):
+    for y in (90.0, 105.0, 113.0):
         z = _roof_top(c, _mcu_cx(), y)
         assert z is not None and abs(z - CAN.CANOPY_RIDGE_TOP_Z) < 0.05, f"roof not flat at y={y}: {z}"
 
@@ -110,50 +84,56 @@ def test_canopy_ridge_is_tallest_point():
     assert abs(c.bounding_box().max.Z - CAN.CANOPY_RIDGE_TOP_Z) < 0.01
 
 
-def test_canopy_west_sets_on_chamfer_first_point():
-    """The west wall lands at the chamfer FIRST point (inner chamfer line), resting on the flat
-    wall-top — NOT flush with the outer face, and it does not drop into the chamfer."""
+def test_canopy_walls_at_chamfer_first_point():
+    """N/W walls land at the chamfer first point; east on the switch-column boundary."""
     c = build_canopy()
-    assert abs(c.bounding_box().min.X - CAN.CANOPY_WEST_OUTER_X) < 0.05
-    assert _solid_at(c, CAN.CANOPY_WEST_OUTER_X + 0.3, 100.0, CAN.CANOPY_SEAT_Z + 0.3), "west wall not on the seat"
-    assert not _solid_at(c, CAN.CANOPY_WEST_OUTER_X + 0.3, 100.0, CAN.CANOPY_SEAT_Z - 0.5), "west wall drops below the seat"
-
-
-def test_canopy_north_sets_on_chamfer_first_point():
-    """The north wall lands at the chamfer first point, is vertical (tall solid span at fixed
-    y), and rests on the seat."""
-    c = build_canopy()
-    assert abs(c.bounding_box().max.Y - CAN.CANOPY_NORTH_OUTER_Y) < 0.05
-    yin = CAN.CANOPY_NORTH_OUTER_Y - 0.3
-    assert _solid_at(c, _mcu_cx(), yin, CAN.CANOPY_SEAT_Z + 0.3), "north wall not on the seat"
-    assert _solid_at(c, _mcu_cx(), yin, 17.0), "north wall not tall/vertical"
-    assert not _solid_at(c, _mcu_cx(), yin, CAN.CANOPY_SEAT_Z - 0.5), "north wall drops below the seat"
+    bb = c.bounding_box()
+    assert abs(bb.min.X - CAN.CANOPY_WEST_OUTER_X) < 0.05
+    assert abs(bb.max.Y - CAN.CANOPY_NORTH_OUTER_Y) < 0.05
+    assert abs(bb.max.X - CAN.CANOPY_EAST_X) < 0.05
 
 
 def test_canopy_nw_corner_is_rounded():
-    """The NW corner is rounded to the case's corner radius (the would-be sharp corner is cut
-    back, and a curved corner face exists), so it nests on the case's rounded corner."""
+    """The NW corner is rounded to the case's corner radius (sharp corner cut back)."""
     c = build_canopy()
-    r = CAN.CANOPY_CORNER_R
-    xw, yn = CAN.CANOPY_WEST_OUTER_X, CAN.CANOPY_NORTH_OUTER_Y
-    assert not _solid_at(c, xw + 0.3, yn - 0.3, 14.0), "NW corner is sharp, not rounded"
-    assert _solid_at(c, xw + 0.3, 100.0, 14.0), "west wall missing away from the corner"
-    nw = [f for f in _curved_faces(c)
-          if f.center().X < xw + r and f.center().Y > yn - r]
-    assert nw, "no rounded corner face at the NW"
-
-
-def test_canopy_east_is_vertical_planar():
-    """The east (switch-facing) side is a plain vertical wall — no curved flare."""
-    c = build_canopy()
-    assert abs(c.bounding_box().max.X - CAN.CANOPY_EAST_X) < 0.05
-    east_curved = [f for f in _curved_faces(c) if f.center().X > CAN.CANOPY_EAST_X - 1.0]
-    assert not east_curved, "east side has a curved flare; it should be a plain vertical wall"
+    xw, yn, r = CAN.CANOPY_WEST_OUTER_X, CAN.CANOPY_NORTH_OUTER_Y, CAN.CANOPY_CORNER_R
+    assert not _solid_at(c, xw + 0.3, yn - 0.3, 16.0), "NW corner is sharp, not rounded"
+    assert _solid_at(c, xw + 0.3, 100.0, 16.0), "west wall missing away from the corner"
+    assert [f for f in _curved_faces(c) if f.center().X < xw + r and f.center().Y > yn - r]
 
 
 def test_canopy_is_hollow_shell():
-    """The printed canopy is a hollow shell — open under the roof — not a solid brick."""
     c = build_canopy()
     assert not _solid_at(c, _mcu_cx(), 100.0, CAN.CANOPY_RIDGE_TOP_Z - CAN.CANOPY_ROOF_WALL - 1.0), \
         "canopy is not hollow under the roof"
-    assert build_canopy().volume < build_canopy(hollow=False).volume, "hollow not lighter than envelope"
+    assert build_canopy().volume < build_canopy(hollow=False).volume
+
+
+def test_canopy_usb_port_open():
+    """A USB-C hole is cut through the north wall on the MCU X column; the wall stays solid to
+    either side of it."""
+    c = build_canopy()
+    ncx = _mcu_cx()
+    yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_SIDE_WALL / 2
+    assert not _solid_at(c, ncx, yw, 16.0), "USB port blocked"
+    assert _solid_at(c, ncx + CAN.CANOPY_USB_W / 2 + 1.5, yw, 15.0), "north wall missing beside the port"
+
+
+# ---------------------------------------------------------------------------
+# Fused into the TOP
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_canopy_fused_into_top_single_solid(side):
+    top = build_top_part(side)
+    assert top.is_valid and len(top.solids()) == 1, f"{side} TOP not one valid solid"
+    assert abs(top.bounding_box().max.Z - CAN.CANOPY_RIDGE_TOP_Z) < 0.01, "TOP not raised to the canopy ridge"
+
+
+def test_fused_top_clears_all_bay_components():
+    """The fused TOP (cover + canopy) must not touch any component above the cover."""
+    top = build_top_part("right")
+    above = Solid.make_box(200, 200, 60).translate((-20, -20, C.COVER_TOP_Z + 0.1))
+    clash = (top & build_pcb_phantom()) & above
+    vol = 0.0 if clash is None else sum(s.volume for s in clash.solids())
+    assert vol < 1e-2, f"canopy clashes bay components by {vol:.2f} mm^3"

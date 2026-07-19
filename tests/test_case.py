@@ -54,10 +54,11 @@ def test_split_parts_are_valid_single_solids(side):
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_top_part_z_range(side):
-    """TOP spans the seam up to the encoder plateau top (6.25 → 18.0)."""
+    """TOP spans the seam up to the fused bay-canopy ridge (6.25 → 21.9), the tallest point."""
+    from sofle_case import canopy as CAN
     bb = build_top_part(side).bounding_box()
     assert abs(bb.min.Z - C.SEAM_Z) < 0.01
-    assert abs(bb.max.Z - C.ENCODER_SHELL_TOP_Z) < 0.01
+    assert abs(bb.max.Z - CAN.CANOPY_RIDGE_TOP_Z) < 0.01
 
 
 @pytest.mark.parametrize("side", ["right", "left"])
@@ -79,10 +80,12 @@ def test_split_conserves_volume(side):
     from sofle_case.battery import battery_pocket
     from sofle_case.top_cover import build_top_cover
     from sofle_case.case import _encoder_shell
+    from sofle_case.canopy import build_canopy
 
     ref = build_tray(rim_z=C.COVER_TOP_Z)
     ref = cast(Part, ref + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     ref = cast(Part, ref + _encoder_shell())
+    ref = cast(Part, ref + build_canopy())   # the canopy is fused into the TOP now
     for hx, hy in C.MOUNTING_HOLES:
         ref = cast(Part, ref + stepped_standoff(at=C.pcb_to_case(hx, hy)))
     ref = cast(Part, ref - battery_pocket())

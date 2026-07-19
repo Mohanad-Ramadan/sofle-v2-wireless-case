@@ -15,6 +15,7 @@ from .tray import build_tray
 from .standoffs import stepped_standoff
 from .battery import battery_pocket
 from .top_cover import build_top_cover, _load_plate_cutouts
+from .canopy import build_canopy
 
 
 Side = Literal["left", "right"]
@@ -261,13 +262,18 @@ def build_top_part(side: Side) -> Part:
     carries its switch windows, open MCU/OLED/JST bay and M2 clearance holes; it is
     grown by ``COVER_FUSE_MARGIN`` so it bites into the upper walls and the whole TOP
     is one solid. Standoffs are NOT part of the TOP — they live in the BOTTOM and
-    pass up through the open cavity."""
+    pass up through the open cavity.
+
+    The bay canopy is FUSED on here (``build_canopy``): its ramp grows out of the cover
+    surface and merges into it (its base overlaps the cover for a clean union), so the MCU
+    hood is integral to the TOP — not a separate part."""
     if side not in ("left", "right"):
         raise ValueError(f"side must be 'left' or 'right', got {side!r}")
 
     top = _clip_z(build_tray(rim_z=C.COVER_TOP_Z), C.SEAM_Z, C.COVER_TOP_Z + 1.0)
     top = cast(Part, top + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     top = cast(Part, top + _encoder_shell())
+    top = cast(Part, top + build_canopy())
     top = _as_part(top)
 
     if side == "left":
@@ -311,14 +317,9 @@ if __name__ == "__main__":
             p = cast(Part, Pos(C.OUTER_WIDTH / 2, 0, 0) * p)
         return p
 
+    # The bay canopy is now FUSED into build_top_part, so it shows as part of "top".
     parts = [build_bottom_part(_SIDE), build_top_part(_SIDE)]
     names = ["bottom", "top"]
-
-    # The bay canopy is a separate PARKED part (not fused into the TOP); show it here for
-    # context only. It is built in right-half coords, so _mirror_part aligns it for the left.
-    from sofle_case.canopy import build_canopy
-    parts.append(_mirror_part(build_canopy()))
-    names.append("canopy")
 
     if C.SHOW_PCB_PHANTOM:
         from sofle_case.pcb_phantom import build_pcb_phantom
