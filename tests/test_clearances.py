@@ -4,18 +4,28 @@ from sofle_case import constants as C
 from sofle_case.tray import build_tray
 
 
-def test_bowl_removes_material_at_switch():
-    """The bowl scoop must remove material from the −X wall at the switch position."""
-    tray = build_tray()
+def test_slide_scoop_opens_at_switch():
+    """The finger scoop must open the −X wall at the actuator nub: material is gone at the wall
+    centre at nub height, yet the wall stays solid below the scoop floor. Uses build_top_part —
+    the scoop is a TOP-only, above-seam feature now (not in the shared build_tray).
+
+    Probes the real wall centre (polygon PCB X=0 edge, case X ≈ 10.5) — not the PCB_X_MIN
+    line (case X 0), which is air in front of the wall and passes even when the scoop is
+    mislocated and removes nothing (the bug this guards against)."""
+    from sofle_case.case import build_top_part
+    top = build_top_part("right")
     _, cy = C.pcb_to_case(*C.SW_SLIDE_POS)
-    wall_outer_x = (C.pcb_to_case(C.PCB_X_MIN, 0)[0]
-                    - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE)
-    probe = Solid.make_box(1.0, 1.0, 1.0).translate(
-        (wall_outer_x - 0.5, cy - 0.5, C.SLIDE_BOWL_CENTER_Z - 0.5)
+    wall_cx = C.pcb_to_case(0, 0)[0] - (C.WALL_THICKNESS + C.PCB_XY_CLEARANCE) / 2
+    gone = Solid.make_box(1.0, 1.0, 1.0).translate(
+        (wall_cx - 0.5, cy - 0.5, C.SLIDE_NUB_Z - 0.5)
     )
-    assert (tray & probe).volume < 0.01, (
-        "bowl did not remove material at the switch position on the −X wall"
+    assert (top & gone).volume < 0.01, (
+        "scoop did not open the −X wall at the switch — mislocated or too narrow"
     )
+    solid = Solid.make_box(1.0, 1.0, 1.0).translate(
+        (wall_cx - 0.5, cy - 0.5, C.SLIDE_SCOOP_FLOOR_Z - 1.5)
+    )
+    assert (top & solid).volume > 0.1, "wall missing below the scoop floor"
 
 
 def test_neg_x_wall_flat_at_mcu():
@@ -50,8 +60,8 @@ def test_no_wall_above_rim():
     assert len(high) == 0, f"{len(high)} edges above the rim — walls are not flat"
 
 
-def test_slide_slot_clears_plate():
-    """Slide-switch bowl centre must stay above the PCB seat shelf."""
-    assert C.SLIDE_BOWL_CENTER_Z >= C.PCB_SEAT_Z, (
-        f"bowl centre {C.SLIDE_BOWL_CENTER_Z} mm < PCB_SEAT_Z {C.PCB_SEAT_Z}"
+def test_slide_scoop_floor_above_pcb():
+    """Scoop floor sits above the PCB top (doesn't gouge to the PCB) yet below the nub."""
+    assert C.PCB_TOP_Z <= C.SLIDE_SCOOP_FLOOR_Z < C.SLIDE_NUB_Z, (
+        f"scoop floor {C.SLIDE_SCOOP_FLOOR_Z} not between PCB top {C.PCB_TOP_Z} and nub {C.SLIDE_NUB_Z}"
     )

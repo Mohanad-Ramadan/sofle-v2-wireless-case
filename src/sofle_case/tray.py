@@ -170,23 +170,6 @@ def _mcu_y_relief_widen(rim_z: float = C.MAIN_RIM_Z) -> Part:
     return widen
 
 
-def _slide_switch_bowl(rim_z: float = C.MAIN_RIM_Z) -> Part:
-    """Hemispherical bowl scoop in the −X wall over the slide switch."""
-    wall_outer_x = (C.pcb_to_case(C.PCB_X_MIN, 0)[0]
-                    - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE)
-    _, sw_cy = C.pcb_to_case(*C.SW_SLIDE_POS)
-    r = C.SLIDE_BOWL_RADIUS
-    cz = C.SLIDE_BOWL_CENTER_Z
-
-    sphere = Solid.make_sphere(r).translate((wall_outer_x, sw_cy, cz))
-
-    pad = r * 3
-    clamp = Solid.make_box(pad, pad, rim_z + 1.0 - C.SEAM_Z).translate(
-        (wall_outer_x - pad / 2, sw_cy - pad / 2, C.SEAM_Z)
-    )
-    return cast(Part, sphere & clamp)
-
-
 # ---------------------------------------------------------------------------
 # Outer concave corner fillets
 # ---------------------------------------------------------------------------
@@ -351,7 +334,8 @@ def build_tray(rim_z: float = C.MAIN_RIM_Z) -> Part:
     hollow = cast(Part, shell - cavity)
     hollow = cast(Part, hollow + _mcu_y_relief_bump(rim_z))
     hollow = cast(Part, hollow - _mcu_y_relief_widen(rim_z))
-    hollow = cast(Part, hollow - _slide_switch_bowl(rim_z))
+    # NB: the slide-switch finger scoop is NOT cut here — it is a TOP-only, above-seam feature
+    # that also lowers the fused canopy, so case.build_top_part applies it (see case._slide_scoop).
     hollow = _fillet_outer_concave_corners(hollow)
     hollow = _fillet_bump_neg_x_corner(hollow)
     filleted = _chamfer_outer_top_edges(hollow, rim_z)

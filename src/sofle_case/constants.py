@@ -114,16 +114,22 @@ PCB_LEDGE_WIDTH   = 1.0   # mm; ring width if enabled
 # no case cutout is needed. USB_C_W is kept for the PCB phantom's jack stub.
 USB_C_W = 9.0
 
-# ---------- Slide-switch access slot (−X wall) ----------
-# A plain rectangular top-open slot through the −X wall exposes the SK12D07VG3
-# slide actuator: cut from the rim down to SLIDE_SLOT_Z_FLOOR over the switch, so
-# the stem is visible from the −X elevation and the wall reads as one clean part.
-# (Replaces the earlier empirical S-curve ramp valley.)
-SLIDE_SWITCH_W     = 6.0   # mm; slide actuator nominal width (reference)
-SLIDE_SLOT_W       = 8.0   # mm; (reference) old rectangular slot Y width
-SLIDE_SLOT_Z_FLOOR = 9.0   # mm; (reference) old rectangular slot floor Z
-SLIDE_BOWL_RADIUS  = 8.0   # mm; hemisphere scoop radius for finger-bowl cutout
-SLIDE_BOWL_CENTER_Z = PCB_TOP_Z + 2.5  # mm; SK12D07VG3 actuator nub centre Z
+# ---------- Slide-switch finger access (−X wall + canopy) ----------
+# A wide, top-open "decrement" scoop lowers the −X wall AND the canopy over the SK12D07VG3 slide
+# actuator (nub at case ≈ (13, 70.5), at the inner wall face, travelling along Y). It is a
+# rounded valley WIDER in Y than tall in Z, cut from a floor just below the nub UP through the
+# upper wall and the whole canopy — roof included — so it is open from the top and the −X side
+# and a finger/nail reaches the nub. Cut in build_top_part AFTER the canopy is fused, so it
+# lowers both the wall and the cover in one op. Its floor is above SEAM_Z (6.25), so the scoop
+# lives entirely in the TOP part — the BOTTOM is untouched (access is from the top/side, not from
+# below, so the lower wall never blocks). See docs and the plan slide-scoop-decrement.md.
+SLIDE_SWITCH_W           = 6.0   # mm; slide actuator nominal width (reference)
+SLIDE_NUB_Z              = PCB_TOP_Z + 2.5   # 10.4; actuator nub centre Z (finger-access height)
+SLIDE_SCOOP_W            = 11.0  # mm; scoop width in Y (wider than its Z depth)
+SLIDE_SCOOP_FLOOR_Z      = 9.0   # mm; scoop floor — just below the nub; solid wall remains below
+SLIDE_SCOOP_INNER_MARGIN = 0.25  # mm; reach past the inner wall face to bare the nub (no PCB)
+SLIDE_SCOOP_FLOOR_R      = 2.0   # mm; floor rounding (reads as a valley, not a box)
+SLIDE_SCOOP_SIDE_R       = 2.5   # mm; plan-corner rounding at the scoop ends
 
 # ---------- Battery pocket (405070 LiPo cell: 4.0mm thick, 50x70mm footprint) ----------
 # Recessed into the floor's added 1.8 mm thickness (see FLOOR_THICKNESS above),

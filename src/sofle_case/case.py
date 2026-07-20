@@ -15,7 +15,7 @@ from .tray import build_tray
 from .standoffs import stepped_standoff
 from .battery import battery_pocket
 from .top_cover import build_top_cover, _load_plate_cutouts
-from .canopy import build_canopy
+from .canopy import build_canopy, CANOPY_RIDGE_TOP_Z
 
 
 Side = Literal["left", "right"]
@@ -254,6 +254,42 @@ def _encoder_shell() -> Part:
     return shell
 
 
+def _slide_scoop() -> Part:
+    """Wide, top-open 'decrement' scoop in the −X wall + canopy over the slide switch.
+
+    A rounded valley WIDER in Y than tall in Z, cut from a floor just below the actuator nub UP
+    through the upper wall and the whole canopy (roof included) — so it is open from the top and
+    the −X side and a finger/nail reaches the SK12D07VG3 nub. ``build_top_part`` subtracts it
+    AFTER the canopy is fused, lowering both the wall and the cover in one op. The floor is above
+    ``SEAM_Z``, so it lives entirely in the TOP part (the BOTTOM is untouched — access is from the
+    top/side, not from below). See the slide-switch section in ``constants.py``.
+
+    Built as a tall box (floor → over the canopy ridge) through the full wall thickness, with its
+    floor and plan corners rounded on the STANDALONE box (robust — not filleting a boolean)."""
+    sw_cy = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
+    outer = C.pcb_to_case(0, 0)[0] - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE   # −X outer wall face
+    inner = C.pcb_to_case(0, 0)[0] - C.PCB_XY_CLEARANCE                       # inner wall face
+    x0 = outer - 1.5                                    # start outside the face (mouth fully open)
+    x1 = inner + C.SLIDE_SCOOP_INNER_MARGIN             # just past the inner face → bares the nub
+    y0, y1 = sw_cy - C.SLIDE_SCOOP_W / 2, sw_cy + C.SLIDE_SCOOP_W / 2
+    z0 = C.SLIDE_SCOOP_FLOOR_Z
+    z1 = CANOPY_RIDGE_TOP_Z + 2.0                       # above the roof → cuts through the canopy
+
+    box = cast(Part, Solid.make_box(x1 - x0, y1 - y0, z1 - z0).translate((x0, y0, z0)))
+    # Round the plan corners (vertical edges), then the floor edges — on the isolated box.
+    vert = [e for e in box.edges() if abs(e.tangent_at(0.5).Z) > 0.9]
+    try:
+        box = cast(Part, fillet(vert, radius=C.SLIDE_SCOOP_SIDE_R))
+    except (ValueError, Standard_Failure):
+        pass
+    floor = [e for e in box.edges() if e.bounding_box().max.Z < z0 + 0.05]
+    try:
+        box = cast(Part, fillet(floor, radius=C.SLIDE_SCOOP_FLOOR_R))
+    except (ValueError, Standard_Failure):
+        pass
+    return box
+
+
 def build_top_part(side: Side) -> Part:
     """TOP clamshell half: upper walls (``SEAM_Z → COVER_TOP_Z``) + switch membrane.
 
@@ -274,6 +310,8 @@ def build_top_part(side: Side) -> Part:
     top = cast(Part, top + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     top = cast(Part, top + _encoder_shell())
     top = cast(Part, top + build_canopy())
+    # Slide-switch finger scoop: cut AFTER the canopy fuse so it lowers the wall + cover together.
+    top = cast(Part, top - _slide_scoop())
     top = _as_part(top)
 
     if side == "left":
@@ -317,8 +355,20 @@ if __name__ == "__main__":
             p = cast(Part, Pos(C.OUTER_WIDTH / 2, 0, 0) * p)
         return p
 
-    # The bay canopy is now FUSED into build_top_part, so it shows as part of "top".
-    parts = [build_bottom_part(_SIDE), build_top_part(_SIDE)]
+    # The bay canopy is now FUSED into build_top_part, so it shows as part of "top". The MCU
+    # block is grouped UNDER the "top" node as its own hideable child ("mcu"), so you can toggle
+    # it off in the OCP tree and inspect the bay / canopy interior beneath it.
+    from build123d import Compound
+    from sofle_case.pcb_phantom import _mcu_block
+
+    top_body = build_top_part(_SIDE)
+    top_body.label = "top_part"
+    mcu = _mirror_part(_mcu_block())   # phantoms are right-half; mirror to match the shown side
+    mcu.label = "mcu"
+    top_group = Compound(children=[top_body, mcu])
+    top_group.label = "top"
+
+    parts = [build_bottom_part(_SIDE), top_group]
     names = ["bottom", "top"]
 
     if C.SHOW_PCB_PHANTOM:

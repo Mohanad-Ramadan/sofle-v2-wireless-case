@@ -54,11 +54,45 @@ def test_split_parts_are_valid_single_solids(side):
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_top_part_z_range(side):
-    """TOP spans the seam up to the fused bay-canopy ridge (6.25 → 21.9), the tallest point."""
+    """TOP spans from the planar seam (6.25) up to the fused bay-canopy ridge (21.9), the
+    tallest point. The slide scoop no longer steps the seam down."""
     from sofle_case import canopy as CAN
     bb = build_top_part(side).bounding_box()
     assert abs(bb.min.Z - C.SEAM_Z) < 0.01
     assert abs(bb.max.Z - CAN.CANOPY_RIDGE_TOP_Z) < 0.01
+
+
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_slide_scoop_top_open(side):
+    """The wide 'decrement' scoop opens the −X wall AND the canopy over the slide switch: open at
+    the nub and through the canopy roof there, solid wall below the floor, canopy roof intact away
+    from the switch, wall solid beside the scoop, and the BOTTOM part untouched."""
+    from build123d import Solid
+    import sofle_case.canopy as CAN
+    top = build_top_part(side)
+    bottom = build_bottom_part(side)
+
+    # −X wall centre at the slide-switch Y (polygon PCB X=0 edge, case X ≈ 10.5).
+    sw_cy = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
+    wall_cx = C.pcb_to_case(0, 0)[0] - (C.WALL_THICKNESS + C.PCB_XY_CLEARANCE) / 2
+    nub_x, roof_z = 12.9, CAN._canopy_roof_z(sw_cy)
+    mcu_x, mcu_y = C.pcb_to_case(*C.MCU_POS)
+    beside_dy = C.SLIDE_SCOOP_W / 2 + 2.0
+    if side == "left":
+        wall_cx = C.OUTER_WIDTH - wall_cx
+        nub_x = C.OUTER_WIDTH - nub_x
+        mcu_x = C.OUTER_WIDTH - mcu_x
+
+    def solid_at(part, x, y, z, s=0.5):
+        box = Solid.make_box(s, s, s).translate((x - s / 2, y - s / 2, z - s / 2))
+        return (part & box).volume > 1e-6
+
+    assert not solid_at(top, wall_cx, sw_cy, C.SLIDE_NUB_Z), "scoop not open at the nub"
+    assert solid_at(top, wall_cx, sw_cy, C.SLIDE_SCOOP_FLOOR_Z - 1.0), "wall not solid below the scoop floor"
+    assert not solid_at(top, nub_x, sw_cy, roof_z), "canopy roof not cut over the switch"
+    assert solid_at(top, mcu_x, mcu_y, CAN._canopy_roof_z(mcu_y) - 0.6), "canopy roof wrongly cut at the MCU"
+    assert solid_at(top, wall_cx, sw_cy + beside_dy, C.SLIDE_NUB_Z), "wall bared beside the scoop"
+    assert solid_at(bottom, wall_cx, sw_cy, 5.0), "BOTTOM part wrongly cut at the slide switch"
 
 
 @pytest.mark.parametrize("side", ["right", "left"])
@@ -79,13 +113,14 @@ def test_split_conserves_volume(side):
     from sofle_case.standoffs import stepped_standoff
     from sofle_case.battery import battery_pocket
     from sofle_case.top_cover import build_top_cover
-    from sofle_case.case import _encoder_shell
+    from sofle_case.case import _encoder_shell, _slide_scoop
     from sofle_case.canopy import build_canopy
 
     ref = build_tray(rim_z=C.COVER_TOP_Z)
     ref = cast(Part, ref + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     ref = cast(Part, ref + _encoder_shell())
     ref = cast(Part, ref + build_canopy())   # the canopy is fused into the TOP now
+    ref = cast(Part, ref - _slide_scoop())   # the slide scoop is cut from the fused TOP
     for hx, hy in C.MOUNTING_HOLES:
         ref = cast(Part, ref + stepped_standoff(at=C.pcb_to_case(hx, hy)))
     ref = cast(Part, ref - battery_pocket())
