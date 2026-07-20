@@ -6,8 +6,10 @@ depend only on base geometry constants. Cross-section is a Y–Z roofline swept 
 X width (case Y, south → north):
 
   • Foot   — the ramp merges tangentially DOWN into the cover surface (``CANOPY_FOOT_Z``) —
-             NO tongue. The body base drops to ``CANOPY_FUSE_BASE_Z`` (one cover thickness
-             below) so it overlaps the cover/walls for a clean OCC union.
+             NO raised tongue — and lands ON the encoder plateau's north face so the bay strip
+             in front of the plateau is CLOSED (no open gap). The body base drops to
+             ``CANOPY_FUSE_BASE_Z`` (one cover thickness below) so it overlaps the cover/walls
+             (and the plateau stub) for a clean OCC union.
   • Ramp   — a tangent S-curve (``_smoothstep`` via a real ``Spline`` — horizontal at both
              ends, no crease) up to the flat roof. Reaches full height ``CANOPY_RAMP_TOP_OLED_GAP``
              before the OLED pins; the whole south bay is empty (PCB-level) so the low foot clears.
@@ -17,8 +19,14 @@ X width (case Y, south → north):
              through the north wall (required — the jack pokes into it).
   • East   — plain vertical wall on the switch-column boundary.
 
+  • Reset  — a vertical Ø``RESET_POKE_DIA`` poke-hole is bored straight down through the roof
+             directly above RSW1 (top-mounted, ~16 mm inboard — a side hole can't reach it),
+             with a countersunk funnel mouth so a reset tool self-guides in. It breaks into the
+             open bay under the roof; the tool travels the rest of the way to the button.
+
 Tangent curves are 2-D profile splines/fillets on the swept cross-section (robust), not
-fragile 3-D solid fillets. Still deferred: the reset poke-hole and the slide finger-bowl."""
+fragile 3-D solid fillets. The slide finger-bowl (over on the −X wall) is handled in ``tray``
+and split cleanly into the TOP part by ``case``'s local seam step-down."""
 from __future__ import annotations
 from typing import cast
 
@@ -50,13 +58,24 @@ CANOPY_WEST_OUTER_X = (C.pcb_to_case(0, 0)[0] - C.WALL_THICKNESS - C.PCB_XY_CLEA
 CANOPY_NORTH_OUTER_Y = (C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1]
                         + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE - C.OUTER_TOP_CHAMFER)       # ≈ 121.6
 CANOPY_EAST_X       = 34.6                       # switch-column boundary (bay east edge)
-# Ramp foot: where the slip merges DOWN into the cover surface (tangent, no tongue). The whole
-# south bay is empty (PCB-level ~7.9 mm) until the tall MCU stack at ~Y83, so the foot sits low.
-CANOPY_RAMP_FOOT_Y  = 62.0
+# Ramp foot: the slip merges DOWN into the cover surface (tangent, no raised tongue) AND lands
+# on the encoder plateau's north face, so the open bay strip in front of the plateau is CLOSED
+# (the "tongue gap" that reappeared when the canopy was fused) and the slip starts climbing
+# early enough to clear the JST beneath it. The foot overlaps the plateau's flat stub by
+# CANOPY_ENCODER_OVERLAP for a clean fuse (both are added to the TOP, so overlap just merges).
+CANOPY_ENCODER_HALF    = 10.0   # encoder centre → plateau north face (measured)
+CANOPY_ENCODER_OVERLAP = 1.0    # foot overlaps the plateau stub so the two fuse with no open strip
+CANOPY_RAMP_FOOT_Y  = (C.pcb_to_case(*C.SW_ENCODER_POS)[1]
+                       + CANOPY_ENCODER_HALF - CANOPY_ENCODER_OVERLAP)                       # ≈ 58.8
 CANOPY_RAMP_TOP_OLED_GAP = 0.5
 CANOPY_RAMP_TOP_Y   = C.pcb_to_case(*C.J_OLED_POS)[1] - CANOPY_RAMP_TOP_OLED_GAP            # ≈ 81.6
 CANOPY_RAMP_SAMPLES = 9      # control points pinning the S-curve for the Spline (smooth)
 CANOPY_NORTH_ROUND_R = 2.5
+# Round-over of the tall WEST + NW top shoulder so it reads with the case's soft corners, not a
+# hard block. The EAST top edge (switch-column side) is left sharp on purpose. 3.35 (the case
+# corner radius) can't fit — OCC caps this edge set at ~2.36 where the ramp meets the flat roof
+# and where the wall is short at the foot — so it lands just under that ceiling.
+CANOPY_WEST_ROUND_R = 2.3
 # Heights. The ramp foot merges at the cover surface; the body base drops one cover thickness
 # (to MAIN_RIM_Z) so it overlaps the cover/walls for a clean fuse into the TOP.
 CANOPY_FOOT_Z       = C.COVER_TOP_Z                                # 13.5; ramp foot = cover surface
@@ -65,11 +84,18 @@ CANOPY_RIDGE_TOP_Z  = C.USB_C_BODY_TOP_Z + CANOPY_ROOF_CLEAR + CANOPY_ROOF_WALL 
 # NW corner radius = the case's own rounded corner AT the chamfer-first line.
 CANOPY_CORNER_R     = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE - C.OUTER_TOP_CHAMFER            # ≈ 3.35
 # USB-C port through the north wall — REQUIRED for the fused fit (the jack pokes into the wall;
-# it used to sit open over the +Y wall). Centred on the MCU X column. The reset poke-hole and
-# slide finger-bowl are still deferred.
+# it used to sit open over the +Y wall). Centred on the MCU X column.
 CANOPY_USB_W        = C.USB_C_W + 2.0                              # 11.0; port width (jack + plug clearance)
 CANOPY_USB_Z_LO     = 13.0                                         # port bottom
 CANOPY_USB_Z_HI     = 20.5                                         # port top (clears the USB-C body 19.8)
+
+# Reset poke-hole: a vertical bore straight down through the canopy roof directly above RSW1,
+# with a countersunk funnel mouth on the roof surface so a reset tool self-guides in. The bore
+# breaks into the open bay under the roof (RSW1 sits in the plate's open notch, no membrane
+# above it), so the tool reaches the button through the bay.
+RESET_POKE_DIA         = 1.75  # mm; reset-pin bore (bumped from 1.0 for an easier target)
+RESET_FUNNEL_MOUTH_DIA = 2.75  # mm; lead-in mouth scaled to the wider bore (~0.75 mm/side chamfer)
+RESET_FUNNEL_DEPTH     = 1.2   # mm; lead-in depth below the surface (mouth → bore)
 
 
 def _smoothstep(y0: float, z0: float, y1: float, z1: float, n: int) -> list[tuple[float, float]]:
@@ -151,6 +177,47 @@ def _roofline() -> list[tuple[float, float]]:
     return roof
 
 
+def _canopy_roof_z(y: float) -> float:
+    """Outer roof Z at case-Y ``y`` along the swept roofline (south ramp S-curve → flat ridge),
+    matching ``_roofline`` / ``_smoothstep`` so the funnel mouth anchors to the actual sloped
+    surface above RSW1 rather than to a fixed height."""
+    y0, y1 = CANOPY_RAMP_FOOT_Y, CANOPY_RAMP_TOP_Y
+    z0, z1 = CANOPY_FOOT_Z, CANOPY_RIDGE_TOP_Z
+    if y <= y0:
+        return z0
+    if y >= y1:
+        return z1
+    t = (y - y0) / (y1 - y0)
+    return z0 + (z1 - z0) * (3 * t * t - 2 * t ** 3)
+
+
+def _reset_poke_hole() -> Part:
+    """Vertical bore + countersunk funnel cutter over RSW1 (subtracted from the fused canopy).
+
+    The bore runs from above the ridge down past the canopy base so it is a clean through-cut
+    of the roof (and, for the solid ``hollow=False`` envelope, of the whole block). The funnel
+    is a cone widening from the bore radius (``RESET_FUNNEL_DEPTH`` below the surface) to the
+    mouth radius at the sloped roof surface, so wherever it crosses the roof it leaves a
+    countersunk mouth; it is capped just above the surface to avoid scalloping the uphill roof."""
+    rx, ry = C.pcb_to_case(*C.SW_RESET_POS)
+    surf_z = _canopy_roof_z(ry)
+    r_bore = RESET_POKE_DIA / 2
+
+    z_top = CANOPY_RIDGE_TOP_Z + 1.0            # above everything (removes only air up here)
+    z_bot = CANOPY_FUSE_BASE_Z - 1.0            # below the base → through-cut of the roof
+    bore = Solid.make_cylinder(r_bore, z_top - z_bot).translate((rx, ry, z_bot))
+
+    r_mouth = RESET_FUNNEL_MOUTH_DIA / 2
+    grow = (r_mouth - r_bore) / RESET_FUNNEL_DEPTH   # radius growth per mm of depth
+    cone_bot_z = surf_z - RESET_FUNNEL_DEPTH         # bore radius here
+    cone_top_z = surf_z + 1.0                        # r_mouth reached at the surface, opens a touch above
+    cone_h = cone_top_z - cone_bot_z
+    r_cone_top = r_bore + grow * cone_h
+    funnel = Solid.make_cone(r_bore, r_cone_top, cone_h).translate((rx, ry, cone_bot_z))
+
+    return cast(Part, bore + funnel)
+
+
 def _round_nw_corner(part: Part, x_w: float, y_n: float, r: float, z0: float, z1: float) -> Part:
     """Round the vertical NW corner (west wall ∩ north wall) to radius ``r`` by boolean —
     subtract the sharp sliver outside the corner arc. Robust where a 3-D ``fillet`` fails
@@ -162,6 +229,30 @@ def _round_nw_corner(part: Part, x_w: float, y_n: float, r: float, z0: float, z1
     cyl = cast(Part, Solid.make_cylinder(r, h).translate((cx, cy, z0)))
     sliver = cast(Part, box - cyl)                    # the sharp corner outside the arc
     return cast(Part, part - sliver)
+
+
+def _round_west_top_edges(part: Part, x_w: float, x_e: float, r: float) -> Part:
+    """Round the highest WEST + NW top-shoulder edges (roof/ramp ↔ west wall) to radius ``r`` so
+    the tall west side reads with the case's soft rounded corners instead of a hard block. Only
+    the west half is touched — the EAST top edge (switch-column boundary) is left sharp on
+    purpose. Done on the SOLID envelope (before hollowing) where there is full material below the
+    roll; the cavity is set in one wall thickness so it never reaches the blend. A too-large
+    radius is retried smaller rather than left sharp, so the shoulder is never a hard edge."""
+    x_mid = (x_w + x_e) / 2
+    edges = [e for e in part.edges()
+             if e.center().X < x_mid                          # west half only (east stays sharp)
+             and abs(e.center().X - x_w) < 1.0                # on the west wall line
+             and e.center().Z > C.COVER_TOP_Z + 1.0           # the tall upper shoulder
+             and e.length > 1.0
+             and abs(e.tangent_at(0.5).Z) < 0.9]              # top edges, not the vertical corner
+    if not edges:
+        return part
+    for radius in (r, 2.0, 1.5, 1.0):
+        try:
+            return cast(Part, fillet(edges, radius=radius))
+        except (ValueError, Standard_Failure):
+            continue
+    return part
 
 
 def build_canopy(hollow: bool = True) -> Part:
@@ -183,6 +274,8 @@ def build_canopy(hollow: bool = True) -> Part:
     body = _yz_prism(roof, z_base=z_base, x_lo=x_w, x_width=x_e - x_w,
                      fillets_2d=[(y_n, z_ridge, CANOPY_NORTH_ROUND_R)], spline_range=ramp_span)
     body = _round_nw_corner(body, x_w, y_n, CANOPY_CORNER_R, z_base - 0.1, z_ridge + 0.1)
+    # Round the tall west + NW top shoulder (east left sharp) on the solid, before hollowing.
+    body = _round_west_top_edges(body, x_w, x_e, CANOPY_WEST_ROUND_R)
     shell = body
 
     if hollow:
@@ -204,6 +297,9 @@ def build_canopy(hollow: bool = True) -> Part:
     usb = Solid.make_box(CANOPY_USB_W, w_side + 2.0, CANOPY_USB_Z_HI - CANOPY_USB_Z_LO).translate(
         (ucx - CANOPY_USB_W / 2, (y_n - w_side) - 1.0, CANOPY_USB_Z_LO))
     shell = cast(Part, shell - usb)
+
+    # Reset poke-hole: vertical bore + funnel down through the roof over RSW1.
+    shell = cast(Part, shell - _reset_poke_hole())
 
     return cast(Part, shell)
 

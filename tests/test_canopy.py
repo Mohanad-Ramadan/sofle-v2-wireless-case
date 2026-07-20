@@ -58,6 +58,30 @@ def test_canopy_foot_merges_into_cover_no_tongue():
     assert z_near is not None and z_near < CAN.CANOPY_FOOT_Z + 0.6, f"foot not tangent (steps up): {z_near}"
 
 
+def test_canopy_closes_strip_in_front_of_plateau():
+    """Regression guard: the ramp foot must land ON the encoder plateau's north face so the bay
+    strip in front of the plateau is closed. This 'tongue gap' reopened once when the canopy was
+    fused into the TOP; keep the foot south of the plateau north edge (with overlap)."""
+    c = build_canopy()
+    plateau_north = C.pcb_to_case(*C.SW_ENCODER_POS)[1] + CAN.CANOPY_ENCODER_HALF
+    assert c.bounding_box().min.Y <= plateau_north + 1e-6, (
+        f"canopy south {c.bounding_box().min.Y:.2f} leaves a strip north of the plateau "
+        f"({plateau_north:.2f}) — the hole in front of the plateau is back"
+    )
+
+
+def test_canopy_west_shoulder_rounded_east_left_sharp():
+    """The tall west + NW top shoulder is rounded (case style); the east top edge stays sharp."""
+    c = build_canopy()
+    xw, xe = CAN.CANOPY_WEST_OUTER_X, CAN.CANOPY_EAST_X
+    west = [f for f in _curved_faces(c) if abs(f.center().X - xw) < 3.5
+            and f.center().Z > C.COVER_TOP_Z + 2]
+    east_top = [f for f in _curved_faces(c) if abs(f.center().X - xe) < 2.0
+                and f.center().Z > C.COVER_TOP_Z + 2 and f.center().Y > CAN.CANOPY_RAMP_TOP_Y]
+    assert west, "west top shoulder is not rounded"
+    assert not east_top, "east top edge should stay sharp"
+
+
 def test_canopy_ramp_is_smooth_and_tangent():
     """The ramp climbs monotonically from the cover to the ridge, is a real curved (Spline)
     surface (no facet steps), and is tangent at BOTH ends (S-curve)."""
@@ -107,6 +131,33 @@ def test_canopy_is_hollow_shell():
     assert not _solid_at(c, _mcu_cx(), 100.0, CAN.CANOPY_RIDGE_TOP_Z - CAN.CANOPY_ROOF_WALL - 1.0), \
         "canopy is not hollow under the roof"
     assert build_canopy().volume < build_canopy(hollow=False).volume
+
+
+def test_reset_poke_hole_open():
+    """A vertical poke bore pierces the canopy roof directly above RSW1, the roof stays solid
+    just beside it, and the countersunk funnel widens the mouth at the surface."""
+    c = build_canopy()
+    rx, ry = C.pcb_to_case(*C.SW_RESET_POS)
+    surf_z = CAN._canopy_roof_z(ry)
+    z_in_roof = surf_z - 0.75                      # inside the roof shell, on the bore axis
+    assert not _solid_at(c, rx, ry, z_in_roof), "reset poke bore is blocked"
+    beside = CAN.RESET_POKE_DIA / 2 + 1.5
+    assert _solid_at(c, rx + beside, ry, z_in_roof), "roof missing beside the poke bore"
+    # Funnel: material is removed out to near the mouth radius just below the surface,
+    # wider than the plain bore would reach.
+    mouth = CAN.RESET_FUNNEL_MOUTH_DIA / 2
+    assert not _solid_at(c, rx + mouth - 0.7, ry, surf_z - 0.2), "funnel mouth not widened"
+
+
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_reset_poke_hole_open_in_fused_top(side):
+    """The poke-hole survives fusion into the TOP part (not backfilled by cover/walls)."""
+    top = build_top_part(side)
+    rx, ry = C.pcb_to_case(*C.SW_RESET_POS)
+    if side == "left":
+        rx = C.OUTER_WIDTH - rx
+    surf_z = CAN._canopy_roof_z(ry)
+    assert not _solid_at(top, rx, ry, surf_z - 0.75), f"{side} TOP reset bore blocked"
 
 
 def test_canopy_usb_port_open():
