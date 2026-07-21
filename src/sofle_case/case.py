@@ -6,11 +6,12 @@ together through the standoffs. See ``.omc/specs/deep-dive-sandwich-case-top-bot
 """
 from __future__ import annotations
 from typing import Literal, cast
-from build123d import Part, mirror, Plane, Pos, fillet, Axis, BuildPart, Locations, Cylinder, Sphere, Solid
+from build123d import Part, mirror, Plane, Pos, fillet, Axis, BuildPart, Locations, Cylinder, Sphere, Solid, Box, Location
 from OCP.Standard import Standard_Failure
 from OCP.ShapeFix import ShapeFix_Shape
 from OCP.TopoDS import TopoDS
 from . import constants as C
+from .pcb_geometry import slide_switch_placement, rotate_2d
 from .tray import build_tray
 from .standoffs import stepped_standoff
 from .battery import battery_pocket
@@ -290,6 +291,51 @@ def _slide_scoop() -> Part:
     return box
 
 
+def _slide_actuator_cavity() -> Part:
+    """Drop-in clearance pocket shaped to the SK12D07VG3 slide switch (TOP part).
+
+    A single rectangular prism = the switch's combined can+nub footprint grown by
+    ``SLIDE_ACTUATOR_PAD`` on every X/Y face, poured from ``SLIDE_ACTUATOR_FLOOR_Z``
+    (the seam) up to ``SLIDE_ACTUATOR_TOP_Z`` (the cover underside). Subtracting it in
+    ``build_top_part`` carves a registered channel the switch drops straight down into,
+    clearing the lower −X wall the actuator nub sweeps through. There is NO retaining
+    lip (a plain clearance pocket), and the top is capped at the cover underside so the
+    1.0 mm lid is never perforated. Clearance inboard of the inner wall face just cuts
+    air (harmless) — keeping the cutter a simple prism.
+
+    The footprint tracks the switch exactly: it is derived from the SW31 placement
+    (``slide_switch_placement`` → components.json + ``pcb_to_case`` + rotation, the same
+    registration ``_slide_switch_body`` uses) and the OWNED structural can/nub dims in
+    ``constants.py`` — no phantom internals are imported. See the slide-switch actuator
+    container section in ``constants.py``."""
+    cx, cy, rot = slide_switch_placement()
+
+    # Combined can+nub footprint, built with the SAME placement/rotation math the
+    # phantom body uses (can centred over the pin span; nub protruding local −Y),
+    # then bounding-boxed to a plan rectangle. Z here is a throwaway unit height —
+    # the pocket's real Z span is set below from FLOOR_Z→TOP_Z.
+    bdx, bdy = rotate_2d(C.SLIDE_ACTUATOR_PIN_CENTER_X, 0.0, rot)
+    ndx, ndy = rotate_2d(
+        C.SLIDE_ACTUATOR_PIN_CENTER_X,
+        -(C.SLIDE_ACTUATOR_BODY_W / 2 + C.SLIDE_ACTUATOR_NUB_D / 2),
+        rot,
+    )
+    with BuildPart() as bp:
+        with Locations(Location((cx + bdx, cy + bdy, 0.0), (0, 0, rot))):
+            Box(C.SLIDE_ACTUATOR_BODY_L, C.SLIDE_ACTUATOR_BODY_W, 1.0)
+        with Locations(Location((cx + ndx, cy + ndy, 0.0), (0, 0, rot))):
+            Box(C.SLIDE_ACTUATOR_NUB_L, C.SLIDE_ACTUATOR_NUB_D, 1.0)
+    assert bp.part is not None
+    fp = bp.part.bounding_box()
+
+    pad = C.SLIDE_ACTUATOR_PAD
+    x0, x1 = fp.min.X - pad, fp.max.X + pad
+    y0, y1 = fp.min.Y - pad, fp.max.Y + pad
+    z0, z1 = C.SLIDE_ACTUATOR_FLOOR_Z, C.SLIDE_ACTUATOR_TOP_Z
+
+    return cast(Part, Solid.make_box(x1 - x0, y1 - y0, z1 - z0).translate((x0, y0, z0)))
+
+
 def build_top_part(side: Side) -> Part:
     """TOP clamshell half: upper walls (``SEAM_Z → COVER_TOP_Z``) + switch membrane.
 
@@ -302,7 +348,11 @@ def build_top_part(side: Side) -> Part:
 
     The bay canopy is FUSED on here (``build_canopy``): its ramp grows out of the cover
     surface and merges into it (its base overlaps the cover for a clean union), so the MCU
-    hood is integral to the TOP — not a separate part."""
+    hood is integral to the TOP — not a separate part.
+
+    Finally two −X cuts carve the slide switch: the wide finger ``_slide_scoop`` (tray look)
+    and then the ``_slide_actuator_cavity`` (a switch-shaped drop-in pocket poured to the
+    seam). Both floors sit at/above ``SEAM_Z`` so the BOTTOM part is untouched."""
     if side not in ("left", "right"):
         raise ValueError(f"side must be 'left' or 'right', got {side!r}")
 
@@ -312,6 +362,8 @@ def build_top_part(side: Side) -> Part:
     top = cast(Part, top + build_canopy())
     # Slide-switch finger scoop: cut AFTER the canopy fuse so it lowers the wall + cover together.
     top = cast(Part, top - _slide_scoop())
+    # Slide-switch drop-in pocket: registered switch-shaped cavity poured to the seam.
+    top = cast(Part, top - _slide_actuator_cavity())
     top = _as_part(top)
 
     if side == "left":

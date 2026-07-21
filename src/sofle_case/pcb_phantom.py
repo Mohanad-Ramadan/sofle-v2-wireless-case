@@ -1,8 +1,5 @@
 """PCB phantom for visual fit-check in the OCP viewer. Gate with SHOW_PCB_PHANTOM."""
 from __future__ import annotations
-import json
-import math
-from pathlib import Path
 from typing import cast
 from build123d import (
     Part, Wire, Pos, Polyline, make_face, extrude,
@@ -10,9 +7,10 @@ from build123d import (
     Box, Cylinder, Mode,
 )
 from . import constants as C
-from .pcb_geometry import polygon_in_case_coords
+from .pcb_geometry import polygon_in_case_coords, rotate_2d, slide_switch_placement
 
-_DATA = Path(__file__).resolve().parents[2] / "data"
+# Backward-compat alias: the shared rotation helper now lives in pcb_geometry.
+_rotate_2d = rotate_2d
 
 # Phantom-only body dimensions (not structural — not in constants.py)
 _MCU_W         = 18.0  # nice!nano width along case X
@@ -106,28 +104,19 @@ def _usb_c_stub() -> Part:
     return bp.part
 
 
-def _rotate_2d(lx: float, ly: float, deg: float) -> tuple[float, float]:
-    """Rotate a local (x, y) offset by *deg* degrees CCW."""
-    r = math.radians(deg)
-    return lx * math.cos(r) - ly * math.sin(r), lx * math.sin(r) + ly * math.cos(r)
-
-
 def _slide_switch_body() -> Part:
     """SK12D07VG3 metal can + actuator nub, placed via components.json rotation.
 
     Local frame: pins along local X, body centered over pin span.
     Actuator nub extends in local -Y (toward -X wall after 270° rotation).
     """
-    raw = json.loads((_DATA / "components.json").read_text())
-    sw = raw["SW31"]
-    cx, cy = C.pcb_to_case(sw["x"], sw["y"])
-    rot = sw["rotation"]
+    cx, cy, rot = slide_switch_placement()
 
     body_z = C.PCB_TOP_Z + _SK12_BODY_H / 2
     nub_z = C.PCB_TOP_Z + 1.5 + _SK12_NUB_H / 2
 
-    bdx, bdy = _rotate_2d(_SK12_PIN_CENTER_X, 0.0, rot)
-    ndx, ndy = _rotate_2d(
+    bdx, bdy = rotate_2d(_SK12_PIN_CENTER_X, 0.0, rot)
+    ndx, ndy = rotate_2d(
         _SK12_PIN_CENTER_X,
         -(_SK12_BODY_W / 2 + _SK12_NUB_D / 2),
         rot,

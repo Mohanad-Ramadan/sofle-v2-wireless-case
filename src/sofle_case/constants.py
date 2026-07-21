@@ -134,6 +134,32 @@ SLIDE_SCOOP_X_SHIFT      = 0.4   # mm; slide the WHOLE cutter toward −X (out t
 #                                  inner reach (x1) back from the cavity and moves the floor-fillet
 #                                  shelf outboard, away from the nub — experiment knob (0 = original).
 
+# ---------- Slide-switch actuator container (drop-in pocket, TOP part) ----------
+# A registered clearance pocket shaped to the physical SK12D07VG3 (metal can body +
+# actuator nub), grown 0.5 mm on every X/Y face and poured from the seam UP to the
+# cover underside, so the PCB+switch assembly drops straight down into a switch-shaped
+# channel instead of relying on the wide finger scoop alone. Subtracted in
+# build_top_part AFTER the scoop; its floor is SEAM_Z so it lives entirely in the TOP
+# part (the BOTTOM is clipped at the seam — untouched). No retaining lip: a plain
+# clearance pocket. The top is capped at the cover underside so the 1.0 mm lid is NOT
+# perforated (the can top is 12.2, leaving 0.3 mm of cover above it).
+#
+# These are STRUCTURAL mirrors of the datasheet-derived can/nub dims. The pcb_phantom
+# _SK12_* dims are marked "phantom-only, not structural" — do NOT import them here;
+# structural geometry owns its own values. The placement (registration off SW31) is
+# shared cleanly via pcb_geometry.slide_switch_placement / rotate_2d, so the cavity
+# tracks the switch exactly without coupling structure to the phantom module.
+SLIDE_ACTUATOR_BODY_W       = 4.4  # mm; metal can width (perp. to pin row, local Y)
+SLIDE_ACTUATOR_BODY_L       = 4.0  # mm; metal can length (along pin row, local X)
+SLIDE_ACTUATOR_BODY_H       = 4.3  # mm; metal can height above the PCB (reference)
+SLIDE_ACTUATOR_NUB_L        = 3.5  # mm; actuator nub length along pin row (local X)
+SLIDE_ACTUATOR_NUB_D        = 3.0  # mm; actuator protrusion beyond the can edge (local -Y)
+SLIDE_ACTUATOR_NUB_H        = 2.0  # mm; actuator height above the can top (reference)
+SLIDE_ACTUATOR_PIN_CENTER_X = 2.0  # mm; can centre offset from footprint origin (local X)
+SLIDE_ACTUATOR_PAD          = 0.5  # mm; clearance grown on every X/Y face of the pocket
+SLIDE_ACTUATOR_FLOOR_Z      = SEAM_Z                         # 6.25; pour to the seam (drop-in channel)
+SLIDE_ACTUATOR_TOP_Z        = 12   # mm; cover underside (do NOT perforate the lid)
+
 # ---------- Battery pocket (405070 LiPo cell: 4.0mm thick, 50x70mm footprint) ----------
 # Recessed into the floor's added 1.8 mm thickness (see FLOOR_THICKNESS above),
 # so 2.0 mm of solid floor remains beneath the pocket, matching the case floor
