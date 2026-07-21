@@ -125,11 +125,14 @@ USB_C_W = 9.0
 # below, so the lower wall never blocks). See docs and the plan slide-scoop-decrement.md.
 SLIDE_SWITCH_W           = 6.0   # mm; slide actuator nominal width (reference)
 SLIDE_NUB_Z              = PCB_TOP_Z + 2.5   # 10.4; actuator nub centre Z (finger-access height)
-SLIDE_SCOOP_W            = 11.0  # mm; scoop width in Y (wider than its Z depth)
+SLIDE_SCOOP_W            = 10.0  # mm; scoop width in Y (wider than its Z depth)
 SLIDE_SCOOP_FLOOR_Z      = 9.0   # mm; scoop floor — just below the nub; solid wall remains below
 SLIDE_SCOOP_INNER_MARGIN = 0.25  # mm; reach past the inner wall face to bare the nub (no PCB)
 SLIDE_SCOOP_FLOOR_R      = 2.0   # mm; floor rounding (reads as a valley, not a box)
 SLIDE_SCOOP_SIDE_R       = 2.5   # mm; plan-corner rounding at the scoop ends
+SLIDE_SCOOP_X_SHIFT      = 0.4   # mm; slide the WHOLE cutter toward −X (out the wall). Pulls the
+#                                  inner reach (x1) back from the cavity and moves the floor-fillet
+#                                  shelf outboard, away from the nub — experiment knob (0 = original).
 
 # ---------- Battery pocket (405070 LiPo cell: 4.0mm thick, 50x70mm footprint) ----------
 # Recessed into the floor's added 1.8 mm thickness (see FLOOR_THICKNESS above),

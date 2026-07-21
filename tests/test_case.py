@@ -64,9 +64,10 @@ def test_top_part_z_range(side):
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_slide_scoop_top_open(side):
-    """The wide 'decrement' scoop opens the −X wall AND the canopy over the slide switch: open at
-    the nub and through the canopy roof there, solid wall below the floor, canopy roof intact away
-    from the switch, wall solid beside the scoop, and the BOTTOM part untouched."""
+    """The wide 'decrement' scoop opens the −X wall over the slide switch: open at the nub and up
+    to the rim there, solid wall below the floor, canopy roof intact at the MCU, wall solid beside
+    the scoop, and the BOTTOM part untouched. NB the −X shift retains the canopy west-cap inboard
+    of the scoop reach, so 'roof cut over the switch' is no longer asserted."""
     from build123d import Solid
     import sofle_case.canopy as CAN
     top = build_top_part(side)
@@ -75,12 +76,10 @@ def test_slide_scoop_top_open(side):
     # −X wall centre at the slide-switch Y (polygon PCB X=0 edge, case X ≈ 10.5).
     sw_cy = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
     wall_cx = C.pcb_to_case(0, 0)[0] - (C.WALL_THICKNESS + C.PCB_XY_CLEARANCE) / 2
-    nub_x, roof_z = 12.9, CAN._canopy_roof_z(sw_cy)
     mcu_x, mcu_y = C.pcb_to_case(*C.MCU_POS)
     beside_dy = C.SLIDE_SCOOP_W / 2 + 2.0
     if side == "left":
         wall_cx = C.OUTER_WIDTH - wall_cx
-        nub_x = C.OUTER_WIDTH - nub_x
         mcu_x = C.OUTER_WIDTH - mcu_x
 
     def solid_at(part, x, y, z, s=0.5):
@@ -88,8 +87,8 @@ def test_slide_scoop_top_open(side):
         return (part & box).volume > 1e-6
 
     assert not solid_at(top, wall_cx, sw_cy, C.SLIDE_NUB_Z), "scoop not open at the nub"
+    assert not solid_at(top, wall_cx, sw_cy, C.MAIN_RIM_Z), "wall not open up to the rim over the nub"
     assert solid_at(top, wall_cx, sw_cy, C.SLIDE_SCOOP_FLOOR_Z - 1.0), "wall not solid below the scoop floor"
-    assert not solid_at(top, nub_x, sw_cy, roof_z), "canopy roof not cut over the switch"
     assert solid_at(top, mcu_x, mcu_y, CAN._canopy_roof_z(mcu_y) - 0.6), "canopy roof wrongly cut at the MCU"
     assert solid_at(top, wall_cx, sw_cy + beside_dy, C.SLIDE_NUB_Z), "wall bared beside the scoop"
     assert solid_at(bottom, wall_cx, sw_cy, 5.0), "BOTTOM part wrongly cut at the slide switch"

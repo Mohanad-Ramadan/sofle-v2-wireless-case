@@ -269,8 +269,8 @@ def _slide_scoop() -> Part:
     sw_cy = C.pcb_to_case(*C.SW_SLIDE_POS)[1]
     outer = C.pcb_to_case(0, 0)[0] - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE   # −X outer wall face
     inner = C.pcb_to_case(0, 0)[0] - C.PCB_XY_CLEARANCE                       # inner wall face
-    x0 = outer - 1.5                                    # start outside the face (mouth fully open)
-    x1 = inner + C.SLIDE_SCOOP_INNER_MARGIN             # just past the inner face → bares the nub
+    x0 = outer - 1.5 - C.SLIDE_SCOOP_X_SHIFT            # start outside the face (mouth fully open)
+    x1 = inner + C.SLIDE_SCOOP_INNER_MARGIN - C.SLIDE_SCOOP_X_SHIFT   # just past the inner face → bares the nub
     y0, y1 = sw_cy - C.SLIDE_SCOOP_W / 2, sw_cy + C.SLIDE_SCOOP_W / 2
     z0 = C.SLIDE_SCOOP_FLOOR_Z
     z1 = CANOPY_RIDGE_TOP_Z + 2.0                       # above the roof → cuts through the canopy
