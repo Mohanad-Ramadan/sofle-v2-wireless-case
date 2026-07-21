@@ -1,8 +1,9 @@
 """CLI: build a Sofle sandwich case half and export STL + STEP (+ optional PNG).
 
-Each half is a clamshell of two printable parts — a BOTTOM (floor + lower walls +
-standoffs + battery pocket) and a TOP (upper walls + switch membrane + encoder
-plateau) — that screw together through the standoffs at the seam.
+Each half is a clamshell of two printable parts — a deep TOP tub (full outer skin
+to the ground + switch membrane + encoder plateau + canopy) and a thin INSET BOTTOM
+plate (floor + standoffs + battery pocket) that tucks up into the tub's rabbet and
+screws together through the standoffs. No seam shows on any outer face.
 
 Usage:
     python scripts/build.py right

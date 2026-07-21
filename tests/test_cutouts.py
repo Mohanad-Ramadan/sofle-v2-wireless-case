@@ -102,8 +102,14 @@ def test_slide_actuator_pad_gap_is_real():
 
 
 def test_slide_drop_in_channel_is_clear():
-    """Vertical drop-in channel: across the switch footprint grid, the TOP solid has
-    NO material anywhere in Z 6.25 → 12.2, so the assembly slides straight down."""
+    """Switch clearance column: across the switch footprint grid, the TOP solid has NO
+    material anywhere over the switch body's Z span (PCB top 7.9 → 12.2), so the tub
+    lowers over the switch (or the switch drops in) without collision.
+
+    NB the lower bound is the switch-body base (PCB_TOP_Z), not the cavity floor: the
+    tub now owns the full outer skin to the ground, so the −X wall is legitimately
+    solid BELOW the switch (Z < 7.9) where part of the footprint bbox overlaps the wall
+    band — that material never touches the switch, which sits entirely above PCB top."""
     from sofle_case.case import build_top_part
     top = build_top_part("right")
     x0, x1, y0, y1 = _footprint_bbox()
@@ -114,7 +120,7 @@ def test_slide_drop_in_channel_is_clear():
 
     xs = [x0 + (x1 - x0) * i / 6 for i in range(1, 6)]
     ys = [y0 + (y1 - y0) * i / 8 for i in range(1, 8)]
-    zs = [C.SLIDE_ACTUATOR_FLOOR_Z + (12.2 - C.SLIDE_ACTUATOR_FLOOR_Z) * i / 8 for i in range(9)]
+    zs = [C.PCB_TOP_Z + (12.2 - C.PCB_TOP_Z) * i / 8 for i in range(9)]
     for z in zs:
         hits = sum(1 for x in xs for y in ys if solid_at(x, y, z))
         assert hits == 0, f"channel blocked: {hits} solid hits at Z={z:.3f}"
@@ -150,8 +156,9 @@ def test_slide_cavity_does_not_perforate_lid():
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_slide_cavity_leaves_bottom_unchanged(side):
-    """The cavity floor is SEAM_Z and the BOTTOM is clipped there, so the BOTTOM part
-    volume is unchanged by this feature (matches the pre-change baseline)."""
+    """The slide cavity is a TOP-only feature; the BOTTOM is a separate inset plate
+    below the rabbet ledge, so its volume is independent of the slide cavity. Baseline
+    is the inset floor plate + standoffs − battery pocket (identical both sides)."""
     from sofle_case.case import build_bottom_part
-    # Baseline captured before the cavity feature (identical both sides).
-    assert abs(build_bottom_part(side).volume - 58224.944014064786) < 1e-3
+    # 1e-2 abs tolerates OCC mirror/heal float noise on the left half (~2e-3).
+    assert abs(build_bottom_part(side).volume - 47832.523778) < 1e-2

@@ -54,11 +54,11 @@ def test_split_parts_are_valid_single_solids(side):
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_top_part_z_range(side):
-    """TOP spans from the planar seam (6.25) up to the fused bay-canopy ridge (21.9), the
-    tallest point. The slide scoop no longer steps the seam down."""
+    """TOP is a deep tub: its outer skin runs to the ground (min Z = 0), so there is
+    no mid-wall seam. It reaches up to the fused bay-canopy ridge (21.9)."""
     from sofle_case import canopy as CAN
     bb = build_top_part(side).bounding_box()
-    assert abs(bb.min.Z - C.SEAM_Z) < 0.01
+    assert abs(bb.min.Z - 0.0) < 0.01
     assert abs(bb.max.Z - CAN.CANOPY_RIDGE_TOP_Z) < 0.01
 
 
@@ -88,18 +88,25 @@ def test_slide_scoop_top_open(side):
         box = Solid.make_box(s, s, s).translate((x - s / 2, y - s / 2, z - s / 2))
         return (part & box).volume > 1e-6
 
+    # The BOTTOM is now a separate inset plate (below the rabbet ledge); the slide
+    # features are TOP-only, so the plate floor at the slide Y stays intact. Probe an
+    # on-plate point inboard of the inner wall (the skin zone belongs to the tub).
+    inboard_x = C.pcb_to_case(0, 0)[0] + 5.0
+    if side == "left":
+        inboard_x = C.OUTER_WIDTH - inboard_x
+
     assert not solid_at(top, wall_cx, sw_cy, C.SLIDE_NUB_Z), "scoop not open at the nub"
     assert not solid_at(top, wall_cx, sw_cy, C.MAIN_RIM_Z), "wall not open up to the rim over the nub"
     assert solid_at(top, wall_cx, sw_cy - chan_dy, C.SLIDE_SCOOP_FLOOR_Z - 1.0), "wall not solid below the scoop floor beside the channel"
     assert solid_at(top, mcu_x, mcu_y, CAN._canopy_roof_z(mcu_y) - 0.6), "canopy roof wrongly cut at the MCU"
     assert solid_at(top, wall_cx, sw_cy + beside_dy, C.SLIDE_NUB_Z), "wall bared beside the scoop"
-    assert solid_at(bottom, wall_cx, sw_cy, 5.0), "BOTTOM part wrongly cut at the slide switch"
+    assert solid_at(bottom, inboard_x, sw_cy, 2.0), "BOTTOM plate floor wrongly cut at the slide switch"
 
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_bottom_part_z_range(side):
-    """BOTTOM starts at the floor; standoffs protrude past the seam to their tap
-    tops (PLATE_SEAT_Z), so the part is taller than SEAM_Z by design."""
+    """BOTTOM starts at the floor; standoffs rise to their tap tops (PLATE_SEAT_Z),
+    so the plate is taller than the rabbet ledge (SEAM_LEDGE_Z) by design."""
     bb = build_bottom_part(side).bounding_box()
     assert abs(bb.min.Z - 0.0) < 0.01
     assert abs(bb.max.Z - C.PLATE_SEAT_Z) < 0.01
@@ -107,8 +114,10 @@ def test_bottom_part_z_range(side):
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_split_conserves_volume(side):
-    """Top + bottom volume equals the un-split assembled solid — no material lost
-    or double-counted at the planar seam."""
+    """Top + bottom equals the un-split assembled solid MINUS the intended rabbet
+    clearance (the SEAM_FIT_CLEAR / SEAM_LEDGE_CLEAR gap). The difference must be
+    positive (material only removed at the seam, never added or double-counted) and
+    small — bounded by the thin clearance gap around the plate rim (~0.9%)."""
     from typing import cast
     from sofle_case.tray import build_tray
     from sofle_case.standoffs import stepped_standoff
@@ -128,9 +137,9 @@ def test_split_conserves_volume(side):
     ref = cast(Part, ref - battery_pocket())
 
     combined = build_top_part(side).volume + build_bottom_part(side).volume
-    # 1e-4 rel tolerates OCC boolean/seam-reassembly float noise from the
-    # collar addition; the collar is post-clip so exact conservation is looser.
-    assert abs(combined - ref.volume) / ref.volume < 1e-4
+    lost = ref.volume - combined
+    assert lost > 0, "seam added material (double-count) — must only remove clearance"
+    assert lost / ref.volume < 0.012, f"seam gap {lost:.1f} exceeds the rabbet clearance"
 
 
 def test_top_screw_holes_open():

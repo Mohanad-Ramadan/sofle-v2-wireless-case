@@ -40,6 +40,25 @@ def _outer_extruded(z_lo: float, z_hi: float) -> Part:
     return cast(Part, Pos(0, 0, z_lo) * bp.part)
 
 
+def offset_extruded(amount: float, z_lo: float, z_hi: float, kind: Kind = Kind.ARC) -> Part:
+    """PCB polygon offset OUTWARD by ``amount``, extruded ``z_lo → z_hi``.
+
+    Public helper shared with the sandwich split (case.py): the inset floor plate
+    and the tub's plate-pocket cutter are both concentric offsets of the same
+    polygon, so they nest with a uniform radial gap. ``amount`` between the cavity
+    offset (``PCB_XY_CLEARANCE``) and the outer-skin offset
+    (``WALL_THICKNESS + PCB_XY_CLEARANCE``) lands inside the wall. ``Kind.ARC``
+    matches the outer shell's rounded convex corners."""
+    wire = _polygon_wire()
+    with BuildPart() as bp:
+        with BuildSketch(Plane.XY):
+            face = make_face(wire)  # type: ignore[arg-type]
+            face = offset(face, amount=amount, kind=kind)
+        extrude(amount=z_hi - z_lo)
+    assert bp.part is not None
+    return cast(Part, Pos(0, 0, z_lo) * bp.part)
+
+
 def _inner_extruded(z_lo: float, z_hi: float) -> Part:
     """PCB polygon offset by +PCB_XY_CLEARANCE, Kind.INTERSECTION, extruded z_lo→z_hi."""
     wire = _polygon_wire()

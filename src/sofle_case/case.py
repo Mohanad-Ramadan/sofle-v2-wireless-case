@@ -1,18 +1,21 @@
 """Compose the full case half from tray + standoffs, minus the battery pocket.
 
-Also splits that geometry into the sandwich clamshell: ``build_bottom_part`` and
-``build_top_part`` cut the shell at ``SEAM_Z`` into two printable pieces that screw
-together through the standoffs. See ``.omc/specs/deep-dive-sandwich-case-top-bottom.md``.
+Also splits that geometry into the sandwich clamshell. The split is NOT a mid-wall
+butt seam: ``build_top_part`` is a deep TUB that owns the full outer skin (wall
+unbroken to the ground — no seam on any outer face), and ``build_bottom_part`` is a
+thin INSET floor plate that joins via a rabbet (stepped lap) behind the skin. The two
+still screw together through the same standoffs. See
+``.omc/specs/deep-dive-sandwich-seam-modification.md``.
 """
 from __future__ import annotations
 from typing import Literal, cast
-from build123d import Part, mirror, Plane, Pos, fillet, Axis, BuildPart, Locations, Cylinder, Sphere, Solid, Box, Location
+from build123d import Part, mirror, Plane, Pos, fillet, chamfer, Axis, BuildPart, Locations, Cylinder, Sphere, Solid, Box, Location
 from OCP.Standard import Standard_Failure
 from OCP.ShapeFix import ShapeFix_Shape
 from OCP.TopoDS import TopoDS
 from . import constants as C
 from .pcb_geometry import slide_switch_placement, rotate_2d
-from .tray import build_tray
+from .tray import build_tray, offset_extruded
 from .standoffs import stepped_standoff
 from .battery import battery_pocket
 from .top_cover import build_top_cover, _load_plate_cutouts
@@ -30,17 +33,45 @@ def _as_part(shape) -> Part:
     return Part(children=list(solids)) if solids else Part(children=[shape])
 
 
-def _clip_z(part: Part, z_lo: float, z_hi: float) -> Part:
-    """Planar butt-cut: keep only the slab of ``part`` between z_lo and z_hi.
+def _plate_envelope() -> Part:
+    """The BOTTOM inset floor plate body (no standoffs / battery pocket yet).
 
-    Intersects with an oversized box so the cut face is exactly planar at the seam
-    (guaranteeing mating faces between the two halves). The box overhangs the XY
-    footprint generously so only the Z planes clip."""
-    pad = 20.0
-    box = Solid.make_box(
-        C.OUTER_WIDTH + 2 * pad, C.OUTER_DEPTH + 2 * pad, z_hi - z_lo
-    ).translate((-pad, -pad, z_lo))
-    return _as_part(part & box)
+    A slab from ``Z 0 → SEAM_LEDGE_Z`` whose outer edge is a concentric offset of
+    the PCB polygon, inset from the outer skin by ``SEAM_SKIN`` (so it tucks behind
+    the tub's descending skin). Its outer face lands at polygon offset
+    ``PCB_XY_CLEARANCE + SEAM_RIM_THK`` — i.e. the rim reaches from the cavity wall
+    out through ``SEAM_RIM_THK`` of the wall, stopping ``SEAM_SKIN + SEAM_FIT_CLEAR``
+    short of the outer face. A 45° ``SEAM_LEAD_IN`` chamfer on the rim's top-outer
+    edge self-guides it into the tub skirt on assembly."""
+    rim_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK
+    plate = offset_extruded(rim_outer, 0.0, C.SEAM_LEDGE_Z)
+    # Lead-in chamfer: the plate is a plain prism, so every top edge is the outer
+    # rim perimeter. Fall back on smaller legs, then none, rather than aborting.
+    top_edges = plate.edges().filter_by_position(
+        Axis.Z, minimum=C.SEAM_LEDGE_Z - 0.01, maximum=C.SEAM_LEDGE_Z + 0.01
+    )
+    for length in (C.SEAM_LEAD_IN, C.SEAM_LEAD_IN * 0.5):
+        try:
+            plate = cast(Part, chamfer(top_edges, length=length))
+            break
+        except (ValueError, Standard_Failure):
+            continue
+    return plate
+
+
+def _plate_pocket() -> Part:
+    """Cutter carving the inset plate pocket into the base of the TOP tub.
+
+    The plate envelope grown by ``SEAM_FIT_CLEAR`` radially (so the seated plate has
+    that clearance per side) and by ``SEAM_LEDGE_CLEAR`` in Z at the top (so the rim
+    top clears the ledge and the screws, not the rabbet, set the clamp). Subtracting
+    it from the full-height tray removes the floor + inner-wall material inboard of
+    the skin below the ledge, automatically leaving the ``SEAM_SKIN`` skirt running
+    to the ground. Starts below Z=0 so it clears the bottom face cleanly."""
+    pocket_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK + C.SEAM_FIT_CLEAR
+    return offset_extruded(
+        pocket_outer, -0.5, C.SEAM_LEDGE_Z + C.SEAM_LEDGE_CLEAR
+    )
 
 
 def _mirror_left(part: Part) -> Part:
@@ -99,18 +130,18 @@ def build_case_half(side: Side) -> Part:
 
 
 def build_bottom_part(side: Side) -> Part:
-    """BOTTOM clamshell half: the shell clipped to ``0 → SEAM_Z`` plus full standoffs.
+    """BOTTOM clamshell part: the inset floor plate + full standoffs.
 
-    The upper walls are cut away at the seam, leaving the floor + lower walls +
-    battery pocket + bottom elephant-foot chamfer. The standoffs are added AFTER the
-    clip so they keep their full height and protrude past the seam into the TOP's
-    interior — the TOP clamps down onto their tap tops via the join screws."""
+    A thin plate (``_plate_envelope``: floor to ``SEAM_LEDGE_Z``, inset behind the
+    tub skin) that tucks up into the tub's rabbet pocket. The standoffs are added on
+    top so they keep their full height and rise to their tap tops (``PLATE_SEAT_Z``);
+    the TOP tub clamps down onto them via the existing top-down join screws. The
+    battery pocket is recessed into the plate floor. The plate bottom is flush at
+    ``Z = 0`` (sole ground contact goes to the user's stick-on rubber pads)."""
     if side not in ("left", "right"):
         raise ValueError(f"side must be 'left' or 'right', got {side!r}")
 
-    # Build the full-height shell (walls to COVER_TOP_Z) so its seam face is planar
-    # and identical to the TOP part's, then keep only the below-seam slab.
-    bottom = _clip_z(build_tray(rim_z=C.COVER_TOP_Z), -1.0, C.SEAM_Z)
+    bottom = _plate_envelope()
 
     for hx, hy in C.MOUNTING_HOLES:
         cx, cy = C.pcb_to_case(hx, hy)
@@ -261,9 +292,9 @@ def _slide_scoop() -> Part:
     A rounded valley WIDER in Y than tall in Z, cut from a floor just below the actuator nub UP
     through the upper wall and the whole canopy (roof included) — so it is open from the top and
     the −X side and a finger/nail reaches the SK12D07VG3 nub. ``build_top_part`` subtracts it
-    AFTER the canopy is fused, lowering both the wall and the cover in one op. The floor is above
-    ``SEAM_Z``, so it lives entirely in the TOP part (the BOTTOM is untouched — access is from the
-    top/side, not from below). See the slide-switch section in ``constants.py``.
+    AFTER the canopy is fused, lowering both the wall and the cover in one op. It is a TOP-only
+    feature (the BOTTOM is a separate inset plate below the rabbet ledge — untouched; access is
+    from the top/side, not from below). See the slide-switch section in ``constants.py``.
 
     Built as a tall box (floor → over the canopy ridge) through the full wall thickness, with its
     floor and plan corners rounded on the STANDALONE box (robust — not filleting a boolean)."""
@@ -337,32 +368,35 @@ def _slide_actuator_cavity() -> Part:
 
 
 def build_top_part(side: Side) -> Part:
-    """TOP clamshell half: upper walls (``SEAM_Z → COVER_TOP_Z``) + switch membrane.
+    """TOP clamshell part: the deep tub (full outer skin) + switch membrane.
 
-    The full-height shell is clipped to the above-seam slab, then the plate-shaped
-    membrane (from ``top_cover``) is fused on as the ceiling. The membrane already
-    carries its switch windows, open MCU/OLED/JST bay and M2 clearance holes; it is
-    grown by ``COVER_FUSE_MARGIN`` so it bites into the upper walls and the whole TOP
-    is one solid. Standoffs are NOT part of the TOP — they live in the BOTTOM and
-    pass up through the open cavity.
+    The full-height tray (outer wall to the ground) has the inset plate pocket
+    carved from its base, then the plate-shaped membrane (from ``top_cover``) is
+    fused on as the ceiling. The membrane already carries its switch windows, open
+    MCU/OLED/JST bay and M2 clearance holes; it is grown by ``COVER_FUSE_MARGIN`` so
+    it bites into the upper walls and the whole TOP is one solid. Standoffs are NOT
+    part of the TOP — they live in the BOTTOM plate and pass up through the open cavity.
 
     The bay canopy is FUSED on here (``build_canopy``): its ramp grows out of the cover
     surface and merges into it (its base overlaps the cover for a clean union), so the MCU
     hood is integral to the TOP — not a separate part.
 
     Finally two −X cuts carve the slide switch: the wide finger ``_slide_scoop`` (tray look)
-    and then the ``_slide_actuator_cavity`` (a switch-shaped drop-in pocket poured to the
-    seam). Both floors sit at/above ``SEAM_Z`` so the BOTTOM part is untouched."""
+    and then the ``_slide_actuator_cavity`` (a switch-shaped drop-in pocket). Both are TOP
+    features; the BOTTOM plate is a separate body below the rabbet ledge, untouched."""
     if side not in ("left", "right"):
         raise ValueError(f"side must be 'left' or 'right', got {side!r}")
 
-    top = _clip_z(build_tray(rim_z=C.COVER_TOP_Z), C.SEAM_Z, C.COVER_TOP_Z + 1.0)
+    # Deep tub: the FULL-height tray (outer skin to the ground), then carve the inset
+    # plate pocket out of its base. This leaves the SEAM_SKIN skirt as the descending
+    # outer wall — no mid-wall seam — and the rabbet ledge that receives the plate rim.
+    top = cast(Part, build_tray(rim_z=C.COVER_TOP_Z) - _plate_pocket())
     top = cast(Part, top + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     top = cast(Part, top + _encoder_shell())
     top = cast(Part, top + build_canopy())
     # Slide-switch finger scoop: cut AFTER the canopy fuse so it lowers the wall + cover together.
     top = cast(Part, top - _slide_scoop())
-    # Slide-switch drop-in pocket: registered switch-shaped cavity poured to the seam.
+    # Slide-switch drop-in pocket: registered switch-shaped cavity.
     top = cast(Part, top - _slide_actuator_cavity())
     top = _as_part(top)
 

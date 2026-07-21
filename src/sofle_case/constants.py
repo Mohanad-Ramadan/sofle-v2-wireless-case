@@ -64,12 +64,32 @@ COVER_SCREW_CLEARANCE_DIA = 2.4  # mm; M2 screw shaft clearance through the cove
 # unreliable on merely-coincident faces.
 COVER_FUSE_MARGIN       = 1.0    # mm; membrane→upper-wall fusion overlap in the TOP part
 
-# ---------- Sandwich clamshell split (TOP / BOTTOM parts) ----------
-# A single planar seam halves the shell into two printable parts screwed together
-# through the standoffs. Total height rises to COVER_TOP_Z because the TOP part's
-# rim carries the membrane ceiling above the 12.5 plate reference.
-SEAM_Z       = MAIN_RIM_Z / 2            # 6.25 mm; the horizontal split plane
+# ---------- Sandwich clamshell split (TOP tub / BOTTOM plate) ----------
+# The shell is NOT split at a mid-wall butt seam (that showed a line on the outer
+# face and mated poorly). Instead the TOP is a deep TUB that owns the full outer
+# skin — the outer wall runs unbroken from COVER_TOP_Z all the way to the ground,
+# so there is NO seam on any outer face. The BOTTOM is a thin INSET floor plate
+# that tucks up behind the skin and joins via a RABBET (stepped lap): the plate's
+# outer rim rises into a pocket in the tub's inner wall, hidden as a shadow line on
+# the underside. See docs/spec deep-dive-sandwich-seam-modification.md.
 COVER_TOP_Z  = MAIN_RIM_Z + COVER_THICKNESS  # 13.5 mm; TOP part rim (membrane top)
+
+# Rabbet geometry (offsets are radial, from the PCB polygon outward):
+#   skin (tub, → ground)  SEAM_SKIN | gap SEAM_FIT_CLEAR | plate rim SEAM_RIM_THK
+# summing to WALL_THICKNESS across the wall. The plate rim seats inside the tub
+# skirt; a small Z gap at the ledge lets the SCREWS (not the rabbet) set the clamp.
+SEAM_LEDGE_Z    = FLOOR_THICKNESS   # 3.8; rabbet ledge / plate-rim top / the split height
+SEAM_SKIN       = 2.0    # mm; outer skin kept with the tub at the rabbet (descends to ground)
+SEAM_FIT_CLEAR  = 0.2    # mm; per-side XY clearance, plate rim ↔ tub skirt pocket
+SEAM_LEDGE_CLEAR = 0.2   # mm; Z gap at the ledge so the screws clamp (no over-constraint)
+SEAM_LEAD_IN    = 0.6    # mm; 45° lead-in chamfer on the plate rim's top-outer edge
+SEAM_RIM_THK    = WALL_THICKNESS - SEAM_SKIN - SEAM_FIT_CLEAR   # ≈ 2.55; derived plate-rim thickness
+
+# Snap aids (assembly hold-shut) are DEFERRED: the 5 standoff screws are the real
+# clamp and the rabbet self-locates, so the first print validates that fit alone.
+# Adding barb/detent pairs needs robust placement on the irregular Sofle outline
+# (a naive rectangular layout floats barbs off the curved wall spans) — a follow-up
+# once the rabbet clearance is dialled in. See the spec's snap section.
 
 # ---------- Encoder plateau (TOP part, around EC11 rotary encoder) ----------
 # The EC11 body is a ~12 mm box that mounts through the plate's encoder cutout
@@ -120,9 +140,9 @@ USB_C_W = 9.0
 # rounded valley WIDER in Y than tall in Z, cut from a floor just below the nub UP through the
 # upper wall and the whole canopy — roof included — so it is open from the top and the −X side
 # and a finger/nail reaches the nub. Cut in build_top_part AFTER the canopy is fused, so it
-# lowers both the wall and the cover in one op. Its floor is above SEAM_Z (6.25), so the scoop
-# lives entirely in the TOP part — the BOTTOM is untouched (access is from the top/side, not from
-# below, so the lower wall never blocks). See docs and the plan slide-scoop-decrement.md.
+# lowers both the wall and the cover in one op. It is a TOP-only feature (the BOTTOM is a separate
+# inset plate below the rabbet ledge); access is from the top/side, not from below, so the plate
+# never blocks. See docs and the plan slide-scoop-decrement.md.
 SLIDE_SWITCH_W           = 6.0   # mm; slide actuator nominal width (reference)
 SLIDE_NUB_Z              = PCB_TOP_Z + 2.5   # 10.4; actuator nub centre Z (finger-access height)
 SLIDE_SCOOP_W            = 10.0  # mm; scoop width in Y (wider than its Z depth)
@@ -136,12 +156,12 @@ SLIDE_SCOOP_X_SHIFT      = 0.4   # mm; slide the WHOLE cutter toward −X (out t
 
 # ---------- Slide-switch actuator container (drop-in pocket, TOP part) ----------
 # A registered clearance pocket shaped to the physical SK12D07VG3 (metal can body +
-# actuator nub), grown 0.5 mm on every X/Y face and poured from the seam UP to the
-# cover underside, so the PCB+switch assembly drops straight down into a switch-shaped
-# channel instead of relying on the wide finger scoop alone. Subtracted in
-# build_top_part AFTER the scoop; its floor is SEAM_Z so it lives entirely in the TOP
-# part (the BOTTOM is clipped at the seam — untouched). No retaining lip: a plain
-# clearance pocket. The top is capped at the cover underside so the 1.0 mm lid is NOT
+# actuator nub), grown 0.5 mm on every X/Y face and poured from SLIDE_ACTUATOR_FLOOR_Z
+# UP to the cover underside, so the switch has a switch-shaped clearance channel as the
+# tub lowers over the PCB+switch assembly. Subtracted in build_top_part AFTER the scoop;
+# it is a TOP-only feature (the BOTTOM is a separate inset plate below the rabbet ledge —
+# untouched). No retaining lip: a plain clearance pocket. The top is capped at the cover
+# underside so the 1.0 mm lid is NOT
 # perforated (the can top is 12.2, leaving 0.3 mm of cover above it).
 #
 # These are STRUCTURAL mirrors of the datasheet-derived can/nub dims. The pcb_phantom
@@ -157,7 +177,9 @@ SLIDE_ACTUATOR_NUB_D        = 3.0  # mm; actuator protrusion beyond the can edge
 SLIDE_ACTUATOR_NUB_H        = 2.0  # mm; actuator height above the can top (reference)
 SLIDE_ACTUATOR_PIN_CENTER_X = 2.0  # mm; can centre offset from footprint origin (local X)
 SLIDE_ACTUATOR_PAD          = 0.5  # mm; clearance grown on every X/Y face of the pocket
-SLIDE_ACTUATOR_FLOOR_Z      = SEAM_Z                         # 6.25; pour to the seam (drop-in channel)
+SLIDE_ACTUATOR_FLOOR_Z      = 6.25   # mm; pour depth for the drop-in channel (decoupled from the
+#                                      seam — the tub is now open below this anyway; kept as a
+#                                      registered clearance floor for the switch can/nub)
 SLIDE_ACTUATOR_TOP_Z        = 12   # mm; cover underside (do NOT perforate the lid)
 
 # ---------- Battery pocket (405070 LiPo cell: 4.0mm thick, 50x70mm footprint) ----------
