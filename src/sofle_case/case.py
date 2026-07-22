@@ -172,6 +172,21 @@ def build_case_half(side: Side) -> Part:
     return shell
 
 
+def _foot_recesses() -> Part:
+    """Cutter: shallow Ø FOOT_DIA seats in the OUTER bottom face (Z=0) at FOOT_POSITIONS.
+
+    Stick-on rubber feet locate in these seats at the 4 corners so the keyboard grips
+    the desk. Each cylinder spans Z = −0.5 → FOOT_DEPTH (starts below the bottom face so
+    it opens cleanly through Z=0, no coincident face), recessing FOOT_DEPTH into the plate.
+    """
+    with BuildPart() as bp:
+        for x, y in C.FOOT_POSITIONS:
+            with Locations((x, y, (C.FOOT_DEPTH - 0.5) / 2)):
+                Cylinder(radius=C.FOOT_DIA / 2, height=C.FOOT_DEPTH + 0.5)
+    assert bp.part is not None
+    return bp.part
+
+
 def build_bottom_part(side: Side) -> Part:
     """BOTTOM clamshell part: the inset floor plate + full standoffs.
 
@@ -191,6 +206,7 @@ def build_bottom_part(side: Side) -> Part:
         bottom = cast(Part, bottom + stepped_standoff(at=(cx, cy)))
 
     bottom = cast(Part, bottom - battery_pocket())
+    bottom = cast(Part, bottom - _foot_recesses())
     bottom = _as_part(bottom)
 
     if side == "left":

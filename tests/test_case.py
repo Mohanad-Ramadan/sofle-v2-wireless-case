@@ -143,7 +143,7 @@ def test_split_conserves_volume(side):
     from sofle_case.standoffs import stepped_standoff
     from sofle_case.battery import battery_pocket
     from sofle_case.top_cover import build_top_cover
-    from sofle_case.case import _encoder_shell, _slide_scoop, _slide_actuator_cavity
+    from sofle_case.case import _encoder_shell, _slide_scoop, _slide_actuator_cavity, _foot_recesses
     from sofle_case.canopy import build_canopy
 
     ref = build_tray(rim_z=C.COVER_TOP_Z)
@@ -155,6 +155,7 @@ def test_split_conserves_volume(side):
     for hx, hy in C.MOUNTING_HOLES:
         ref = cast(Part, ref + stepped_standoff(at=C.pcb_to_case(hx, hy)))
     ref = cast(Part, ref - battery_pocket())
+    ref = cast(Part, ref - _foot_recesses())   # anti-slip feet are cut from the bottom plate
 
     combined = build_top_part(side).volume + build_bottom_part(side).volume
     lost = ref.volume - combined
