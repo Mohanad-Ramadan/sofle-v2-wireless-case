@@ -10,7 +10,7 @@ Standalone CLI utilities. Two categories: the main build script (runs every time
 
 | File | Description |
 |------|-------------|
-| `build.py` | **Main build CLI.** Calls `build_case_half(side)`, exports STL + STEP to `output/`. Accepts `--show` (OCP viewer) and `--png` (screenshot). |
+| `build.py` | **Main build CLI.** Builds the sandwich clamshell — `build_top_part(side)` + `build_bottom_part(side)` — and exports STL + STEP for each part to `output/`. Accepts `--show` (OCP viewer), `--png` (screenshot), and `--legacy` (also export the single-piece `build_case_half`). |
 | `parse_gerber.py` | One-off: parses KiCad Gerber edge-cuts + PTH drill file → writes `data/pcb_outline.json` and `data/mounting_holes.json`. |
 | `parse_cpl.py` | One-off: parses KiCad CPL (component placement) CSV → writes `data/components.json`. |
 | `parse_kicad_plate.py` | One-off: parses KiCad plate `.kicad_pcb` → `data/plate_outline.json` + `data/plate_cutouts.json`. **Superseded by `parse_plate_gerber.py`** for the real hardware. |

@@ -30,7 +30,7 @@ Parametric tray case generator for the Sofle V2 Wireless (Alt_Switch) keyboard. 
 - **Single source of truth for dimensions:** `src/sofle_case/constants.py`. Edit only there; all derived values recompute at import time.
 - **Never edit `data/` JSON by hand.** Re-run `scripts/parse_gerber.py` / `scripts/parse_cpl.py` if the PCB sources change.
 - **Always run `pytest` after any change.** All tests must pass before committing.
-- Both `build_case_half("left")` and `build_case_half("right")` return **identical geometry**. `side` only affects the output filename.
+- The build deliverables are the two sandwich parts per side — `build_top_part(side)` (deep TOP tub) and `build_bottom_part(side)` (inset BOTTOM plate) — joined by a rabbet and screwed through the standoffs. `build_case_half` is the legacy single-piece tray. Left and right are mirror images with the same volume and footprint; `side` mirrors the geometry (and sets the output filename).
 
 ### Testing Requirements
 ```bash
