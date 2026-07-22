@@ -74,6 +74,49 @@ def _plate_pocket() -> Part:
     )
 
 
+def _chamfer_pocket_mouth(part: Part) -> Part:
+    """45° starter chamfer on the tub pocket MOUTH (the pocket's inner edge at Z≈0).
+
+    The plate rim already has its own ``SEAM_LEAD_IN`` starter; this gives the mating
+    tub side one too, so the plate self-guides into the pocket AND the mouth cannot
+    elephant-foot-pinch on the first layers. The mouth is told apart from the outer
+    bottom edge (already counter-chamfered) by a radial probe: at the pocket mouth the
+    skin lies OUTWARD and air (the pocket) lies INWARD — the reverse of the outer edge.
+    Runs on the invisible underside, so a size fallback / no-op is harmless (mirrors
+    the ``_chamfer_outer_top_edges`` idiom)."""
+    cx, cy = C.OUTER_WIDTH / 2, C.OUTER_DEPTH / 2
+
+    def _solid(x: float, y: float, z: float) -> bool:
+        probe = Solid.make_box(0.4, 0.4, 0.4).translate((x - 0.2, y - 0.2, z - 0.2))
+        return cast(float, (part & probe).volume) > 1e-6
+
+    mouth = []
+    for e in part.edges():
+        bb = e.bounding_box()
+        if bb.max.Z - bb.min.Z > 0.05:          # horizontal edges only
+            continue
+        if not (-0.1 <= bb.min.Z <= 0.1):        # at the mouth plane (Z≈0)
+            continue
+        m = e.position_at(0.5)
+        dx, dy = m.X - cx, m.Y - cy
+        n = (dx * dx + dy * dy) ** 0.5
+        if n < 1e-6:
+            continue
+        ux, uy = dx / n, dy / n
+        # pocket mouth: skin OUTWARD, air INWARD (opposite of the outer bottom edge)
+        if _solid(m.X + ux * 0.6, m.Y + uy * 0.6, 0.3) and not _solid(
+                m.X - ux * 0.6, m.Y - uy * 0.6, 0.3):
+            mouth.append(e)
+    if not mouth:
+        return part
+    for length in (C.SEAM_POCKET_LEAD_IN, C.SEAM_POCKET_LEAD_IN * 0.5):
+        try:
+            return cast(Part, chamfer(mouth, length=length))
+        except (ValueError, Standard_Failure):
+            continue
+    return part
+
+
 def _mirror_left(part: Part) -> Part:
     """Reflect a right-half part onto the left half (about X = OUTER_WIDTH/2) + heal.
 
@@ -391,6 +434,7 @@ def build_top_part(side: Side) -> Part:
     # plate pocket out of its base. This leaves the SEAM_SKIN skirt as the descending
     # outer wall — no mid-wall seam — and the rabbet ledge that receives the plate rim.
     top = cast(Part, build_tray(rim_z=C.COVER_TOP_Z) - _plate_pocket())
+    top = _chamfer_pocket_mouth(top)   # tub-side starter chamfer at the pocket mouth
     top = cast(Part, top + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     top = cast(Part, top + _encoder_shell())
     top = cast(Part, top + build_canopy())

@@ -78,12 +78,19 @@ COVER_TOP_Z  = MAIN_RIM_Z + COVER_THICKNESS  # 13.5 mm; TOP part rim (membrane t
 #   skin (tub, → ground)  SEAM_SKIN | gap SEAM_FIT_CLEAR | plate rim SEAM_RIM_THK
 # summing to WALL_THICKNESS across the wall. The plate rim seats inside the tub
 # skirt; a small Z gap at the ledge lets the SCREWS (not the rabbet) set the clamp.
+# Clearances follow the design-for-print rule of a 0.3 mm minimum mating gap (below
+# that FDM tends to weld / bind); the fit is intentionally loose because the screws
+# clamp and the 5 standoffs — not the rabbet — set the precise XY registration.
 SEAM_LEDGE_Z    = FLOOR_THICKNESS   # 3.8; rabbet ledge / plate-rim top / the split height
 SEAM_SKIN       = 2.0    # mm; outer skin kept with the tub at the rabbet (descends to ground)
-SEAM_FIT_CLEAR  = 0.2    # mm; per-side XY clearance, plate rim ↔ tub skirt pocket
-SEAM_LEDGE_CLEAR = 0.2   # mm; Z gap at the ledge so the screws clamp (no over-constraint)
-SEAM_LEAD_IN    = 0.6    # mm; 45° lead-in chamfer on the plate rim's top-outer edge
-SEAM_RIM_THK    = WALL_THICKNESS - SEAM_SKIN - SEAM_FIT_CLEAR   # ≈ 2.55; derived plate-rim thickness
+SEAM_FIT_CLEAR  = 0.3    # mm; per-side XY clearance, plate rim ↔ tub skirt pocket (0.3 min)
+SEAM_LEDGE_CLEAR = 0.3   # mm; Z gap at the ledge so the screws clamp (no over-constraint)
+SEAM_LEAD_IN    = 0.6    # mm; 45° lead-in chamfer on the plate rim's top-outer edge (plate-side starter)
+SEAM_POCKET_LEAD_IN = 0.4  # mm; 45° starter chamfer on the tub pocket MOUTH (tub-side starter, so
+#                            BOTH mating leading edges guide + the mouth can't elephant-foot-pinch).
+#                            Kept small: it stacks with BOTTOM_CHAMFER on the opposite skirt corner,
+#                            so 0.4 leaves ≥1.4 mm of skin at the ground-line first layer.
+SEAM_RIM_THK    = WALL_THICKNESS - SEAM_SKIN - SEAM_FIT_CLEAR   # ≈ 2.45; derived plate-rim thickness
 
 # Snap aids (assembly hold-shut) are DEFERRED: the 5 standoff screws are the real
 # clamp and the rabbet self-locates, so the first print validates that fit alone.
@@ -177,7 +184,7 @@ SLIDE_ACTUATOR_NUB_D        = 3.0  # mm; actuator protrusion beyond the can edge
 SLIDE_ACTUATOR_NUB_H        = 2.0  # mm; actuator height above the can top (reference)
 SLIDE_ACTUATOR_PIN_CENTER_X = 2.0  # mm; can centre offset from footprint origin (local X)
 SLIDE_ACTUATOR_PAD          = 0.5  # mm; clearance grown on every X/Y face of the pocket
-SLIDE_ACTUATOR_FLOOR_Z      = 6.25   # mm; pour depth for the drop-in channel (decoupled from the
+SLIDE_ACTUATOR_FLOOR_Z      = 0.0   # mm; pour depth for the drop-in channel (decoupled from the
 #                                      seam — the tub is now open below this anyway; kept as a
 #                                      registered clearance floor for the switch can/nub)
 SLIDE_ACTUATOR_TOP_Z        = 12   # mm; cover underside (do NOT perforate the lid)

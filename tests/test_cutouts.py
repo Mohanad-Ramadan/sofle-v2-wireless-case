@@ -161,4 +161,4 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     is the inset floor plate + standoffs − battery pocket (identical both sides)."""
     from sofle_case.case import build_bottom_part
     # 1e-2 abs tolerates OCC mirror/heal float noise on the left half (~2e-3).
-    assert abs(build_bottom_part(side).volume - 47832.523778) < 1e-2
+    assert abs(build_bottom_part(side).volume - 47644.504174) < 1e-2

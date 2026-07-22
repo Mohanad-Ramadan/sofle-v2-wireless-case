@@ -62,6 +62,26 @@ def test_top_part_z_range(side):
     assert abs(bb.max.Z - CAN.CANOPY_RIDGE_TOP_Z) < 0.01
 
 
+def test_pocket_mouth_has_starter_chamfer():
+    """The tub pocket MOUTH is chamfered open (tub-side starter): a point just inside
+    the seated skirt-inner face is solid skin up in the seated section but chamfered
+    to air near the mouth, so the plate rim self-guides in and the mouth can't
+    elephant-foot-pinch. Probed on a plain −X wall span."""
+    from build123d import Solid
+    top = build_top_part("right")
+    y = C.OUTER_DEPTH / 2
+    # −X wall: outer face, then SEAM_SKIN inward = seated skirt-inner face.
+    skin_inner = C.pcb_to_case(0, 0)[0] - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE + C.SEAM_SKIN
+    probe_x = skin_inner - 0.15   # 0.15 inside the skin from the seated inner face
+
+    def solid_at(z, s=0.12):
+        b = Solid.make_box(s, 3.0, s).translate((probe_x - s / 2, y - 1.5, z - s / 2))
+        return (top & b).volume > 1e-6
+
+    assert solid_at(0.7), "seated skirt is missing skin — probe off the wall"
+    assert not solid_at(0.1), "pocket mouth is not chamfered — no tub-side starter"
+
+
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_slide_scoop_top_open(side):
     """The wide 'decrement' scoop opens the −X wall over the slide switch: open at the nub and up
