@@ -86,8 +86,8 @@ CANOPY_CORNER_R     = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE - C.OUTER_TOP_CHAMFE
 # USB-C port through the north wall — REQUIRED for the fused fit (the jack pokes into the wall;
 # it used to sit open over the +Y wall). Centred on the MCU X column.
 CANOPY_USB_W        = C.USB_C_W + 2.0                              # 11.0; port width (jack + plug clearance)
-CANOPY_USB_Z_LO     = 13.0                                         # port bottom
-CANOPY_USB_Z_HI     = 20.5                                         # port top (clears the USB-C body 19.8)
+CANOPY_USB_Z_LO     = C.MCU_PCB_TOP_Z - 0.8                        # port bottom; tracks the PCB (was literal 13.0)
+CANOPY_USB_Z_HI     = C.USB_C_BODY_TOP_Z + 0.7                     # port top; clears the USB-C body (was literal 20.5)
 
 # Reset poke-hole: a vertical bore straight down through the canopy roof directly above RSW1,
 # with a countersunk funnel mouth on the roof surface so a reset tool self-guides in. The bore

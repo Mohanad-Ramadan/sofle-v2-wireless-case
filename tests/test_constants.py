@@ -15,12 +15,21 @@ def test_z_stack_monotonic():
     assert z == sorted(z), f"Z stack not monotonic: {z}"
 
 
+def test_z_ladder_derives_from_floor():
+    """The whole Z stack must track FLOOR_THICKNESS via the named gaps, so a floor
+    change cascades correctly (guards against reintroducing hardcoded literals)."""
+    assert C.PCB_SEAT_Z == C.FLOOR_THICKNESS + C.STANDOFF_SHOULDER_H
+    assert C.PCB_TOP_Z == C.PCB_SEAT_Z + C.PCB_THICKNESS
+    assert C.PLATE_SEAT_Z == C.PCB_TOP_Z + C.MX_BODY_CLEAR
+    assert C.PLATE_TOP_Z == C.PLATE_SEAT_Z + C.PLATE_THICKNESS
+
+
 def test_pcb_thickness_consistent():
-    assert C.PCB_TOP_Z - C.PCB_SEAT_Z == C.PCB_THICKNESS
+    assert abs((C.PCB_TOP_Z - C.PCB_SEAT_Z) - C.PCB_THICKNESS) < 1e-9
 
 
 def test_plate_thickness_consistent():
-    assert C.PLATE_TOP_Z - C.PLATE_SEAT_Z == C.PLATE_THICKNESS
+    assert abs((C.PLATE_TOP_Z - C.PLATE_SEAT_Z) - C.PLATE_THICKNESS) < 1e-9
 
 
 def test_outer_envelope_fits_pcb():

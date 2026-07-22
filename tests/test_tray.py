@@ -37,7 +37,7 @@ def test_walls_are_full_thickness():
     cavity air just past the inner face (tracks WALL_THICKNESS, not a literal)."""
     from build123d import Solid
     t = build_tray()
-    y, z = 65.0, 6.0   # +X flat wall region, above the floor, below the chamfer
+    y, z = 65.0, C.FLOOR_THICKNESS + 2.0   # +X flat wall region, above the floor, below the chamfer
     x_out = C.OUTER_WIDTH
 
     def solid(x: float) -> bool:

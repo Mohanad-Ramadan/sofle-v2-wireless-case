@@ -1,26 +1,32 @@
 """All dimensions in mm. Single source of truth for the case geometry."""
 
 # ---------- Heights (Z = 0 at case bottom) ----------
-# Floor is 1.8 mm thicker than the original 2.0 mm (BATTERY_POCKET_DEPTH) so a
-# battery pocket can be recessed into it while leaving the original 2.0 mm of
-# solid material beneath the pocket. Every Z above the floor is shifted up by
-# the same 1.8 mm so all existing clearances (PCB seat, plate seat, rim) are
-# unchanged relative to each other — only the floor gained thickness.
-FLOOR_THICKNESS = 3.8
-PCB_SEAT_Z      = 6.3
-PLATE_SEAT_Z    = 10.9  # PCB_TOP_Z + 3.0 mm measured MX switch body clearance
+# The whole Z ladder is DERIVED from FLOOR_THICKNESS via named gaps, so raising
+# the floor cascades the PCB seat / plate seat / rim / cover / seam up by the same
+# amount automatically. (Previously these were literals that silently did NOT track
+# the floor.) The gap values below reproduce the original geometry EXACTLY at the
+# historical FLOOR_THICKNESS = 3.8.
+#
+# FLOOR_THICKNESS raised 3.8 → 6.3 (+2.5 mm): the battery footprint sits under 12
+# switches, so the hotswap sockets (~2 mm below the PCB) hang over it and cannot be
+# dodged in Z. Lifting the whole stack 2.5 mm lifts the sockets clear so a real
+# 4.5 mm 405070 cell fits in a deep pocket with 2.0 mm of solid floor beneath it.
+FLOOR_THICKNESS = 6.3   # was 3.8
 
-PCB_TOP_Z       = 7.9   # PCB_SEAT_Z + 1.6 mm PCB thickness
-PLATE_TOP_Z     = 12.5  # PLATE_SEAT_Z + 1.6 mm plate thickness
+# Named vertical gaps (invariant — these reproduce the original stack at FLOOR=3.8):
+STANDOFF_SHOULDER_H = 2.5   # PCB seat above the floor top (standoff lower shoulder)
+PCB_THICKNESS       = 1.6   # main PCB thickness
+MX_BODY_CLEAR       = 3.0   # measured MX switch-body gap: plate seat above PCB top
+PLATE_THICKNESS     = 1.6   # switch-plate thickness (12.5 − 10.9 at the old floor)
+
+PCB_SEAT_Z   = FLOOR_THICKNESS + STANDOFF_SHOULDER_H  # 8.8  (was 6.3 at FLOOR=3.8)
+PCB_TOP_Z    = PCB_SEAT_Z + PCB_THICKNESS             # 10.4 (was 7.9)
+PLATE_SEAT_Z = PCB_TOP_Z + MX_BODY_CLEAR              # 13.4 (was 10.9)
+PLATE_TOP_Z  = PLATE_SEAT_Z + PLATE_THICKNESS         # 15.0 (was 12.5)
 
 # Minimal short case: perimeter walls end flush with the plate's top surface —
 # no proud lip above the plate. The MCU hill still rises above this (excluded).
-MAIN_RIM_Z      = PLATE_TOP_Z  # 12.5
-
-# Derived thicknesses — computed from the authoritative Z positions so that
-# (TOP_Z - SEAT_Z == THICKNESS) holds exactly in floating-point arithmetic.
-PCB_THICKNESS   = PCB_TOP_Z   - PCB_SEAT_Z    # ≈ 1.6 mm
-PLATE_THICKNESS = PLATE_TOP_Z - PLATE_SEAT_Z  # = 1.5 mm
+MAIN_RIM_Z      = PLATE_TOP_Z
 
 # ---------- Outer envelope ----------
 # OUTER_WIDTH / OUTER_DEPTH are DERIVED from the PCB span + wall + clearance
@@ -151,9 +157,9 @@ USB_C_W = 9.0
 # inset plate below the rabbet ledge); access is from the top/side, not from below, so the plate
 # never blocks. See docs and the plan slide-scoop-decrement.md.
 SLIDE_SWITCH_W           = 6.0   # mm; slide actuator nominal width (reference)
-SLIDE_NUB_Z              = PCB_TOP_Z + 2.5   # 10.4; actuator nub centre Z (finger-access height)
+SLIDE_NUB_Z              = PCB_TOP_Z + 2.5   # actuator nub centre Z (finger-access height); tracks the PCB
 SLIDE_SCOOP_W            = 10.0  # mm; scoop width in Y (wider than its Z depth)
-SLIDE_SCOOP_FLOOR_Z      = 9.0   # mm; scoop floor — just below the nub; solid wall remains below
+SLIDE_SCOOP_FLOOR_Z      = SLIDE_NUB_Z - 1.4  # mm; scoop floor just below the nub; tracks the PCB (was literal 9.0)
 SLIDE_SCOOP_INNER_MARGIN = 0.25  # mm; reach past the inner wall face to bare the nub (no PCB)
 SLIDE_SCOOP_FLOOR_R      = 2.0   # mm; floor rounding (reads as a valley, not a box)
 SLIDE_SCOOP_SIDE_R       = 2.5   # mm; plan-corner rounding at the scoop ends
@@ -187,23 +193,48 @@ SLIDE_ACTUATOR_PAD          = 0.5  # mm; clearance grown on every X/Y face of th
 SLIDE_ACTUATOR_FLOOR_Z      = 0.0   # mm; pour depth for the drop-in channel (decoupled from the
 #                                      seam — the tub is now open below this anyway; kept as a
 #                                      registered clearance floor for the switch can/nub)
-SLIDE_ACTUATOR_TOP_Z        = 12   # mm; cover underside (do NOT perforate the lid)
+SLIDE_ACTUATOR_TOP_Z        = MAIN_RIM_Z   # mm; cover underside — do NOT perforate the lid (tracks the rim; was literal 12)
 
-# ---------- Battery pocket (405070 LiPo cell: 4.0mm thick, 50x70mm footprint) ----------
-# Recessed into the floor's added 1.8 mm thickness (see FLOOR_THICKNESS above),
-# so 2.0 mm of solid floor remains beneath the pocket, matching the case floor
-# everywhere else. Position verified against data/pcb_outline.json + the 5
-# standoff posts (MOUNTING_HOLES): centered in the open main key well, clear of
-# every standoff and every bottom-mounted component (those all cluster near
-# the MCU/thumb-cluster column, far from this footprint).
+# ---------- Battery pocket (405070 LiPo cell: 50x70mm footprint) ----------
+# The footprint sits UNDER 12 switches, so the hotswap sockets (~2 mm below the PCB)
+# hang over it. The pocket is now a DEEP recess in the thickened floor: it holds a
+# real 4.5 mm cell with BATTERY_FLOOR_BASE (2.0 mm) of solid floor beneath, and the
+# raised stack (FLOOR_THICKNESS 6.3) lifts the sockets clear of the cell top.
+# Pocket depth is DERIVED from the floor so it tracks any future floor change.
+#
+# XY: grown east-biased. The two WEST standoffs (PCB X≈39.6) are the only tight
+# neighbours (~1.7 mm from the pocket wall); east/north/south have 17–27 mm free.
+# BATTERY_POCKET_SHIFT_X moves the pocket +X so a larger clearance grows the roomy
+# sides while the west edge (and its standoff gap) barely moves.
 BATTERY_POCKET_POS   = (69.5, -48.5)  # PCB coords, pocket footprint center
-BATTERY_W            = 50.0   # mm, X extent
-BATTERY_L            = 70.0   # mm, Y extent
-BATTERY_THICKNESS    = 4.0    # mm, nominal 405070 cell thickness
-BATTERY_XY_CLEARANCE = 0.4    # mm, per-side insertion clearance
-BATTERY_Z_CLEARANCE  = 0.3    # mm, extra clear height above nominal thickness
-BATTERY_POCKET_DEPTH = 1.8    # mm, = new FLOOR_THICKNESS(3.8) − original(2.0)
+BATTERY_W            = 50.0   # mm, X extent (nominal cell)
+BATTERY_L            = 70.0   # mm, Y extent (nominal cell)
+BATTERY_THICKNESS    = 4.5    # mm, design thickness (real 405070 incl. wrapper/swell)
+BATTERY_XY_CLEARANCE = 1.5    # mm, per-side insertion clearance (was 0.4)
+BATTERY_POCKET_SHIFT_X = 1.0  # mm, shift pocket center +X (east) to keep west standoffs clear
+BATTERY_Z_CLEARANCE  = 0.3    # mm, extra clear height above design thickness
+BATTERY_FLOOR_BASE   = 2.0    # mm, solid floor kept beneath the pocket
+BATTERY_POCKET_DEPTH = FLOOR_THICKNESS - BATTERY_FLOOR_BASE   # = 4.3; tracks the floor
 BATTERY_POCKET_CORNER_R = 2.0  # mm, pocket corner fillet radius
+
+# ---------- Anti-slip rubber feet (external, underside of the bottom plate) ----------
+# Shallow Ø10 seats recessed into the OUTER bottom face (Z=0) of the inset floor plate
+# at 4 corners, so 10 mm self-adhesive rubber feet locate there and the keyboard grips
+# the desk (doesn't slide while typing). NOT deep — a shallow locating seat; the foot
+# sits mostly proud below and lifts the case off the desk.
+#
+# Positions are in CASE coords, chosen on solid plate material clear of the irregular
+# Sofle outline edges (the bottom-right corner is cut by the thumb cluster) and clear of
+# the battery pocket. Subtracted BEFORE the left-mirror, so they track to the mirrored
+# outline on the left half.
+FOOT_DIA   = 10.0   # mm, rubber-foot diameter → seat diameter
+FOOT_DEPTH = 0.6    # mm, shallow locating-seat depth
+FOOT_POSITIONS: tuple[tuple[float, float], ...] = (
+    (20.0, 110.0),   # top-left
+    (143.0, 104.0),  # top-right (pulled in off the cut corner)
+    (20.0, 22.0),    # bottom-left
+    (143.0, 38.0),   # bottom-right (thumb-cluster side is cut away lower)
+)
 
 # ---------- Component positions (PCB coords, mm) ----------
 MCU_POS        = (10.27, -16.16)
@@ -249,8 +280,8 @@ SHOW_TOP_COVER      = True # True: adds the sandwich top cover to case.py __main
 
 # MCU physical stack heights — used by the PCB phantom (jack/header visuals) and
 # as a convenient over-tall bound for the slide-switch wall cutters.
-MCU_PCB_TOP_Z    = 13.8    # nice!nano PCB top including socket height above main PCB
-USB_C_BODY_TOP_Z = 19.8    # USB-C jack body top surface
+MCU_PCB_TOP_Z    = PCB_TOP_Z + 5.9    # nice!nano PCB top incl. socket height above main PCB; tracks PCB (was 13.8)
+USB_C_BODY_TOP_Z = PCB_TOP_Z + 11.9   # USB-C jack body top surface; tracks PCB (was 19.8)
 MCU_HILL_Z       = PCB_TOP_Z + 11.0   # top of MCU + header legs (physical stack top)
 MCU_BODY_L       = 33.0    # MCU body length in Y (mm)
 

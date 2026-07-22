@@ -12,7 +12,7 @@ def test_returns_part():
 def test_height():
     s = stepped_standoff(at=(50.0, 50.0))
     bb = s.bounding_box()
-    # Standoff goes from FLOOR_THICKNESS (2.0) up to PLATE_SEAT_Z (6.5)
+    # Standoff spans FLOOR_THICKNESS (floor top) up to PLATE_SEAT_Z (tap top).
     assert abs(bb.min.Z - C.FLOOR_THICKNESS) < 0.01
     assert abs(bb.max.Z - C.PLATE_SEAT_Z) < 0.01
 
