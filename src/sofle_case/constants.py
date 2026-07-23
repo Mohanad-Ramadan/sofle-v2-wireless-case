@@ -67,6 +67,26 @@ MX_TOP_HOUSING_W        = 15.6   # mm; widest part of a Cherry MX switch (rests 
 COVER_THICKNESS         = 1.0    # mm; lid thickness, top at MAIN_RIM_Z + 1.0 = 13.5
 COVER_WINDOW_OFFSET     = 0.85   # mm; 14 mm cutout -> 15.7 mm window, 0.05 mm/side off the 15.6 housing (invisible shadow gap, plate hidden, non-degenerate)
 COVER_SCREW_CLEARANCE_DIA = 2.4  # mm; M2 screw shaft clearance through the cover
+
+# ---------- Switch-puller access notches ----------
+# The flush window hides the plate but also hugs the switch's 15.6 mm collar at the
+# plate line (Z = MAIN_RIM_Z) — exactly where a switch puller must seat its claws to
+# grip and lift a switch (the top housing tapers inward above the collar, so a claw
+# on the proud upper body just cams off). Two small notches per MX switch, cut on the
+# switch's local ±Y faces (the north/south faces a puller grabs), open the cover down
+# to the plate on those two sides so the claws can descend beside the collar and pull
+# a switch IN PLACE without removing the top shell. Verified against the Cherry MX
+# datasheet drawing (top housing 6.6 mm above plate; 15.6 mm collar rests on plate).
+#
+# Geometry is a box per notch: NOTCH_W wide (tangential), spanning radius INNER_R→
+# OUTER_R from the switch centre (INNER_R sits inside the ~7.85 mm window edge so the
+# notch merges with the window; OUTER_R reaches ~1.2 mm past the 7.8 mm collar for
+# claw room). OUTER_R is capped so two facing notches on 19.05 mm-pitch neighbours
+# leave a ~1 mm cover bridge between them (cover stays one solid, plate barely shows).
+COVER_PULLER_NOTCH        = False   # False → flush cover with no puller access (swap needs shell removal)
+COVER_PULLER_NOTCH_W      = 4.0    # mm; notch width (tangential) — sized for a puller claw
+COVER_PULLER_NOTCH_INNER_R = 7.0   # mm; radial inner edge (inside the window, so it merges)
+COVER_PULLER_NOTCH_OUTER_R = 9.0   # mm; radial outer edge (~1.2 mm claw pocket past the 7.8 collar)
 # The plate-outline membrane sits ~0.3–0.7 mm inside the inner cavity wall, so on
 # its own it floats free (a separate solid) inside the TOP part. Grow the membrane
 # outline outward by this margin so it bites into the upper-wall material and fuses

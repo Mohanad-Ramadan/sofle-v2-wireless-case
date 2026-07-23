@@ -18,11 +18,26 @@ from typing import cast
 
 from build123d import (
     Part, Wire, Pos, Polyline, make_face, extrude, offset, Kind,
-    Plane, BuildPart, BuildSketch, BuildLine, Locations, Cylinder,
+    Plane, BuildPart, BuildSketch, BuildLine, Locations, Location, Box, Cylinder,
 )
 from . import constants as C
 
 _DATA = Path(__file__).resolve().parents[2] / "data"
+
+
+def _load_switch_positions() -> list[dict]:
+    """Top-layer MX switch entries from components.json (excludes encoder SW25).
+
+    Mirrors ``switch_phantom._load_switch_positions`` but read here from the same
+    authoritative data — the puller notches must land on the real switch collars, so
+    they are placed off the switch positions/rotations (not derived from the square,
+    orientation-ambiguous plate cutouts)."""
+    raw = json.loads((_DATA / "components.json").read_text())
+    return [
+        {"x": v["x"], "y": v["y"], "rot": v["rotation"]}
+        for k, v in raw.items()
+        if k.startswith("SW") and v.get("layer") == "top" and k != "SW25"
+    ]
 
 
 def _load_plate_polygon() -> list[tuple[float, float]]:
@@ -92,6 +107,32 @@ def _window_solid(case_pts: list[tuple[float, float]], margin: float) -> Part:
     return cast(Part, Pos(0, 0, C.MAIN_RIM_Z - 0.1) * bp.part)
 
 
+def _puller_notches() -> Part:
+    """Two puller-access notches per MX switch, on the switch's local ±Y faces.
+
+    Each notch is a box ``COVER_PULLER_NOTCH_W`` wide (local X), spanning radius
+    INNER_R→OUTER_R (local Y) and the full cover thickness. INNER_R sits inside the
+    window so the notch merges with it; OUTER_R opens a claw pocket just past the
+    15.6 mm collar. Placed at each switch centre and rotated to the switch, so the
+    notches track the rotated thumb switches too."""
+    w = C.COVER_PULLER_NOTCH_W
+    r0, r1 = C.COVER_PULLER_NOTCH_INNER_R, C.COVER_PULLER_NOTCH_OUTER_R
+    length = r1 - r0
+    y_mid = (r0 + r1) / 2.0
+    z = C.MAIN_RIM_Z - 0.1
+    h = C.COVER_THICKNESS + 0.2
+    with BuildPart() as bp:
+        for sw in _load_switch_positions():
+            cx, cy = C.pcb_to_case(sw["x"], sw["y"])
+            for sign in (+1.0, -1.0):
+                # box centred on the local +Y or -Y face, then placed+rotated to the switch
+                with Locations(Location((cx, cy, z + h / 2), (0, 0, sw["rot"]))):
+                    with Locations((0.0, sign * y_mid, 0.0)):
+                        Box(w, length, h)
+    assert bp.part is not None
+    return cast(Part, bp.part)
+
+
 def _screw_holes() -> Part:
     """M2 clearance holes through the cover at each standoff."""
     with BuildPart() as bp:
@@ -118,6 +159,9 @@ def build_top_cover(fuse_margin: float = 0.0) -> Part:
             continue
         margin = 0.0 if _is_encoder_cutout(case_pts) else C.COVER_WINDOW_OFFSET
         cover = cast(Part, cover - _window_solid(case_pts, margin))
+
+    if C.COVER_PULLER_NOTCH:
+        cover = cast(Part, cover - _puller_notches())
 
     cover = cast(Part, cover - _screw_holes())
 
