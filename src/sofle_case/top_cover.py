@@ -2,9 +2,10 @@
 
 A thin (``COVER_THICKNESS``) layer the shape of the switch plate, sitting on the
 plate top (Z = ``MAIN_RIM_Z``) and held by the same standoffs via taller M2
-screws. Each 14 mm plate cutout is grown by ``COVER_WINDOW_OFFSET`` to a ~16.5 mm
-window so the switch's 15.6 mm top housing pokes through and the cover seats flat
-on the plate; keycaps float above and never touch it. The plate outline's own
+screws. Each 14 mm plate cutout is grown by ``COVER_WINDOW_OFFSET`` to a ~15.7 mm
+window (mitered square corners) that hugs the switch's 15.6 mm top housing — the
+switch pokes through and the cover seats flat with NO ring of plate showing around
+each key; keycaps float above and never touch it. The plate outline's own
 inner notch leaves the MCU/OLED/slide/JST bay open for free.
 
 Geometry is driven by the same authoritative plate data the plate phantom uses
@@ -65,10 +66,16 @@ def _is_encoder_cutout(case_pts: list[tuple[float, float]]) -> bool:
 
 
 def _window_solid(case_pts: list[tuple[float, float]], margin: float) -> Part:
-    """A single window: the plate cutout grown outward by ``margin`` (Kind.ARC),
-    extruded through the full cover thickness (with a small over-cut top and bottom).
+    """A single window: the plate cutout grown outward by ``margin`` (Kind.INTERSECTION,
+    i.e. mitered SHARP corners), extruded through the full cover thickness (with a
+    small over-cut top and bottom).
 
-    MX switch windows use ``COVER_WINDOW_OFFSET`` so the 15.6 mm top housing clears.
+    MX switch windows use ``COVER_WINDOW_OFFSET`` (0.8) so a 14 mm cutout grows to a
+    15.6 mm window that hugs the 15.6 mm top housing FLUSH — no plate ring shows. The
+    corners are mitered (not Kind.ARC rounded): a rounded corner of radius 0.8 leaves
+    the switch box's square corner protruding ~0.33 mm into the cover, so the window
+    is kept square to match the switch footprint exactly (real MX housings have
+    rounded corners, so a square window clears them with room to spare).
     The encoder window uses ``margin=0`` — its exact plate cutout — because the EC11
     body already passes through that opening and the bezel shell caps it from above."""
     pts = case_pts[:-1] if case_pts[0] == case_pts[-1] else case_pts
@@ -79,7 +86,7 @@ def _window_solid(case_pts: list[tuple[float, float]], margin: float) -> Part:
         with BuildSketch(Plane.XY):
             face = make_face(wire)  # type: ignore[arg-type]
             if margin:
-                face = offset(face, amount=margin, kind=Kind.ARC)
+                face = offset(face, amount=margin, kind=Kind.INTERSECTION)
         extrude(amount=C.COVER_THICKNESS + 0.2)
     assert bp.part is not None
     return cast(Part, Pos(0, 0, C.MAIN_RIM_Z - 0.1) * bp.part)

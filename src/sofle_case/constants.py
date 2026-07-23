@@ -52,14 +52,20 @@ OUTER_TOP_CHAMFER = 1.9   # mm, 45° outer-top bevel leg (~40% of WALL_THICKNESS
 # ---------- Top cover (sandwich lid over the switch plate) ----------
 # A thin printed layer the shape of the switch plate, sitting on the plate top
 # (Z = MAIN_RIM_Z) and held by the same standoffs via taller M2 screws. Each
-# 14 mm plate cutout is grown to a ~16.5 mm window so the switch's 15.6 mm top
-# housing pokes through and the cover seats flat on the plate. Keycaps float
-# entirely above it — skirt at full press ~14.0 mm > cover top 13.5 mm — so 1.0 mm
-# is safe (1.5 mm would just kiss the skirt on a hard edge press). The plate's
-# own inner notch leaves the MCU/OLED/slide/JST bay open for free.
+# 14 mm plate cutout is grown to a ~15.7 mm window (0.05 mm/side) that HUGS the
+# switch's 15.6 mm top housing so the switch pokes through and the cover seats flat
+# on the plate. The window is sized to hug the switch body (not oversized) so NO ring
+# of the switch plate shows around each key — the case/plate can be different colours
+# and the plate never peeks through (the 0.05 mm gap reads as a shadow line, not
+# plate colour, and keeps the boolean/print non-degenerate). The window corners are
+# mitered square (Kind.INTERSECTION), not rounded, so the switch box's square corners
+# clear too. Keycaps float entirely above it — skirt at full
+# press ~14.0 mm > cover top 13.5 mm — so 1.0 mm is safe (1.5 mm would just kiss the
+# skirt on a hard edge press). The plate's own inner notch leaves the MCU/OLED/
+# slide/JST bay open for free.
 MX_TOP_HOUSING_W        = 15.6   # mm; widest part of a Cherry MX switch (rests on plate) — drives the window size
 COVER_THICKNESS         = 1.0    # mm; lid thickness, top at MAIN_RIM_Z + 1.0 = 13.5
-COVER_WINDOW_OFFSET     = 1.25   # mm; grow each 14 mm plate cutout → 16.5 mm window (0.45 mm/side over the 15.6 housing)
+COVER_WINDOW_OFFSET     = 0.85   # mm; 14 mm cutout -> 15.7 mm window, 0.05 mm/side off the 15.6 housing (invisible shadow gap, plate hidden, non-degenerate)
 COVER_SCREW_CLEARANCE_DIA = 2.4  # mm; M2 screw shaft clearance through the cover
 # The plate-outline membrane sits ~0.3–0.7 mm inside the inner cavity wall, so on
 # its own it floats free (a separate solid) inside the TOP part. Grow the membrane
