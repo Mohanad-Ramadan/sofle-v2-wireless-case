@@ -471,7 +471,7 @@ def _corner_markers() -> Part:
     """Debug spheres at geometry transition points. All coords currently commented
     out — uncomment specific entries to visualise edges in the OCP viewer."""
     coords: tuple[tuple[float, float, float], ...] = (
-        
+
     )
     with BuildPart() as bp:
         for x, y, z in coords:

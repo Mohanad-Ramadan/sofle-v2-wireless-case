@@ -130,6 +130,58 @@ SEAM_RIM_THK    = WALL_THICKNESS - SEAM_SKIN - SEAM_FIT_CLEAR   # ≈ 2.45; deri
 # (a naive rectangular layout floats barbs off the curved wall spans) — a follow-up
 # once the rabbet clearance is dialled in. See the spec's snap section.
 
+# ---------- Drafted rim facet (outer-top treatment) ----------
+# The tall (16 mm) flat wall read as an ugly slab from the sides. The old rim treatment
+# was a shallow 1.9 mm 45° chamfer (OUTER_TOP_CHAMFER) — far too small to fight that.
+# Instead a drafted FACET is shaved from the outer-top all round (RIM_*), and the
+# palm-facing SOUTH (−Y) run gets a deeper, more aggressive facet (FRONT_*) so the front
+# reads about half as tall — the trick premium alloy boards use on the hands' inner face.
+#
+# OUTER_TOP_CHAMFER stays defined (canopy.py reads it as a wall-inset offset) but its old
+# rim-chamfer APPLICATION in build_tray is replaced by these facets. The facet is a wedge
+# cut from the outer wall top: full wall thickness at the toe (Z = rim − DROP), sloping
+# inward by RUN at the rim. Built as cutter solids because OCC rejects an asymmetric
+# chamfer() on this arc-offset edge set (see the OUTER_TOP_CHAMFER note above).
+RIM_FACET_DROP     = 4.0   # perimeter facet vertical extent (Z = rim → rim−4)
+RIM_FACET_RUN      = 2.0   # perimeter inset at the rim (~27° from vertical); rim wall left = 2.75
+FRONT_FACET_DROP   = 8.0   # south facet vertical extent (Z = rim → rim−8): a tall, dominant bevel
+FRONT_FACET_RUN    = 3.0   # south inset at the rim (~21° from vertical); rim wall left = 1.75
+FRONT_FACET_Y_MASK = 24.0  # case-Y north limit of the south facet. The palm-facing run tops out
+#                            at case-y ≈ 23.2 and the E/W walls start at ≈ 24.75, so 24.0 captures
+#                            the whole front and excludes the side walls.
+# The deep facet's plan REGION is bounded north by the flat FRONT_FACET_Y_MASK cap (which makes
+# the SE crease: the cap crosses the rising E4 ramp's facet band → a diagonal slash in the front
+# elevation) and west by a MIRRORED boundary line, computed at build time so the SW crease is the
+# SE slash reflected about the case centreline: the SE slash's rim/toe elevation X positions are
+# mirrored (x → OUTER_WIDTH − x) and dropped onto the E1 ramp's facet band, and the boundary is
+# the vertical plan line through those two points. The customer reads the two slashes as an
+# identical mirrored pair holding the low south wall — the case's ONLY two creases. Everything
+# west of the boundary (thumb tip arc, thumb wall E0, west wall) is plain shallow perimeter
+# facet — one wall style. See tray._front_facet_mask / tray._se_crease_plan_points.
+
+# The SW slash cannot be an exact X-mirror of the SE slash: the SE slash sits on one long clean
+# ramp (E5, flat-centre → SE corner), but the mirror of that X lands on the busy pointy-thumb
+# corner, where the deep→shallow transition shatters into several facets. The front outline is
+# not symmetric (thumb cluster on the SW). Instead the SW slash is placed as ONE clean cut across
+# the centre-adjacent ramp E3 (flat-centre → SW), the visual partner of E5, so the two slashes
+# read as a matched pair holding the low central wall. FRONT_FACET_SW_X is the case-X of that cut
+# (crosses E3 mid-ramp); everything west of it (E2, thumb wall, west wall) is plain shallow.
+FRONT_FACET_SW_X = 45.5   # case-X of the SW slash cut across the E3 ramp (x-range 36.8..54.2)
+
+# Reflex outline corners (the outline turning the "wrong way": front idx3/idx4, the west jog,
+# the east/back notches) leave sharp V-notches in a Kind.ARC offset — each one used to throw a
+# spurious crease through the wall and facet. The outer wall + facet profiles are built from a
+# polygon whose REFLEX corners are rounded by this radius (2-D, per-corner fallback), so the
+# chamfer flows continuously around them. The CAVITY keeps the sharp polygon (PCB fit unchanged).
+REFLEX_ROUND_R = 2.0   # mm; plan rounding of reflex outline corners (outer wall + facet only)
+
+# Facet guards — the sandwich TOP is the binding case (rim = COVER_TOP_Z; the outer skin below
+# SEAM_LEDGE_Z is only SEAM_SKIN thick; the membrane fuses into the inner COVER_FUSE_MARGIN of wall):
+assert FRONT_FACET_RUN <= WALL_THICKNESS - 1.5, "front facet thins the rim wall below 1.5 mm"
+assert RIM_FACET_RUN <= WALL_THICKNESS - 1.5, "perimeter facet thins the rim wall below 1.5 mm"
+assert FRONT_FACET_RUN < WALL_THICKNESS - COVER_FUSE_MARGIN, "front facet reaches the membrane fuse band"
+assert COVER_TOP_Z - FRONT_FACET_DROP >= SEAM_LEDGE_Z + 1.0, "front facet toe intrudes on the rabbet skin zone"
+
 # ---------- Encoder plateau (TOP part, around EC11 rotary encoder) ----------
 # The EC11 body is a ~12 mm box that mounts through the plate's encoder cutout
 # (~12.7 mm) and protrudes ~2 mm above the plate top. On the sandwich TOP part a

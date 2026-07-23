@@ -3,10 +3,12 @@ switch plate). The MCU corner is a plain flat wall — no hill; the nice!nano an
 its USB-C jack sit open above the rim. The slide-switch bowl scoop on the −X
 wall and the +Y wall's B+/B- relief bump are the only local wall features."""
 from __future__ import annotations
+import math
+from functools import cache
 from typing import cast
 from build123d import (
     Part, Wire, Pos, Polyline, make_face, extrude, offset, Kind, Solid,
-    Plane, BuildPart, BuildSketch, BuildLine, Axis, fillet, chamfer,
+    Plane, BuildPart, BuildSketch, BuildLine, Axis, fillet, chamfer, loft,
 )
 from OCP.Standard import Standard_Failure
 from . import constants as C
@@ -27,10 +29,69 @@ def _polygon_wire() -> Wire:
     return cast(Wire, bl.line)
 
 
+def _poly_pts() -> list[tuple[float, float]]:
+    poly = polygon_in_case_coords()
+    return poly[:-1] if poly[0] == poly[-1] else poly
+
+
+def _reflex_vertex_points() -> list[tuple[float, float]]:
+    """Outline vertices where the boundary turns the 'wrong way' (reflex, ≥3°).
+
+    A Kind.ARC offset rounds convex corners but leaves reflex corners as sharp
+    V-notches — each one used to throw a spurious crease through the outer wall
+    and the rim facet. These are the vertices `_rounded_wire` rounds away."""
+    pts = _poly_pts()
+    n = len(pts)
+    area2 = sum(pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1]
+                for i in range(n))
+    ccw = area2 > 0
+    out: list[tuple[float, float]] = []
+    for i in range(n):
+        p0, p1, p2 = pts[(i - 1) % n], pts[i], pts[(i + 1) % n]
+        ax, ay = p1[0] - p0[0], p1[1] - p0[1]
+        bx, by = p2[0] - p1[0], p2[1] - p1[1]
+        cross = ax * by - ay * bx
+        reflex = (cross < 0) if ccw else (cross > 0)
+        turn = abs(math.degrees(math.atan2(cross, ax * bx + ay * by)))
+        if reflex and turn >= 3.0:
+            out.append(p1)
+    return out
+
+
+@cache
+def _rounded_wire() -> Wire:
+    """The outline wire with every REFLEX vertex rounded by REFLEX_ROUND_R (2-D).
+
+    Used for the OUTER wall and the rim-facet profiles only, so the drafted
+    chamfer flows continuously around the jogs/notches instead of creasing at
+    each reflex corner. The CAVITY (and the sandwich plate/pocket offsets in
+    case.py) keep the sharp polygon — PCB clearance and rabbet fit unchanged;
+    rounding a reflex corner only ADDS outer material (fills the notch), so the
+    wall gets locally thicker there, never thinner. Per-vertex radius fallback
+    so one tight corner can't abort the profile."""
+    with BuildSketch(Plane.XY) as sk:
+        with BuildLine():
+            Polyline(*_poly_pts(), close=True)
+        make_face()
+        for rx, ry in _reflex_vertex_points():
+            for r in (C.REFLEX_ROUND_R, C.REFLEX_ROUND_R * 0.5, C.REFLEX_ROUND_R * 0.25):
+                verts = [v for v in sk.vertices()
+                         if abs(v.X - rx) < 0.05 and abs(v.Y - ry) < 0.05]
+                if not verts:
+                    break
+                try:
+                    fillet(verts, radius=r)
+                    break
+                except (ValueError, Standard_Failure):
+                    continue
+    return cast(Wire, sk.sketch.faces()[0].outer_wire())
+
+
 def _outer_extruded(z_lo: float, z_hi: float) -> Part:
-    """PCB polygon offset OUTWARD by (WALL_THICKNESS + PCB_XY_CLEARANCE), Kind.ARC,
-    extruded from z_lo to z_hi."""
-    wire = _polygon_wire()
+    """REFLEX-ROUNDED polygon offset OUTWARD by (WALL_THICKNESS + PCB_XY_CLEARANCE),
+    Kind.ARC, extruded from z_lo to z_hi. Rounded so the outer skin has no sharp
+    V-notches at reflex outline corners (see _rounded_wire)."""
+    wire = _rounded_wire()
     with BuildPart() as bp:
         with BuildSketch(Plane.XY):
             face = make_face(wire)  # type: ignore[arg-type]
@@ -40,7 +101,8 @@ def _outer_extruded(z_lo: float, z_hi: float) -> Part:
     return cast(Part, Pos(0, 0, z_lo) * bp.part)
 
 
-def offset_extruded(amount: float, z_lo: float, z_hi: float, kind: Kind = Kind.ARC) -> Part:
+def offset_extruded(amount: float, z_lo: float, z_hi: float, kind: Kind = Kind.ARC,
+                    rounded: bool = False) -> Part:
     """PCB polygon offset OUTWARD by ``amount``, extruded ``z_lo → z_hi``.
 
     Public helper shared with the sandwich split (case.py): the inset floor plate
@@ -48,8 +110,9 @@ def offset_extruded(amount: float, z_lo: float, z_hi: float, kind: Kind = Kind.A
     polygon, so they nest with a uniform radial gap. ``amount`` between the cavity
     offset (``PCB_XY_CLEARANCE``) and the outer-skin offset
     (``WALL_THICKNESS + PCB_XY_CLEARANCE``) lands inside the wall. ``Kind.ARC``
-    matches the outer shell's rounded convex corners."""
-    wire = _polygon_wire()
+    matches the outer shell's rounded convex corners. ``rounded=True`` uses the
+    reflex-rounded outline (facet band only — plate/pocket stay sharp)."""
+    wire = _rounded_wire() if rounded else _polygon_wire()
     with BuildPart() as bp:
         with BuildSketch(Plane.XY):
             face = make_face(wire)  # type: ignore[arg-type]
@@ -189,46 +252,9 @@ def _mcu_y_relief_widen(rim_z: float = C.MAIN_RIM_Z) -> Part:
     return widen
 
 
-# ---------------------------------------------------------------------------
-# Outer concave corner fillets
-# ---------------------------------------------------------------------------
-
-def _fillet_outer_concave_corners(part: Part) -> Part:
-    """Fillet sharp V-notches left by Kind.ARC offset at concave polygon vertices.
-    Per-corner try/except so one failure doesn't abort the rest.
-
-    Targets are anchored in PCB coords (converted via pcb_to_case) so they track
-    the PCB re-centring when WALL_THICKNESS changes — otherwise the search boxes,
-    fixed in case coords, drift off the vertices and the fillets silently stop
-    applying. Each entry is (pcb_x, pcb_y, half_x, half_y, r) around the vertex."""
-    pcb_targets: list[tuple[float, float, float, float, float]] = [
-        ( -9.00, -84.25, 1.5, 1.25, 0.5),   # [0] near-flat, tiny notch
-        ( 19.50, -108.25, 1.5, 1.25, 0.8),  # [3] ~5° turn, short segments
-        ( 36.25, -100.50, 1.25, 1.5, 2.0),  # [4] ~24° turn
-        ( 92.50, -100.50, 1.5, 1.5, 2.0),   # [5] convex; try, may be no-op
-    ]
-    targets: list[tuple[float, float, float, float, float]] = []
-    for px, py, hx, hy, r in pcb_targets:
-        cx, cy = C.pcb_to_case(px, py)
-        targets.append((cx - hx, cy - hy, cx + hx, cy + hy, r))
-    for xlo, ylo, xhi, yhi, r in targets:
-        z_edges = [
-            e for e in (
-                part.edges()
-                .filter_by_position(Axis.X, minimum=xlo, maximum=xhi)
-                .filter_by_position(Axis.Y, minimum=ylo, maximum=yhi)
-            )
-            if (abs(e.tangent_at(0.5).X) < 0.01
-                and abs(e.tangent_at(0.5).Y) < 0.01
-                and e.bounding_box().min.Z < 0.01)   # outer face: starts at Z≈0
-        ]
-        if not z_edges:
-            continue
-        try:
-            part = cast(Part, fillet(z_edges, radius=r))
-        except (ValueError, Standard_Failure):
-            pass
-    return part
+# NB: the old `_fillet_outer_concave_corners` post-pass (per-corner 3-D fillets hunting the
+# reflex V-notches) is GONE — the reflex corners are now rounded in the 2-D profile itself
+# (`_rounded_wire`), so wall AND facet flow continuously through them by construction.
 
 
 # ---------------------------------------------------------------------------
@@ -289,52 +315,185 @@ def _fillet_bump_neg_x_corner(part: Part) -> Part:
 
 
 # ---------------------------------------------------------------------------
-# Outer-top chamfer (thick-wall ledge descends outward to the ground)
+# Drafted rim facet (outer-top treatment; replaces the old flat chamfer)
 # ---------------------------------------------------------------------------
 
-def _chamfer_outer_top_edges(part: Part, rim_z: float = C.MAIN_RIM_Z) -> Part:
-    """Bevel the OUTER top perimeter (45°) so the thick wall's top edge descends
-    toward the ground instead of reading as a hard block. The inner cavity rim is
-    left sharp (flush with the switch plate) — only edges on the outer boundary
-    are selected.
+def _rim_facet_frustum(drop: float, run: float, rim_z: float) -> Part:
+    """The 'keep' frustum whose sloped outer wall IS the facet plane.
 
-    Outer vs inner rim is told apart by a radial membership probe: at an outer
-    edge, material lies inward (into the wall) and air lies outward; at the inner
-    rim it is the reverse. The slide-switch valley top edges sit below the rim, so
-    the rim-Z filter skips them automatically. Size fallback + try/except mirror
-    the other top-edge passes so an OCC failure never aborts the whole bevel."""
-    rim = rim_z
-    cx, cy = C.OUTER_WIDTH / 2, C.OUTER_DEPTH / 2
+    A loft between two concentric PCB-polygon offsets (both Kind.ARC, so topologically
+    identical — the loft is well-conditioned even on the arc corners): the outer wall
+    offset at the toe (Z = rim_z − drop) tapering inward by ``run`` at the rim (Z = rim_z).
+    Both cross-sections are extended ``e`` past the toe/rim along the same slope so the
+    wedge cutter (outer band − this frustum) has no coincident cap faces to trip OCC."""
+    outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+    slope = run / drop                       # radial inset per unit Z
+    e = 0.6                                   # end extension beyond toe and rim
+    z0, z1 = rim_z - drop - e, rim_z + e
+    amt0 = outer + slope * e                  # wider than the band below the toe → no cut there
+    amt1 = outer - run - slope * e            # narrower above the rim
+    wire = _rounded_wire()                    # reflex-rounded → facet continuous at the jogs
+    with BuildPart() as bp:
+        with BuildSketch(Plane(origin=(0, 0, z0))):
+            face = make_face(wire)  # type: ignore[arg-type]
+            face = offset(face, amount=amt0, kind=Kind.ARC)
+        with BuildSketch(Plane(origin=(0, 0, z1))):
+            face = make_face(wire)  # type: ignore[arg-type]
+            face = offset(face, amount=amt1, kind=Kind.ARC)
+        loft()
+    assert bp.part is not None
+    return cast(Part, bp.part)
 
-    def _solid(x: float, y: float, z: float) -> bool:
-        probe = Solid.make_box(0.4, 0.4, 0.4).translate((x - 0.2, y - 0.2, z - 0.2))
-        return cast(float, (part & probe).volume) > 1e-6
 
-    outer = []
-    for e in part.edges():
-        bb = e.bounding_box()
-        if bb.max.Z - bb.min.Z > 0.05:                 # horizontal edges only
-            continue
-        if not (rim - 0.1 <= bb.min.Z <= rim + 0.1):   # at the flat rim
-            continue
-        m = e.position_at(0.5)
-        dx, dy = m.X - cx, m.Y - cy
-        n = (dx * dx + dy * dy) ** 0.5
-        if n < 1e-6:
-            continue
-        ux, uy = dx / n, dy / n
-        if _solid(m.X - ux * 0.6, m.Y - uy * 0.6, rim - 0.6) and not _solid(
-                m.X + ux * 0.6, m.Y + uy * 0.6, rim - 0.6):
-            outer.append(e)
-    if not outer:
-        return part
+def _rim_facet_cutter(drop: float, run: float, rim_z: float) -> Part:
+    """Wedge ring shaved from the outer-wall top: the full outer prism minus the keep
+    frustum. Zero width at the toe (Z = rim_z − drop), ``run`` wide at the rim. Subtracting
+    it from the tray slopes the outer-top edge inward — the drafted facet."""
+    outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+    e = 0.6
+    band = offset_extruded(outer, rim_z - drop - e, rim_z + e, rounded=True)
+    return cast(Part, band - _rim_facet_frustum(drop, run, rim_z))
 
-    for length in (C.OUTER_TOP_CHAMFER, C.OUTER_TOP_CHAMFER * 0.75, C.OUTER_TOP_CHAMFER * 0.5):
-        try:
-            return cast(Part, chamfer(outer, length=length))
-        except (ValueError, Standard_Failure):
-            continue
-    return part
+
+def _mcu_bump_exclusion(rim_z: float) -> Part:
+    """Plan region where the POLYGON-offset facet cutters must not cut: the +Y relief bump
+    is proud of the nominal outline offset over its whole footprint (it fills the NW corner
+    out to the flat y = bump-face line), so the nominal wedge would tunnel grooves INSIDE
+    the bump. The bump instead gets its own face-aligned wedges (`_bump_face_facets`) so its
+    faces carry the SAME drafted chamfer as every other wall. The box ends at the bump's east
+    face, where the polygon wall arrives at the same outer line — the polygon facet resumes
+    there on the same plane, so the chamfer runs continuous across the joint."""
+    x_lo, x_hi = _mcu_y_relief_x_range()
+    y_lo = _poly_pts()[16][1] - 0.75      # just south of the west wall's north corner
+    return _axis_box(x_lo - 1.0, x_hi + 0.02, y_lo,
+                     C.OUTER_DEPTH + 2.0, 0.0, rim_z + 1.0)
+
+
+def _planar_wedge(pts3d: list[tuple[float, float, float]],
+                  direction: tuple[float, float, float], length: float) -> Part:
+    """Planar profile (3-D points, closed) extruded ``length`` along ``direction``."""
+    w = Polyline(*pts3d, close=True)
+    f = make_face(w)  # type: ignore[arg-type]
+    return cast(Part, extrude(f, amount=length, dir=direction))  # type: ignore[arg-type]
+
+
+def _bump_face_facets(rim_z: float) -> Part:
+    """Drafted-facet wedges for the +Y relief bump's own faces (north, west, NW corner).
+
+    The bump is excluded from the polygon-offset facet (see `_mcu_bump_exclusion`), so these
+    wedges cut the SAME chamfer profile (RIM_FACET_DROP/RUN) aligned to the bump's actual
+    faces: a Y–Z wedge along the north face, an X–Z wedge along the west face, and a conical
+    ring segment around the NW corner arc (the `_fillet_bump_neg_x_corner` cylinder), so the
+    chamfer flows wall → corner → bump → polygon wall with no bare stretch and no crease."""
+    drop, run = C.RIM_FACET_DROP, C.RIM_FACET_RUN
+    z0, z1, z1e = rim_z - drop, rim_z, rim_z + 0.5
+    x_lo, x_hi = _mcu_y_relief_x_range()
+    y_out = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+    r = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE   # NW corner fillet radius (_fillet_bump_neg_x_corner)
+    ccx, ccy = x_lo + r, y_out - r              # corner arc centre
+    y_w_lo = _poly_pts()[16][1] - 0.6           # west wedge start: overlaps the polygon facet's plane
+
+    north = _planar_wedge(
+        [(ccx - 0.2, y_out + 0.2, z0), (ccx - 0.2, y_out + 0.2, z1e),
+         (ccx - 0.2, y_out - run, z1e), (ccx - 0.2, y_out - run, z1),
+         (ccx - 0.2, y_out, z0)],
+        (1.0, 0.0, 0.0), (x_hi + 0.02) - (ccx - 0.2))
+    west = _planar_wedge(
+        [(x_lo - 0.2, y_w_lo, z0), (x_lo - 0.2, y_w_lo, z1e),
+         (x_lo + run, y_w_lo, z1e), (x_lo + run, y_w_lo, z1),
+         (x_lo, y_w_lo, z0)],
+        (0.0, 1.0, 0.0), (ccy + 0.2) - y_w_lo)
+    # NW corner: quadrant box minus the keep-cone (the corner cylinder tapering inward by
+    # ``run`` over ``drop``, extended past both ends so no coincident caps).
+    e = 0.5
+    slope = run / drop
+    box = _axis_box(x_lo - 0.2, ccx, ccy, y_out + 0.2, z0, z1e)
+    cone = cast(Part, Solid.make_cone(
+        r + slope * e, r - run - slope * e, drop + 2 * e
+    ).translate((ccx, ccy, z0 - e)))
+    corner = cast(Part, box - cone)
+    return cast(Part, north + west + corner)
+
+
+def _se_crease_plan_points() -> tuple[tuple[float, float], tuple[float, float]]:
+    """Plan (x, y) of the SE crease's RIM and TOE crossings.
+
+    The SE crease — the reference slash — is where the flat FRONT_FACET_Y_MASK cap crosses
+    the deep facet band over the SE ramp E4 (front's east corner → SE corner): at the rim the
+    facet surface follows the outline offset by (outer − FRONT_FACET_RUN), at the toe the full
+    outer offset. Both are straight offset lines of E4, so the crossings are exact."""
+    pts = _poly_pts()
+    a, b = pts[5], pts[6]                      # E4: front's east corner → SE corner
+    assert a[1] < C.FRONT_FACET_Y_MASK < b[1], \
+        "outline order changed: expected pts[5]→pts[6] to be the rising SE ramp crossing the cap"
+    ex, ey = b[0] - a[0], b[1] - a[1]
+    el = math.hypot(ex, ey)
+    ux, uy = ex / el, ey / el
+    nx, ny = uy, -ux                           # outward normal (CCW outline)
+    outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+    res = []
+    for off in (outer - C.FRONT_FACET_RUN, outer):   # rim inset, toe
+        px, py = a[0] + nx * off, a[1] + ny * off
+        t = (C.FRONT_FACET_Y_MASK - py) / uy
+        res.append((px + ux * t, py + uy * t))
+    return res[0], res[1]
+
+
+def _sw_boundary_points() -> tuple[tuple[float, float], tuple[float, float]]:
+    """Plan (x, y) where the SW slash cut crosses the E3 ramp — the visual partner of the SE
+    slash on E5. NOT an exact X-mirror (the front outline is asymmetric — the mirror of the SE
+    slash lands on the busy pointy-thumb corner and shatters). Instead a single clean cut at
+    case-X FRONT_FACET_SW_X across the straight E3 ramp; the point returned is that crossing on
+    the ramp's outer face, used only for tests/inspection. The mask itself is a vertical plane
+    at FRONT_FACET_SW_X (see `_front_facet_mask`), so the slash is one clean line on one ramp."""
+    pts = _poly_pts()
+    a, b = pts[3], pts[4]                      # E3: (36.8,15.2) → (54.2,23.2), the SW ramp
+    x = C.FRONT_FACET_SW_X
+    assert a[0] < x < b[0], "FRONT_FACET_SW_X is off the E3 ramp x-range"
+    t = (x - a[0]) / (b[0] - a[0])
+    y_edge = a[1] + t * (b[1] - a[1])
+    outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+    ux, uy = (b[0] - a[0]), (b[1] - a[1])
+    el = math.hypot(ux, uy); ux, uy = ux / el, uy / el
+    nx, ny = uy, -ux                           # outward normal
+    rim = (x + nx * (outer - C.FRONT_FACET_RUN), y_edge + ny * (outer - C.FRONT_FACET_RUN))
+    toe = (x + nx * outer, y_edge + ny * outer)
+    return rim, toe
+
+
+def _front_facet_mask() -> Part:
+    """Plan REGION (extruded prism) selecting where the deep south facet applies.
+
+    Bounded NORTH by the flat FRONT_FACET_Y_MASK cap — whose crossing of the E5 ramp IS the SE
+    slash — and WEST by a VERTICAL plane at FRONT_FACET_SW_X that cuts cleanly across the single
+    straight E3 ramp, making the SW slash. The deep region is thus the low central front (E4 flat
+    + its two flanking ramps) held between two slashes; everything west of the cut (E2, the thumb
+    wall, the west wall) is plain shallow perimeter facet — one wall style, exactly two creases,
+    a matched (near-mirror) pair. The outline is not symmetric, so the two ramps differ slightly;
+    FRONT_FACET_SW_X tunes the SW slash to read as E5's partner."""
+    x_w = C.FRONT_FACET_SW_X
+    y_n = C.FRONT_FACET_Y_MASK
+    BIG = 220.0
+    z0, z1 = -1.0, C.COVER_TOP_Z + 2.0
+    pts = [(x_w, -BIG), (x_w, y_n), (BIG, y_n), (BIG, -BIG)]
+    with BuildPart() as bp:
+        with BuildSketch(Plane.XY):
+            with BuildLine():
+                Polyline(*pts, close=True)
+            make_face()
+        extrude(amount=z1 - z0)
+    assert bp.part is not None
+    return cast(Part, Pos(0, 0, z0) * bp.part)
+
+
+def _apply_rim_facets(part: Part, rim_z: float) -> Part:
+    """Shave the drafted perimeter facet (bump handled by its own face wedges) and the
+    deeper south facet (masked to the front, between the two mirrored slashes)."""
+    perim = cast(Part, _rim_facet_cutter(C.RIM_FACET_DROP, C.RIM_FACET_RUN, rim_z)
+                 - _mcu_bump_exclusion(rim_z))
+    front = cast(Part, _rim_facet_cutter(C.FRONT_FACET_DROP, C.FRONT_FACET_RUN, rim_z)
+                 & _front_facet_mask())
+    return cast(Part, part - perim - front - _bump_face_facets(rim_z))
 
 
 # ---------------------------------------------------------------------------
@@ -355,10 +514,9 @@ def build_tray(rim_z: float = C.MAIN_RIM_Z) -> Part:
     hollow = cast(Part, hollow - _mcu_y_relief_widen(rim_z))
     # NB: the slide-switch finger scoop is NOT cut here — it is a TOP-only, above-seam feature
     # that also lowers the fused canopy, so case.build_top_part applies it (see case._slide_scoop).
-    hollow = _fillet_outer_concave_corners(hollow)
     hollow = _fillet_bump_neg_x_corner(hollow)
-    filleted = _chamfer_outer_top_edges(hollow, rim_z)
-    chamfered = _chamfer_bottom_edges(filleted)
+    faceted = _apply_rim_facets(hollow, rim_z)
+    chamfered = _chamfer_bottom_edges(faceted)
     if isinstance(chamfered, Part):
         return chamfered
     solids = chamfered.solids()

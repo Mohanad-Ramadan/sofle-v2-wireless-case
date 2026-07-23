@@ -31,7 +31,7 @@ from __future__ import annotations
 from typing import cast
 
 from build123d import (
-    Part, Pos, Line, Polyline, Spline, make_face, extrude, fillet, Solid,
+    Part, Pos, Line, Polyline, Spline, make_face, extrude, fillet, chamfer, Solid,
     Plane, BuildPart, BuildSketch, BuildLine,
 )
 from OCP.Standard import Standard_Failure
@@ -51,12 +51,13 @@ CANOPY_ROOF_WALL    = 1.5                       # roof + east-wall shell thickne
 CANOPY_SIDE_WALL    = 4.0                       # N + W wall thickness (case-like; thinned from 4.75
                                                #   so the west cavity clears the nice!nano's west edge)
 CANOPY_ROOF_CLEAR   = 0.6                       # headroom over the USB-C body top
-# N/W walls land at the chamfer FIRST point (inner chamfer line); the chamfer stays exposed
-# (walls are the outer wall face pulled IN by one chamfer leg).
+# N/W walls land FLUSH on the drafted rim facet's top line (outer wall face pulled IN by the
+# facet's rim inset RIM_FACET_RUN): the wall's facet rises from its toe and meets the canopy
+# face exactly at the rim, so wall → facet → canopy face reads as one continuous surface stack.
 CANOPY_WEST_OUTER_X = (C.pcb_to_case(0, 0)[0] - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE
-                       + C.OUTER_TOP_CHAMFER)                                               # ≈ 10.4
+                       + C.RIM_FACET_RUN)                                                   # ≈ 10.5
 CANOPY_NORTH_OUTER_Y = (C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1]
-                        + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE - C.OUTER_TOP_CHAMFER)       # ≈ 121.6
+                        + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE - C.RIM_FACET_RUN)           # ≈ 121.5
 CANOPY_EAST_X       = 34.6                       # switch-column boundary (bay east edge)
 # Ramp foot: the slip merges DOWN into the cover surface (tangent, no raised tongue) AND lands
 # on the encoder plateau's north face, so the open bay strip in front of the plateau is CLOSED
@@ -81,13 +82,19 @@ CANOPY_WEST_ROUND_R = 2.3
 CANOPY_FOOT_Z       = C.COVER_TOP_Z                                # 13.5; ramp foot = cover surface
 CANOPY_FUSE_BASE_Z  = C.MAIN_RIM_Z                                 # 12.5; base overlaps the cover for the fuse
 CANOPY_RIDGE_TOP_Z  = C.USB_C_BODY_TOP_Z + CANOPY_ROOF_CLEAR + CANOPY_ROOF_WALL             # 21.9
-# NW corner radius = the case's own rounded corner AT the chamfer-first line.
-CANOPY_CORNER_R     = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE - C.OUTER_TOP_CHAMFER            # ≈ 3.35
+# NW corner radius = the case's own rounded corner AT the facet's rim line.
+CANOPY_CORNER_R     = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE - C.RIM_FACET_RUN                # ≈ 3.25
 # USB-C port through the north wall — REQUIRED for the fused fit (the jack pokes into the wall;
 # it used to sit open over the +Y wall). Centred on the MCU X column.
 CANOPY_USB_W        = C.USB_C_W + 2.0                              # 11.0; port width (jack + plug clearance)
 CANOPY_USB_Z_LO     = C.MCU_PCB_TOP_Z - 0.8                        # port bottom; tracks the PCB (was literal 13.0)
 CANOPY_USB_Z_HI     = C.USB_C_BODY_TOP_Z + 0.7                     # port top; clears the USB-C body (was literal 20.5)
+
+# Canopy roof-edge chamfer: the same drafted-facet STYLE as the case rim (slope run/drop),
+# scaled down so the north face's chamfer toe stays clear of the USB-C port mouth below it.
+CANOPY_TOP_CHAMFER_V = min(2.4, CANOPY_RIDGE_TOP_Z - CANOPY_USB_Z_HI - 0.2)   # vertical leg
+CANOPY_TOP_CHAMFER_H = CANOPY_TOP_CHAMFER_V * C.RIM_FACET_RUN / C.RIM_FACET_DROP  # horizontal leg
+assert CANOPY_TOP_CHAMFER_V > 0.5, "USB port leaves no room for the canopy roof chamfer"
 
 # Reset poke-hole: a vertical bore straight down through the canopy roof directly above RSW1,
 # with a countersunk funnel mouth on the roof surface so a reset tool self-guides in. The bore
@@ -121,14 +128,17 @@ def _dedup(pts: list[tuple[float, float]], tol: float = 1e-4) -> list[tuple[floa
 
 def _yz_prism(top_pts: list[tuple[float, float]], z_base: float, x_lo: float, x_width: float,
               fillets_2d: list[tuple[float, float, float]] | None = None,
-              spline_range: tuple[float, float] | None = None) -> Part:
+              spline_range: tuple[float, float] | None = None,
+              chamfers_2d: list[tuple[float, float, float, float]] | None = None) -> Part:
     """Extrude a Y–Z profile (flat base at ``z_base`` closed by the ``top_pts`` edge, ordered
     by ascending Y) along +X by ``x_width``, positioned so its −X face sits at ``x_lo``.
 
-    ``fillets_2d`` rounds the profile vertex at each ``(y, z, r)`` in 2-D. ``spline_range``
-    ``(y0, y1)`` draws the ramp between those Y as a real **Spline** (a smooth curved edge, so
-    the swept surface has no facet steps) with a horizontal tangent at ``y1`` (eases into the
-    flat roof); the rest of the profile stays straight ``Line`` segments."""
+    ``fillets_2d`` rounds the profile vertex at each ``(y, z, r)`` in 2-D. ``chamfers_2d``
+    CHAMFERS the vertex at each ``(y, z, len1, len2)`` instead (drafted-facet style; tried
+    asymmetric both ways, then symmetric, then a fillet as last resort — never aborts).
+    ``spline_range`` ``(y0, y1)`` draws the ramp between those Y as a real **Spline** (a smooth
+    curved edge, so the swept surface has no facet steps) with a horizontal tangent at ``y1``
+    (eases into the flat roof); the rest of the profile stays straight ``Line`` segments."""
     top = _dedup(top_pts)
     y_lo, y_hi = top[0][0], top[-1][0]
     with BuildPart() as bp:
@@ -158,6 +168,22 @@ def _yz_prism(top_pts: list[tuple[float, float]], z_base: float, x_lo: float, x_
                 if verts:
                     try:
                         fillet(verts, radius=r)
+                    except (ValueError, Standard_Failure):
+                        pass
+            for cy_, cz_, l1, l2 in (chamfers_2d or []):
+                verts = [v for v in sk.vertices()
+                         if abs(v.X - cy_) < 0.05 and abs(v.Y - cz_) < 0.05]
+                if not verts:
+                    continue
+                for args in ((l1, l2), (l2, l1), ((l1 + l2) / 2, None)):
+                    try:
+                        chamfer(verts, length=args[0], length2=args[1])
+                        break
+                    except (ValueError, Standard_Failure, TypeError):
+                        continue
+                else:
+                    try:
+                        fillet(verts, radius=min(l1, l2))
                     except (ValueError, Standard_Failure):
                         pass
         extrude(amount=x_width)
@@ -232,12 +258,13 @@ def _round_nw_corner(part: Part, x_w: float, y_n: float, r: float, z0: float, z1
 
 
 def _round_west_top_edges(part: Part, x_w: float, x_e: float, r: float) -> Part:
-    """Round the highest WEST + NW top-shoulder edges (roof/ramp ↔ west wall) to radius ``r`` so
-    the tall west side reads with the case's soft rounded corners instead of a hard block. Only
-    the west half is touched — the EAST top edge (switch-column boundary) is left sharp on
-    purpose. Done on the SOLID envelope (before hollowing) where there is full material below the
-    roll; the cavity is set in one wall thickness so it never reaches the blend. A too-large
-    radius is retried smaller rather than left sharp, so the shoulder is never a hard edge."""
+    """CHAMFER the highest WEST + NW top-shoulder edges (roof/ramp ↔ west wall) so the tall
+    west side carries the same drafted-facet style as the case walls (was a round-over — the
+    only rounded shoulder left on an otherwise-chamfered case). Only the west half is touched —
+    the EAST top edge (switch-column boundary) is left sharp on purpose. Done on the SOLID
+    envelope (before hollowing) where there is full material below the cut; the cavity is set
+    in one wall thickness so it never reaches it. Asymmetric (facet-slope) chamfer is tried
+    both ways, then symmetric, then the old fillet as a last resort — never left hard."""
     x_mid = (x_w + x_e) / 2
     edges = [e for e in part.edges()
              if e.center().X < x_mid                          # west half only (east stays sharp)
@@ -247,6 +274,12 @@ def _round_west_top_edges(part: Part, x_w: float, x_e: float, r: float) -> Part:
              and abs(e.tangent_at(0.5).Z) < 0.9]              # top edges, not the vertical corner
     if not edges:
         return part
+    v, h = CANOPY_TOP_CHAMFER_V, CANOPY_TOP_CHAMFER_H
+    for args in ((v, h), (h, v), ((v + h) / 2, None)):
+        try:
+            return cast(Part, chamfer(edges, length=args[0], length2=args[1]))
+        except (ValueError, Standard_Failure, TypeError):
+            continue
     for radius in (r, 2.0, 1.5, 1.0):
         try:
             return cast(Part, fillet(edges, radius=radius))
@@ -272,7 +305,9 @@ def build_canopy(hollow: bool = True) -> Part:
     ramp_span = (CANOPY_RAMP_FOOT_Y, CANOPY_RAMP_TOP_Y)
     roof = _roofline()
     body = _yz_prism(roof, z_base=z_base, x_lo=x_w, x_width=x_e - x_w,
-                     fillets_2d=[(y_n, z_ridge, CANOPY_NORTH_ROUND_R)], spline_range=ramp_span)
+                     chamfers_2d=[(y_n, z_ridge,
+                                   CANOPY_TOP_CHAMFER_V, CANOPY_TOP_CHAMFER_H)],
+                     spline_range=ramp_span)
     body = _round_nw_corner(body, x_w, y_n, CANOPY_CORNER_R, z_base - 0.1, z_ridge + 0.1)
     # Round the tall west + NW top shoulder (east left sharp) on the solid, before hollowing.
     body = _round_west_top_edges(body, x_w, x_e, CANOPY_WEST_ROUND_R)
