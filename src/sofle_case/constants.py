@@ -146,27 +146,24 @@ RIM_FACET_DROP     = 4.0   # perimeter facet vertical extent (Z = rim → rim−
 RIM_FACET_RUN      = 2.0   # perimeter inset at the rim (~27° from vertical); rim wall left = 2.75
 FRONT_FACET_DROP   = 8.0   # south facet vertical extent (Z = rim → rim−8): a tall, dominant bevel
 FRONT_FACET_RUN    = 3.0   # south inset at the rim (~21° from vertical); rim wall left = 1.75
-FRONT_FACET_Y_MASK = 24.0  # case-Y north limit of the south facet. The palm-facing run tops out
-#                            at case-y ≈ 23.2 and the E/W walls start at ≈ 24.75, so 24.0 captures
-#                            the whole front and excludes the side walls.
-# The deep facet's plan REGION is bounded north by the flat FRONT_FACET_Y_MASK cap (which makes
-# the SE crease: the cap crosses the rising E4 ramp's facet band → a diagonal slash in the front
-# elevation) and west by a MIRRORED boundary line, computed at build time so the SW crease is the
-# SE slash reflected about the case centreline: the SE slash's rim/toe elevation X positions are
-# mirrored (x → OUTER_WIDTH − x) and dropped onto the E1 ramp's facet band, and the boundary is
-# the vertical plan line through those two points. The customer reads the two slashes as an
-# identical mirrored pair holding the low south wall — the case's ONLY two creases. Everything
-# west of the boundary (thumb tip arc, thumb wall E0, west wall) is plain shallow perimeter
-# facet — one wall style. See tray._front_facet_mask / tray._se_crease_plan_points.
-
-# The SW slash cannot be an exact X-mirror of the SE slash: the SE slash sits on one long clean
-# ramp (E5, flat-centre → SE corner), but the mirror of that X lands on the busy pointy-thumb
-# corner, where the deep→shallow transition shatters into several facets. The front outline is
-# not symmetric (thumb cluster on the SW). Instead the SW slash is placed as ONE clean cut across
-# the centre-adjacent ramp E3 (flat-centre → SW), the visual partner of E5, so the two slashes
-# read as a matched pair holding the low central wall. FRONT_FACET_SW_X is the case-X of that cut
-# (crosses E3 mid-ramp); everything west of it (E2, thumb wall, west wall) is plain shallow.
-FRONT_FACET_SW_X = 45.5   # case-X of the SW slash cut across the E3 ramp (x-range 36.8..54.2)
+# ---- Deep south facet: two mirrored diagonal slashes on the flat central panel ----
+# The deep facet is confined to the FLAT central front (outline pts[4]→pts[5], the only symmetric
+# stretch of the south wall) and bounded by a symmetric TRIANGLE mask centred on that panel's
+# midline (x = (pts[4].x + pts[5].x)/2 = 82.5). The triangle's two oblique sides are exact mirror
+# images, so each crosses the front facet band as a diagonal slash and the two creases are a TRUE
+# mirror pair. The deep panel is wider at the toe than the rim (the natural lean of a ramp slash).
+# Everything outside the triangle — the thumb ramps E2/E3, the SE ramp E4, the side/back walls —
+# is plain shallow perimeter facet. See tray._front_facet_mask / tray._front_slash_crossings.
+#
+# Why confined to the flat panel: the front outline is ASYMMETRIC — the SE ramp E4 leans back ~15°
+# while the west ramps E2/E3 lean forward ~25–30° and the thumb tip juts to case-y ≈ 5.25 — so the
+# reflection of a slash placed on any ramp lands where there is no wall. The flat panel is the only
+# surface on which a slash and its mirror both sit on real wall, which is what makes the pair exact.
+FRONT_SLASH_ELEV_RUN = 11.8  # rim→toe X-run of each slash in front elevation; with FRONT_FACET_DROP
+#                              this sets the slash angle (atan2(8, 11.8) ≈ 34° from horizontal).
+FRONT_PANEL_HALF_TOE = 24.0  # deep-panel half-width at the toe (Z = rim − DROP), from the panel
+#                              midline. Must stay ≤ (pts[5].x − pts[4].x)/2 = 28.25 so both slash
+#                              crossings land on the flat panel, not the flanking E3/E4 ramps.
 
 # Reflex outline corners (the outline turning the "wrong way": front idx3/idx4, the west jog,
 # the east/back notches) leave sharp V-notches in a Kind.ARC offset — each one used to throw a

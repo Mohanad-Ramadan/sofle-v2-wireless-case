@@ -46,28 +46,42 @@ def test_perimeter_facet_removes_side_top():
 
 
 def test_south_mask_two_clean_slashes():
-    """The deep facet spans the low central front (E4 flat + flanking ramps), held between two
-    clean slashes: the SE slash (flat cap crossing E5) and the SW slash (a vertical cut across
-    the single straight E3 ramp at FRONT_FACET_SW_X). West of the SW cut — E2, thumb wall, west
-    wall — is plain shallow. One wall style, exactly two creases; near-mirror matched pair."""
+    """The deep facet is confined to the flat central panel, held between two OBLIQUE slashes
+    that are exact mirror images about the panel centre. The thumb ramps E2/E3, the SE ramp E4
+    and the side/back walls are plain shallow — exactly two creases, a true mirror pair."""
     from build123d import Solid
-    from sofle_case.tray import _front_facet_mask, _poly_pts
+    from sofle_case.tray import (
+        _front_facet_mask, _front_slash_crossings, _front_panel_params, _poly_pts,
+    )
     m = _front_facet_mask()
+    axis, _y_toe, _slope, _ht = _front_panel_params()
 
-    def inside(x, y, z=8.0):
+    def inside(x, y, z=8.0):  # the mask is a plan prism, so z only has to be inside its extent
         return (m & Solid.make_box(0.3, 0.3, 0.3).translate((x - 0.15, y - 0.15, z - 0.15))).volume > 1e-6
 
-    xw = C.FRONT_FACET_SW_X
-    # SW slash is a clean vertical cut across E3: deep just east, shallow just west, same y.
-    assert inside(xw + 1.5, 18.0), "deep facet missing just east of the SW cut"
-    assert not inside(xw - 1.5, 18.0), "deep facet leaked west of the SW cut"
-    # thumb wall + west stay shallow (no deep facet, no extra crease)
+    # exact mirror symmetry about the flat-panel centre — the core requirement
+    for x, y in [(70.0, 19.0), (60.0, 18.0), (75.0, 20.0), (50.0, 18.0)]:
+        assert inside(x, y) == inside(2 * axis - x, y), f"mask not mirror-symmetric at ({x}, {y})"
+
+    west_rim, west_toe, east_rim, east_toe = _front_slash_crossings()
+    # each slash is oblique: deep just inside the toe crossing, shallow just outside it
+    assert inside(west_toe[0] + 1.5, west_toe[1]), "deep facet missing just inside the west toe"
+    assert not inside(west_toe[0] - 1.5, west_toe[1]), "deep facet leaked west of the west slash"
+    assert inside(east_toe[0] - 1.5, east_toe[1]), "deep facet missing just inside the east toe"
+    assert not inside(east_toe[0] + 1.5, east_toe[1]), "deep facet leaked east of the east slash"
+    # the slash leans in: at the rim y the panel is narrower, so the toe's x is now outside
+    assert inside(west_rim[0] + 1.5, west_rim[1]), "deep facet missing just inside the west rim"
+    assert not inside(west_toe[0], west_rim[1]), "rim panel should be narrower than the toe (slash not leaning)"
+
     pts = _poly_pts()
-    v1, v2 = pts[1], pts[2]                 # thumb wall E1
+    v1, v2 = pts[1], pts[2]                 # thumb wall
     assert not inside((v1[0] + v2[0]) / 2, (v1[1] + v2[1]) / 2), "thumb wall still deep-faceted"
-    # central flat front deep; side/back (north of the cap) shallow
+    # the flanking ramps are now plain shallow (deep facet confined to the flat panel)
+    assert not inside(45.0, 17.0), "E3 ramp should be shallow now"
+    assert not inside(120.0, 20.0), "E4 ramp should be shallow now"
+    # central flat front deep; north of the apex shallow
     assert inside(80.0, 20.0)
-    assert not inside(80.0, C.FRONT_FACET_Y_MASK + 2.0)
+    assert not inside(80.0, 26.0)
 
 
 def test_bump_face_carries_facet():

@@ -415,71 +415,63 @@ def _bump_face_facets(rim_z: float) -> Part:
     return cast(Part, north + west + corner)
 
 
-def _se_crease_plan_points() -> tuple[tuple[float, float], tuple[float, float]]:
-    """Plan (x, y) of the SE crease's RIM and TOE crossings.
+def _front_panel_params() -> tuple[float, float, float, float]:
+    """Shared geometry of the deep-facet triangle on the flat central front.
 
-    The SE crease — the reference slash — is where the flat FRONT_FACET_Y_MASK cap crosses
-    the deep facet band over the SE ramp E4 (front's east corner → SE corner): at the rim the
-    facet surface follows the outline offset by (outer − FRONT_FACET_RUN), at the toe the full
-    outer offset. Both are straight offset lines of E4, so the crossings are exact."""
+    Returns ``(axis, y_toe, slope, half_toe)``: the mirror axis (flat-panel centre =
+    midpoint of the flat front edge pts[4]→pts[5]), the facet toe's case-Y (the outer
+    face), the plan dx/dy of each oblique slash side (``FRONT_SLASH_ELEV_RUN /
+    FRONT_FACET_RUN``), and the deep-panel half-width at the toe. The flat panel is the
+    outline's only symmetric south stretch, so it is the only place two mirror-image
+    slashes can both land on real wall (see constants' front-facet block)."""
     pts = _poly_pts()
-    a, b = pts[5], pts[6]                      # E4: front's east corner → SE corner
-    assert a[1] < C.FRONT_FACET_Y_MASK < b[1], \
-        "outline order changed: expected pts[5]→pts[6] to be the rising SE ramp crossing the cap"
-    ex, ey = b[0] - a[0], b[1] - a[1]
-    el = math.hypot(ex, ey)
-    ux, uy = ex / el, ey / el
-    nx, ny = uy, -ux                           # outward normal (CCW outline)
+    p4, p5 = pts[4], pts[5]                     # flat central front (y constant)
+    assert abs(p4[1] - p5[1]) < 1e-6, "flat front pts[4]→pts[5] is no longer flat; crease axis invalid"
+    axis = (p4[0] + p5[0]) / 2.0
     outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
-    res = []
-    for off in (outer - C.FRONT_FACET_RUN, outer):   # rim inset, toe
-        px, py = a[0] + nx * off, a[1] + ny * off
-        t = (C.FRONT_FACET_Y_MASK - py) / uy
-        res.append((px + ux * t, py + uy * t))
-    return res[0], res[1]
+    y_toe = p4[1] - outer
+    slope = C.FRONT_SLASH_ELEV_RUN / C.FRONT_FACET_RUN
+    ht = C.FRONT_PANEL_HALF_TOE
+    assert ht <= (p5[0] - p4[0]) / 2 + 1e-9, "FRONT_PANEL_HALF_TOE spills the slashes off the flat panel"
+    return axis, y_toe, slope, ht
 
 
-def _sw_boundary_points() -> tuple[tuple[float, float], tuple[float, float]]:
-    """Plan (x, y) where the SW slash cut crosses the E3 ramp — the visual partner of the SE
-    slash on E5. NOT an exact X-mirror (the front outline is asymmetric — the mirror of the SE
-    slash lands on the busy pointy-thumb corner and shatters). Instead a single clean cut at
-    case-X FRONT_FACET_SW_X across the straight E3 ramp; the point returned is that crossing on
-    the ramp's outer face, used only for tests/inspection. The mask itself is a vertical plane
-    at FRONT_FACET_SW_X (see `_front_facet_mask`), so the slash is one clean line on one ramp."""
-    pts = _poly_pts()
-    a, b = pts[3], pts[4]                      # E3: (36.8,15.2) → (54.2,23.2), the SW ramp
-    x = C.FRONT_FACET_SW_X
-    assert a[0] < x < b[0], "FRONT_FACET_SW_X is off the E3 ramp x-range"
-    t = (x - a[0]) / (b[0] - a[0])
-    y_edge = a[1] + t * (b[1] - a[1])
-    outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
-    ux, uy = (b[0] - a[0]), (b[1] - a[1])
-    el = math.hypot(ux, uy); ux, uy = ux / el, uy / el
-    nx, ny = uy, -ux                           # outward normal
-    rim = (x + nx * (outer - C.FRONT_FACET_RUN), y_edge + ny * (outer - C.FRONT_FACET_RUN))
-    toe = (x + nx * outer, y_edge + ny * outer)
-    return rim, toe
+def _front_slash_crossings() -> tuple[tuple[float, float, float], ...]:
+    """The four deep→shallow crease crossings — a mirror pair about the flat-panel centre —
+    as ``(west_rim, west_toe, east_rim, east_toe)`` in right-half case coords. Rim at
+    Z = COVER_TOP_Z, toe at Z = COVER_TOP_Z − FRONT_FACET_DROP. Inspection/marker/test
+    scaffolding; the region itself is built in `_front_facet_mask`."""
+    axis, y_toe, slope, ht = _front_panel_params()
+    y_rim = y_toe + C.FRONT_FACET_RUN
+    z_rim, z_toe = C.COVER_TOP_Z, C.COVER_TOP_Z - C.FRONT_FACET_DROP
+    run = C.FRONT_SLASH_ELEV_RUN
+    west_toe = (axis - ht, y_toe, z_toe)
+    west_rim = (axis - ht + run, y_rim, z_rim)     # rim pulled toward the axis → panel narrower at rim
+    east_toe = (axis + ht, y_toe, z_toe)
+    east_rim = (axis + ht - run, y_rim, z_rim)
+    return west_rim, west_toe, east_rim, east_toe
 
 
 def _front_facet_mask() -> Part:
     """Plan REGION (extruded prism) selecting where the deep south facet applies.
 
-    Bounded NORTH by the flat FRONT_FACET_Y_MASK cap — whose crossing of the E5 ramp IS the SE
-    slash — and WEST by a VERTICAL plane at FRONT_FACET_SW_X that cuts cleanly across the single
-    straight E3 ramp, making the SW slash. The deep region is thus the low central front (E4 flat
-    + its two flanking ramps) held between two slashes; everything west of the cut (E2, the thumb
-    wall, the west wall) is plain shallow perimeter facet — one wall style, exactly two creases,
-    a matched (near-mirror) pair. The outline is not symmetric, so the two ramps differ slightly;
-    FRONT_FACET_SW_X tunes the SW slash to read as E5's partner."""
-    x_w = C.FRONT_FACET_SW_X
-    y_n = C.FRONT_FACET_Y_MASK
-    BIG = 220.0
+    A symmetric TRIANGLE on the flat central front (outline pts[4]→pts[5]). Its two oblique
+    sides are exact mirror images about the panel centreline, so each crosses the front facet
+    band as a mirrored diagonal slash (~34°); the deep panel is wider at the toe than the rim.
+    The apex sits north of the facet band, and a south cap just below the toe keeps the triangle
+    on the flat panel so it never bleeds onto the E2/E3 thumb ramps or the SE ramp E4 (those stay
+    plain shallow perimeter facet). Replaces the old asymmetric vertical-cut + horizontal-cap
+    mask. See constants.FRONT_SLASH_ELEV_RUN / FRONT_PANEL_HALF_TOE and `_front_slash_crossings`."""
+    axis, y_toe, slope, ht = _front_panel_params()
+    y_south = y_toe - 1.0                 # cap just south of the toe (keeps the triangle off the ramps)
+    y_apex = y_toe + ht / slope           # where the two mirror sides meet, north of the facet band
+    xs_w = axis - ht + slope * (y_south - y_toe)
+    xs_e = axis + ht - slope * (y_south - y_toe)
     z0, z1 = -1.0, C.COVER_TOP_Z + 2.0
-    pts = [(x_w, -BIG), (x_w, y_n), (BIG, y_n), (BIG, -BIG)]
     with BuildPart() as bp:
         with BuildSketch(Plane.XY):
             with BuildLine():
-                Polyline(*pts, close=True)
+                Polyline((xs_w, y_south), (axis, y_apex), (xs_e, y_south), close=True)
             make_face()
         extrude(amount=z1 - z0)
     assert bp.part is not None
