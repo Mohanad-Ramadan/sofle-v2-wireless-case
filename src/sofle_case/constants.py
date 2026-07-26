@@ -146,24 +146,21 @@ RIM_FACET_DROP     = 4.0   # perimeter facet vertical extent (Z = rim → rim−
 RIM_FACET_RUN      = 2.0   # perimeter inset at the rim (~27° from vertical); rim wall left = 2.75
 FRONT_FACET_DROP   = 8.0   # south facet vertical extent (Z = rim → rim−8): a tall, dominant bevel
 FRONT_FACET_RUN    = 3.0   # south inset at the rim (~21° from vertical); rim wall left = 1.75
-# ---- Deep south facet: two mirrored diagonal slashes on the flat central panel ----
-# The deep facet is confined to the FLAT central front (outline pts[4]→pts[5], the only symmetric
-# stretch of the south wall) and bounded by a symmetric TRIANGLE mask centred on that panel's
-# midline (x = (pts[4].x + pts[5].x)/2 = 82.5). The triangle's two oblique sides are exact mirror
-# images, so each crosses the front facet band as a diagonal slash and the two creases are a TRUE
-# mirror pair. The deep panel is wider at the toe than the rim (the natural lean of a ramp slash).
-# Everything outside the triangle — the thumb ramps E2/E3, the SE ramp E4, the side/back walls —
-# is plain shallow perimeter facet. See tray._front_facet_mask / tray._front_slash_crossings.
-#
-# Why confined to the flat panel: the front outline is ASYMMETRIC — the SE ramp E4 leans back ~15°
-# while the west ramps E2/E3 lean forward ~25–30° and the thumb tip juts to case-y ≈ 5.25 — so the
-# reflection of a slash placed on any ramp lands where there is no wall. The flat panel is the only
-# surface on which a slash and its mirror both sit on real wall, which is what makes the pair exact.
-FRONT_SLASH_ELEV_RUN = 11.8  # rim→toe X-run of each slash in front elevation; with FRONT_FACET_DROP
-#                              this sets the slash angle (atan2(8, 11.8) ≈ 34° from horizontal).
-FRONT_PANEL_HALF_TOE = 24.0  # deep-panel half-width at the toe (Z = rim − DROP), from the panel
-#                              midline. Must stay ≤ (pts[5].x − pts[4].x)/2 = 28.25 so both slash
-#                              crossings land on the flat panel, not the flanking E3/E4 ramps.
+# ---- Deep south facet: East '\' on ramp E4 + a DERIVED exact-twin West '/' under the thumb ----
+# The deep facet covers the low front (thumb ramp → flat front → SE ramp E4). Its deep→shallow
+# boundary shows as two creases that are exact mirror twins:
+#   • EAST '\' — the flat cap y=FRONT_FACET_Y_MASK crossing the rising SE ramp E4 (pts[5]→pts[6]);
+#     a long diagonal near the SE corner, kept exactly where it was. Its X-run/angle define the twin.
+#   • WEST '/' — DERIVED, not tuned: the East crease's X-run mirrored (rim east of toe) and centred at
+#     the midpoint of the two thumb switches (pcb_geometry.thumb_switch_midpoint_x), dropped onto the
+#     straightened SW thumb ramp (pts[2]→pts[4]). Same run/angle as the East by construction, so the
+#     two read as exact twins in front elevation. See tray._front_slash_crossings / _front_facet_mask.
+# The OUTER wall + facet drop the barely-1 mm reflex kink pts[3] (tray._outer_poly_pts) so the SW ramp
+# is one straight edge and the '/' is clean; the cavity/plate keep the sharp outline, so PCB fit is
+# unchanged. (The West rides a lower/steeper wall, so its depth (Y) differs from the East — but the
+# front-elevation profile you see is an exact mirror. No West tunables: it follows the East crease and
+# the switch positions automatically.)
+FRONT_FACET_Y_MASK = 24.0  # TOP cap; its crossing of ramp E4 IS the East '\' slash (E4 y 23.25→33.25)
 
 # Reflex outline corners (the outline turning the "wrong way": front idx3/idx4, the west jog,
 # the east/back notches) leave sharp V-notches in a Kind.ARC offset — each one used to throw a

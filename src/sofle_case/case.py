@@ -468,11 +468,11 @@ def build_top_part(side: Side) -> Part:
 
 # %%
 def _corner_markers() -> Part:
-    """Debug spheres on the two mirrored front-crease slashes (west + east, rim + toe), so the
-    mirror pair is visible in the OCP viewer. Coords come from tray._front_slash_crossings, so
-    the markers track the real geometry — return an empty tuple to hide them."""
-    from sofle_case.tray import _front_slash_crossings
-    coords: tuple[tuple[float, float, float], ...] = _front_slash_crossings()
+    """Debug spheres at geometry transition points. All coords currently commented
+    out — uncomment specific entries to visualise edges in the OCP viewer."""
+    coords: tuple[tuple[float, float, float], ...] = (
+
+    )
     with BuildPart() as bp:
         for x, y, z in coords:
             with Locations((x, y, z)):

@@ -12,7 +12,7 @@ from build123d import (
 )
 from OCP.Standard import Standard_Failure
 from . import constants as C
-from .pcb_geometry import polygon_in_case_coords
+from .pcb_geometry import polygon_in_case_coords, thumb_switch_midpoint_x
 
 
 # ---------------------------------------------------------------------------
@@ -34,13 +34,23 @@ def _poly_pts() -> list[tuple[float, float]]:
     return poly[:-1] if poly[0] == poly[-1] else poly
 
 
+def _outer_poly_pts() -> list[tuple[float, float]]:
+    """`_poly_pts()` with the SW reflex kink pts[3] dropped, so the thumb ramp pts[2]→pts[4] is ONE
+    straight segment. Used for the OUTER wall + rim facet only (`_reflex_vertex_points`/`_rounded_wire`),
+    so the West crease rides a clean straight ramp like the East on E4. The cavity and the sandwich
+    plate/pocket keep the full sharp `_poly_pts()`, so PCB clearance and rabbet fit are unchanged;
+    dropping the barely-1 mm kink only ADDS a sliver of outer material (fills the notch)."""
+    pts = _poly_pts()
+    return pts[:3] + pts[4:]     # drop pts[3] — straighten the SW thumb ramp
+
+
 def _reflex_vertex_points() -> list[tuple[float, float]]:
     """Outline vertices where the boundary turns the 'wrong way' (reflex, ≥3°).
 
     A Kind.ARC offset rounds convex corners but leaves reflex corners as sharp
     V-notches — each one used to throw a spurious crease through the outer wall
     and the rim facet. These are the vertices `_rounded_wire` rounds away."""
-    pts = _poly_pts()
+    pts = _outer_poly_pts()          # SW-straightened outline (outer wall + facet only)
     n = len(pts)
     area2 = sum(pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1]
                 for i in range(n))
@@ -71,7 +81,7 @@ def _rounded_wire() -> Wire:
     so one tight corner can't abort the profile."""
     with BuildSketch(Plane.XY) as sk:
         with BuildLine():
-            Polyline(*_poly_pts(), close=True)
+            Polyline(*_outer_poly_pts(), close=True)
         make_face()
         for rx, ry in _reflex_vertex_points():
             for r in (C.REFLEX_ROUND_R, C.REFLEX_ROUND_R * 0.5, C.REFLEX_ROUND_R * 0.25):
@@ -415,63 +425,75 @@ def _bump_face_facets(rim_z: float) -> Part:
     return cast(Part, north + west + corner)
 
 
-def _front_panel_params() -> tuple[float, float, float, float]:
-    """Shared geometry of the deep-facet triangle on the flat central front.
-
-    Returns ``(axis, y_toe, slope, half_toe)``: the mirror axis (flat-panel centre =
-    midpoint of the flat front edge pts[4]→pts[5]), the facet toe's case-Y (the outer
-    face), the plan dx/dy of each oblique slash side (``FRONT_SLASH_ELEV_RUN /
-    FRONT_FACET_RUN``), and the deep-panel half-width at the toe. The flat panel is the
-    outline's only symmetric south stretch, so it is the only place two mirror-image
-    slashes can both land on real wall (see constants' front-facet block)."""
-    pts = _poly_pts()
-    p4, p5 = pts[4], pts[5]                     # flat central front (y constant)
-    assert abs(p4[1] - p5[1]) < 1e-6, "flat front pts[4]→pts[5] is no longer flat; crease axis invalid"
-    axis = (p4[0] + p5[0]) / 2.0
-    outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
-    y_toe = p4[1] - outer
-    slope = C.FRONT_SLASH_ELEV_RUN / C.FRONT_FACET_RUN
-    ht = C.FRONT_PANEL_HALF_TOE
-    assert ht <= (p5[0] - p4[0]) / 2 + 1e-9, "FRONT_PANEL_HALF_TOE spills the slashes off the flat panel"
-    return axis, y_toe, slope, ht
+def _sw_ramp_offset_pt_at_x(off: float, x: float) -> tuple[float, float]:
+    """Point (x, y) on the STRAIGHTENED SW thumb ramp (pts[2]→pts[4]) offset OUTWARD by ``off`` at
+    the given case-X. off=outer → the facet toe (outer-face) line; off=outer−RUN → the rim inset line."""
+    a, b = _poly_pts()[2], _poly_pts()[4]
+    ex, ey = b[0] - a[0], b[1] - a[1]
+    el = math.hypot(ex, ey); ux, uy = ex / el, ey / el
+    nx, ny = uy, -ux                          # outward normal (CCW outline)
+    p0x, p0y = a[0] + nx * off, a[1] + ny * off
+    return x, p0y + uy * (x - p0x) / ux
 
 
 def _front_slash_crossings() -> tuple[tuple[float, float, float], ...]:
-    """The four deep→shallow crease crossings — a mirror pair about the flat-panel centre —
-    as ``(west_rim, west_toe, east_rim, east_toe)`` in right-half case coords. Rim at
-    Z = COVER_TOP_Z, toe at Z = COVER_TOP_Z − FRONT_FACET_DROP. Inspection/marker/test
-    scaffolding; the region itself is built in `_front_facet_mask`."""
-    axis, y_toe, slope, ht = _front_panel_params()
-    y_rim = y_toe + C.FRONT_FACET_RUN
+    """Rim & toe of the two front creases (right-half case coords); rim at Z=COVER_TOP_Z, toe at
+    Z=COVER_TOP_Z−FRONT_FACET_DROP. Returns ``(east_rim, east_toe, west_rim, west_toe)``.
+      • EAST '\\' — the cap y=FRONT_FACET_Y_MASK crossing ramp E4's offset lines (rim = outer−RUN, toe
+        = full outer).
+      • WEST '/'  — a DERIVED exact mirror twin of the East: the East's X-run mirrored (rim east of
+        toe) and centred at the thumb-switch midpoint, dropped onto the straightened SW ramp's offset
+        lines. Same run/angle as the East by construction."""
+    pts = _poly_pts()
+    outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
     z_rim, z_toe = C.COVER_TOP_Z, C.COVER_TOP_Z - C.FRONT_FACET_DROP
-    run = C.FRONT_SLASH_ELEV_RUN
-    west_toe = (axis - ht, y_toe, z_toe)
-    west_rim = (axis - ht + run, y_rim, z_rim)     # rim pulled toward the axis → panel narrower at rim
-    east_toe = (axis + ht, y_toe, z_toe)
-    east_rim = (axis + ht - run, y_rim, z_rim)
-    return west_rim, west_toe, east_rim, east_toe
+    off_rim, off_toe = outer - C.FRONT_FACET_RUN, outer
+    # East '\': the cap crossing ramp E4 (pts[5]→pts[6]) offset lines.
+    a, b = pts[5], pts[6]
+    ex, ey = b[0] - a[0], b[1] - a[1]
+    el = math.hypot(ex, ey); ux, uy = ex / el, ey / el
+    nx, ny = uy, -ux                          # outward normal (CCW outline)
+
+    def _cap_cross(off: float) -> float:
+        px, py = a[0] + nx * off, a[1] + ny * off
+        return px + ux * (C.FRONT_FACET_Y_MASK - py) / uy
+
+    e_rim_x, e_toe_x = _cap_cross(off_rim), _cap_cross(off_toe)
+    east_rim = (e_rim_x, C.FRONT_FACET_Y_MASK, z_rim)
+    east_toe = (e_toe_x, C.FRONT_FACET_Y_MASK, z_toe)
+    # West '/': mirror the East's run about the thumb-switch midpoint (rim east of toe → '/').
+    run = abs(e_toe_x - e_rim_x)
+    cx = thumb_switch_midpoint_x()
+    w_rim = _sw_ramp_offset_pt_at_x(off_rim, cx + run / 2)
+    w_toe = _sw_ramp_offset_pt_at_x(off_toe, cx - run / 2)
+    west_rim = (w_rim[0], w_rim[1], z_rim)
+    west_toe = (w_toe[0], w_toe[1], z_toe)
+    return east_rim, east_toe, west_rim, west_toe
 
 
 def _front_facet_mask() -> Part:
     """Plan REGION (extruded prism) selecting where the deep south facet applies.
 
-    A symmetric TRIANGLE on the flat central front (outline pts[4]→pts[5]). Its two oblique
-    sides are exact mirror images about the panel centreline, so each crosses the front facet
-    band as a mirrored diagonal slash (~34°); the deep panel is wider at the toe than the rim.
-    The apex sits north of the facet band, and a south cap just below the toe keeps the triangle
-    on the flat panel so it never bleeds onto the E2/E3 thumb ramps or the SE ramp E4 (those stay
-    plain shallow perimeter facet). Replaces the old asymmetric vertical-cut + horizontal-cap
-    mask. See constants.FRONT_SLASH_ELEV_RUN / FRONT_PANEL_HALF_TOE and `_front_slash_crossings`."""
-    axis, y_toe, slope, ht = _front_panel_params()
-    y_south = y_toe - 1.0                 # cap just south of the toe (keeps the triangle off the ramps)
-    y_apex = y_toe + ht / slope           # where the two mirror sides meet, north of the facet band
-    xs_w = axis - ht + slope * (y_south - y_toe)
-    xs_e = axis + ht - slope * (y_south - y_toe)
+    Bounded NORTH/EAST by the flat cap y=FRONT_FACET_Y_MASK — whose crossing of ramp E4 is the East
+    '\\' slash (kept in place) — and WEST by the plane through the DERIVED West-twin crease endpoints
+    on the straightened SW thumb ramp (`_front_slash_crossings`). The West is a rigid mirror copy of
+    the East's front-elevation profile (same run/angle), centred at the thumb-switch midpoint, so the
+    two read as exact twins; forcing the East's run makes this cut oblique enough to reach the '/'
+    lean while staying clear of the flat-front corner. The ramp is straightened in `_outer_poly_pts`.
+    Deep = thumb ramp → flat front → E4; thumb tip + side/back walls stay shallow."""
+    _e_rim, _e_toe, w_rim, w_toe = _front_slash_crossings()
+    y_n = C.FRONT_FACET_Y_MASK
+    BIG = 220.0
+    dx, dy = w_rim[0] - w_toe[0], w_rim[1] - w_toe[1]   # west boundary = plan line through toe→rim
+
+    def _wx(y: float) -> float:
+        return w_toe[0] + dx * (y - w_toe[1]) / dy
+
     z0, z1 = -1.0, C.COVER_TOP_Z + 2.0
     with BuildPart() as bp:
         with BuildSketch(Plane.XY):
             with BuildLine():
-                Polyline((xs_w, y_south), (axis, y_apex), (xs_e, y_south), close=True)
+                Polyline((_wx(-BIG), -BIG), (_wx(y_n), y_n), (BIG, y_n), (BIG, -BIG), close=True)
             make_face()
         extrude(amount=z1 - z0)
     assert bp.part is not None

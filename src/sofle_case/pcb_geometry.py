@@ -27,6 +27,20 @@ def slide_switch_placement() -> tuple[float, float, float]:
     return cx, cy, sw["rotation"]
 
 
+def thumb_switch_midpoint_x() -> float:
+    """Case-X midpoint of the two thumb-cluster switches.
+
+    The thumb keys are the only top-layer MX switches with a non-zero rotation (SW26/SW27); the
+    front west crease is centred on their midpoint so it sits squarely between the two switches."""
+    raw = json.loads((_DATA / "components.json").read_text())
+    xs = [C.pcb_to_case(v["x"], v["y"])[0]
+          for k, v in raw.items()
+          if k.startswith("SW") and v.get("layer") == "top" and k != "SW25"
+          and abs(v.get("rotation", 0.0)) > 1e-6]
+    assert len(xs) == 2, f"expected 2 rotated thumb switches, found {len(xs)}"
+    return sum(xs) / len(xs)
+
+
 def load_pcb_polygon() -> list[tuple[float, float]]:
     """Ordered closed polygon in PCB coords (first == last)."""
     raw = json.loads((_DATA / "pcb_outline.json").read_text())
