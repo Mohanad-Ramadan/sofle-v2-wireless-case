@@ -97,7 +97,9 @@ def test_slide_actuator_pad_gap_is_real():
     probe = Solid.make_box(
         (x1 - x0) + 2 * g, (y1 - y0) + 2 * g, z1 - z0
     ).translate((x0 - g, y0 - g, z0))
-    hit = cast(Part, probe & top).volume
+    # build123d returns None for an empty intersection — which is exactly the passing case.
+    overlap = probe & top
+    hit = 0.0 if overlap is None else cast(Part, overlap).volume
     assert hit < 1e-6, f"grown 0.4 mm probe overlaps TOP by {hit:.4f} mm^3 — pad gap not real"
 
 

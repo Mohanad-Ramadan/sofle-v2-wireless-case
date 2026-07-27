@@ -185,6 +185,9 @@ def test_fused_top_clears_all_bay_components():
     """The fused TOP (cover + canopy) must not touch any component above the cover."""
     top = build_top_part("right")
     above = Solid.make_box(200, 200, 60).translate((-20, -20, C.COVER_TOP_Z + 0.1))
-    clash = (top & build_pcb_phantom()) & above
+    # build123d raises on `empty & shape` rather than returning empty, and an empty first
+    # intersection is the PASSING case here — so short-circuit instead of chaining blindly.
+    touching = top & build_pcb_phantom()
+    clash = (touching & above) if touching else None
     vol = 0.0 if clash is None else sum(s.volume for s in clash.solids())
     assert vol < 1e-2, f"canopy clashes bay components by {vol:.2f} mm^3"

@@ -365,6 +365,22 @@ def _rim_facet_cutter(drop: float, run: float, rim_z: float) -> Part:
     return cast(Part, band - _rim_facet_frustum(drop, run, rim_z))
 
 
+# How far SOUTH of the handover line `_bump_face_facets`' west wedge starts. It must overlap:
+# both cutters shave the SAME drafted plane on the straight west wall, so the extra bite is
+# idempotent — whereas a wedge starting NORTH of the handover leaves a strip that neither cutter
+# reaches, and the full-thickness wall left standing there reads as a razor fin at the rim.
+_BUMP_FACET_HANDOVER_LAP = 0.5
+
+
+def _bump_facet_south_y() -> float:
+    """Y where the polygon-offset perimeter facet hands over to the +Y bump's face wedges.
+
+    `_mcu_bump_exclusion` kills the polygon cutter from here north; `_bump_face_facets` picks it
+    up from `_BUMP_FACET_HANDOVER_LAP` south of here. Both read this one value so they cannot
+    drift apart."""
+    return _poly_pts()[16][1] - 0.75      # just south of the west wall's north corner
+
+
 def _mcu_bump_exclusion(rim_z: float) -> Part:
     """Plan region where the POLYGON-offset facet cutters must not cut: the +Y relief bump
     is proud of the nominal outline offset over its whole footprint (it fills the NW corner
@@ -374,7 +390,7 @@ def _mcu_bump_exclusion(rim_z: float) -> Part:
     face, where the polygon wall arrives at the same outer line — the polygon facet resumes
     there on the same plane, so the chamfer runs continuous across the joint."""
     x_lo, x_hi = _mcu_y_relief_x_range()
-    y_lo = _poly_pts()[16][1] - 0.75      # just south of the west wall's north corner
+    y_lo = _bump_facet_south_y()
     return _axis_box(x_lo - 1.0, x_hi + 0.02, y_lo,
                      C.OUTER_DEPTH + 2.0, 0.0, rim_z + 1.0)
 
@@ -401,7 +417,9 @@ def _bump_face_facets(rim_z: float) -> Part:
     y_out = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
     r = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE   # NW corner fillet radius (_fillet_bump_neg_x_corner)
     ccx, ccy = x_lo + r, y_out - r              # corner arc centre
-    y_w_lo = _poly_pts()[16][1] - 0.6           # west wedge start: overlaps the polygon facet's plane
+    # West wedge start: SOUTH of the handover, so it overlaps the polygon facet's plane rather
+    # than leaving a bare strip between the two (see `_BUMP_FACET_HANDOVER_LAP`).
+    y_w_lo = _bump_facet_south_y() - _BUMP_FACET_HANDOVER_LAP
 
     north = _planar_wedge(
         [(ccx - 0.2, y_out + 0.2, z0), (ccx - 0.2, y_out + 0.2, z1e),

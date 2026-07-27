@@ -83,6 +83,18 @@ def test_south_mask_two_clean_slashes():
     assert not inside(12.0, 20.0), "west wall should stay shallow"
 
 
+def test_west_rim_facet_continuous_across_bump_handover():
+    """No bare strip where the polygon facet hands over to the bump's own west wedge.
+
+    The exclusion box and the replacement wedge used to disagree by 0.15 mm, leaving a strip of
+    full-thickness wall standing 2 mm proud of the facet — a 4 mm tall razor fin at the rim."""
+    t = build_tray(rim_z=C.COVER_TOP_Z)
+    x_out = C.pcb_to_case(0, 0)[0] - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE   # 8.5
+    for y in (114.6, 114.9, 115.0, 115.05, 115.1, 115.2, 115.5, 116.0):
+        assert not _solid_at(t, x_out + 0.3, y, C.COVER_TOP_Z - 0.4, s=0.1), \
+            f"un-faceted fin left standing on the west rim at y={y}"
+
+
 def test_bump_face_carries_facet():
     """The +Y relief bump's proud face carries the SAME drafted chamfer as every other wall
     (via its own face-aligned wedges) — no bare square stretch on the north wall."""
