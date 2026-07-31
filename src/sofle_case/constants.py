@@ -265,7 +265,7 @@ SLIDE_ACTUATOR_PAD          = 0.5  # mm; clearance grown on every X/Y face of th
 SLIDE_ACTUATOR_FLOOR_Z      = 0.0   # mm; pour depth for the drop-in channel (decoupled from the
 #                                      seam — the tub is now open below this anyway; kept as a
 #                                      registered clearance floor for the switch can/nub)
-SLIDE_ACTUATOR_TOP_Z        = MAIN_RIM_Z   # mm; cover underside — do NOT perforate the lid (tracks the rim; was literal 12)
+SLIDE_ACTUATOR_TOP_Z        = MAIN_RIM_Z - 0.5   # mm; cover underside — do NOT perforate the lid (tracks the rim; was literal 12)
 
 # ---------- Battery pocket (405070 LiPo cell: 50x70mm footprint) ----------
 # The footprint sits UNDER 12 switches, so the hotswap sockets (~2 mm below the PCB)
