@@ -50,7 +50,29 @@ def test_five_mounting_holes():
 def test_mcu_stack_order():
     """MCU stack Z values must be monotonically increasing.
 
-    Note: USB_C_BODY_TOP_Z exceeds MAIN_RIM_Z by design — the USB-C cutout
-    punches past the wall rim so a single STL fits both PCB halves.
+    The jack bands exceed MAIN_RIM_Z by design — the port punches through the canopy's
+    north wall, which stands above the rim.
     """
-    assert C.PCB_TOP_Z < C.MCU_PCB_TOP_Z < C.USB_C_BODY_TOP_Z
+    assert C.PCB_TOP_Z < C.MCU_PCB_TOP_Z < C.USB_JACK_NEUTRAL_HI_Z
+
+
+def test_usb_jack_bands_are_measured_values():
+    """Caliper-measured, referenced to the main PCB top face. Both bands are the same
+    4.0 mm connector; they abut at the nano board's underside (20.4)."""
+    assert C.usb_jack_z("left") == (C.PCB_TOP_Z + 6.0, C.PCB_TOP_Z + 10.0)    # flipped
+    assert C.usb_jack_z("right") == (C.PCB_TOP_Z + 10.0, C.PCB_TOP_Z + 14.0)  # neutral
+    for side in ("left", "right"):
+        lo, hi = C.usb_jack_z(side)
+        assert abs((hi - lo) - C.USB_JACK_H) < 1e-9
+    assert C.usb_jack_z("left")[1] == C.usb_jack_z("right")[0], "bands must abut"
+
+
+def test_usb_jack_z_rejects_bad_side():
+    import pytest as _pt
+    with _pt.raises(ValueError):
+        C.usb_jack_z("middle")
+
+
+def test_mcu_orientation_mapping():
+    """Assembly-time fact: left half carries a flipped nano, right a neutral one."""
+    assert C.MCU_ORIENTATION == {"left": "flipped", "right": "neutral"}

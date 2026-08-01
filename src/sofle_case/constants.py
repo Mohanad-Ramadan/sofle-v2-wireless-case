@@ -213,11 +213,36 @@ PCB_HOLE_DIA     = 4.1
 PCB_LEDGE_ENABLED = False
 PCB_LEDGE_WIDTH   = 1.0   # mm; ring width if enabled
 
-# ---------- USB-C jack (physical) ----------
-# The nice!nano USB-C jack sits above the flat rim (jack ~MCU_PCB_TOP_Z 13.8 >
-# MAIN_RIM_Z 15.0), so with no hill the port is open to air over the +Y wall —
-# no case cutout is needed. USB_C_W is kept for the PCB phantom's jack stub.
-USB_C_W = 9.0
+# ---------- USB-C jack (measured, per MCU orientation) ----------
+# Caliper-measured on the real stack, referenced to the main PCB top face (PCB_TOP_Z).
+# The nice!nano board top is +11.0 in BOTH orientations. The same 4.0 mm jack body
+# sits ON the board (neutral, components up) or hangs UNDER it (flipped, components
+# down):
+#     flipped   +6.0 -> +10.0   (16.4 -> 20.4 absolute)
+#     neutral  +10.0 -> +14.0   (20.4 -> 24.4 absolute)
+# The two envelopes abut at 20.4. The halves are built with DIFFERENT orientations,
+# so the TOP part is no longer mirror-identical — only the canopy window band differs,
+# the silhouette stays common (see canopy.canopy_usb_z and CANOPY_RIDGE_TOP_Z).
+USB_C_W    = 9.0
+USB_JACK_H = 4.0   # jack body height; identical in both orientations
+
+USB_JACK_FLIPPED_LO_Z = PCB_TOP_Z + 6.0
+USB_JACK_FLIPPED_HI_Z = PCB_TOP_Z + 10.0
+USB_JACK_NEUTRAL_LO_Z = PCB_TOP_Z + 10.0
+USB_JACK_NEUTRAL_HI_Z = PCB_TOP_Z + 14.0
+
+# Which way the nice!nano faces on each half. Assembly-time fact, not derivable from
+# the PCB (which is reversible) — flipping a build means flipping this mapping.
+MCU_ORIENTATION = {"left": "flipped", "right": "neutral"}
+
+
+def usb_jack_z(side: str) -> tuple[float, float]:
+    """(lo, hi) Z of the USB-C jack body for a half, per its MCU orientation."""
+    if side not in MCU_ORIENTATION:
+        raise ValueError(f"side must be 'left' or 'right', got {side!r}")
+    if MCU_ORIENTATION[side] == "flipped":
+        return USB_JACK_FLIPPED_LO_Z, USB_JACK_FLIPPED_HI_Z
+    return USB_JACK_NEUTRAL_LO_Z, USB_JACK_NEUTRAL_HI_Z
 
 # ---------- Slide-switch finger access (−X wall + canopy) ----------
 # A wide, top-open "decrement" scoop lowers the −X wall AND the canopy over the SK12D07VG3 slide
@@ -350,11 +375,12 @@ SHOW_PLATE_PHANTOM  = True # True: adds switch plate phantom to case.py __main__
 SHOW_SWITCH_PHANTOM = True # True: adds MX switch phantom to case.py __main__ viewer
 SHOW_TOP_COVER      = True # True: adds the sandwich top cover to case.py __main__ viewer
 
-# MCU physical stack heights — used by the PCB phantom (jack/header visuals) and
-# as a convenient over-tall bound for the slide-switch wall cutters.
-MCU_PCB_TOP_Z    = PCB_TOP_Z + 5.9    # nice!nano PCB top incl. socket height above main PCB; tracks PCB (was 13.8)
-USB_C_BODY_TOP_Z = PCB_TOP_Z + 11.9   # USB-C jack body top surface; tracks PCB (was 19.8)
-MCU_HILL_Z       = PCB_TOP_Z + 11.0   # top of MCU + header legs (physical stack top)
+# MCU physical stack heights — used by the PCB phantom (board/jack visuals), by the
+# canopy roof derivation, and as a convenient over-tall bound for the slide-switch
+# wall cutters. The jack itself is NOT here: it moves with the orientation, so it
+# lives in the USB-C block above (usb_jack_z).
+MCU_PCB_TOP_Z    = PCB_TOP_Z + 11.0   # measured nano board top, identical both orientations (was +5.9 — 5.1 mm short)
+MCU_HILL_Z       = MCU_PCB_TOP_Z      # physical stack top excluding the jack; coincides with the board top by measurement
 MCU_BODY_L       = 33.0    # MCU body length in Y (mm)
 
 # ---------- MCU +Y cover relief (B+/B- clearance) ----------

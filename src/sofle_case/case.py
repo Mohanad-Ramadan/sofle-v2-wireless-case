@@ -19,7 +19,7 @@ from .tray import build_tray, offset_extruded
 from .standoffs import stepped_standoff
 from .battery import battery_pocket
 from .top_cover import build_top_cover, _load_plate_cutouts
-from .canopy import build_canopy, CANOPY_RIDGE_TOP_Z
+from .canopy import build_canopy, usb_port_cutter, CANOPY_RIDGE_TOP_Z
 
 
 Side = Literal["left", "right"]
@@ -440,6 +440,13 @@ def build_top_part(side: Side) -> Part:
     surface and merges into it (its base overlaps the cover for a clean union), so the MCU
     hood is integral to the TOP — not a separate part.
 
+    **The TOP is the one part that is NOT mirror-identical between halves.** The two builds
+    carry the nice!nano in opposite orientations (``C.MCU_ORIENTATION``: left flipped, right
+    neutral), so the canopy's USB port sits at a different Z on each — left 15.6→21.1, right
+    19.6→25.1. Everything else, ridge included, is common, so the silhouette (and the bounding
+    box) still matches; only the window band moves. ``build_bottom_part`` and the legacy
+    ``build_case_half`` remain strict mirrors.
+
     Finally two −X cuts carve the slide switch: the wide finger ``_slide_scoop`` (tray look)
     and then the ``_slide_actuator_cavity`` (a switch-shaped drop-in pocket). Both are TOP
     features; the BOTTOM plate is a separate body below the rabbet ledge, untouched."""
@@ -453,7 +460,10 @@ def build_top_part(side: Side) -> Part:
     top = _chamfer_pocket_mouth(top)   # tub-side starter chamfer at the pocket mouth
     top = cast(Part, top + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     top = cast(Part, top + _encoder_shell())
-    top = cast(Part, top + build_canopy())
+    top = cast(Part, top + build_canopy(side=side))
+    # USB port re-cut AFTER the fuse: the flipped half's port floor sits below COVER_TOP_Z, so
+    # the cover backfills the bottom of the window otherwise. See canopy.usb_port_cutter.
+    top = cast(Part, top - usb_port_cutter(side))
     # Slide-switch finger scoop: cut AFTER the canopy fuse so it lowers the wall + cover together.
     top = cast(Part, top - _slide_scoop())
     # Slide-switch drop-in pocket: registered switch-shaped cavity.
@@ -519,7 +529,8 @@ if __name__ == "__main__":
 
     if C.SHOW_PCB_PHANTOM:
         from sofle_case.pcb_phantom import build_pcb_phantom
-        parts.append(_mirror_part(build_pcb_phantom()))
+        # side-matched: the jack stub's Z band follows this half's MCU orientation
+        parts.append(_mirror_part(build_pcb_phantom(_SIDE)))
         names.append("pcb_phantom")
 
     if C.SHOW_PLATE_PHANTOM:

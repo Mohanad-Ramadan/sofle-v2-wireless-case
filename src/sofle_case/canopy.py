@@ -81,18 +81,49 @@ CANOPY_WEST_ROUND_R = 2.3
 # (to MAIN_RIM_Z) so it overlaps the cover/walls for a clean fuse into the TOP.
 CANOPY_FOOT_Z       = C.COVER_TOP_Z                                # 13.5; ramp foot = cover surface
 CANOPY_FUSE_BASE_Z  = C.MAIN_RIM_Z                                 # 12.5; base overlaps the cover for the fuse
-CANOPY_RIDGE_TOP_Z  = C.USB_C_BODY_TOP_Z + CANOPY_ROOF_CLEAR + CANOPY_ROOF_WALL             # 21.9
+# Roof height is COMMON to both halves (identical silhouette) and clears the tallest thing
+# under the flat roof. The max() is load-bearing: on the FLIPPED half the nano board (21.4)
+# stands taller than its jack (20.4), so a jack-only derivation would sink the roof underside
+# 0.4 mm into the board.
+CANOPY_RIDGE_TOP_Z  = (max(C.USB_JACK_NEUTRAL_HI_Z, C.MCU_PCB_TOP_Z)
+                       + CANOPY_ROOF_CLEAR + CANOPY_ROOF_WALL)                               # 26.5
 # NW corner radius = the case's own rounded corner AT the facet's rim line.
 CANOPY_CORNER_R     = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE - C.RIM_FACET_RUN                # ≈ 3.25
 # USB-C port through the north wall — REQUIRED for the fused fit (the jack pokes into the wall;
-# it used to sit open over the +Y wall). Centred on the MCU X column.
+# it used to sit open over the +Y wall). Centred on the MCU X column. The BAND is per-half:
+# the two MCU orientations put the jack at different Z, so left and right are NOT mirror
+# images here (left 15.6→21.1, right 19.6→25.1; they overlap through 19.6→21.1).
 CANOPY_USB_W        = C.USB_C_W + 2.0                              # 11.0; port width (jack + plug clearance)
-CANOPY_USB_Z_LO     = C.MCU_PCB_TOP_Z - 0.8                        # port bottom; tracks the PCB (was literal 13.0)
-CANOPY_USB_Z_HI     = C.USB_C_BODY_TOP_Z + 0.7                     # port top; clears the USB-C body (was literal 20.5)
+CANOPY_USB_CLEAR_LO = 0.8                                          # below the jack body
+CANOPY_USB_CLEAR_HI = 0.7                                          # above the jack body
+
+
+def canopy_usb_z(side: str) -> tuple[float, float]:
+    """(lo, hi) Z of the north-wall USB port for a half, from its measured jack band."""
+    lo, hi = C.usb_jack_z(side)
+    return lo - CANOPY_USB_CLEAR_LO, hi + CANOPY_USB_CLEAR_HI
+
+
+def usb_port_cutter(side: str) -> Part:
+    """The north-wall USB port cutter box for a half, centred on the MCU X column.
+
+    Subtracted TWICE, deliberately. ``build_canopy`` cuts it so the standalone canopy is
+    complete on its own, and ``case.build_top_part`` cuts it AGAIN after the cover is fused
+    on. The second pass is not redundant: the FLIPPED half's port floor (15.6) sits below
+    ``COVER_TOP_Z`` (16.0), so the cover fuse backfills the bottom of the window — measured,
+    not theoretical. Same reason ``_slide_scoop`` is cut post-fuse. Booleans are idempotent,
+    so the neutral half (floor 19.6, clear of the cover) is unaffected."""
+    lo, hi = canopy_usb_z(side)
+    ucx = C.pcb_to_case(*C.MCU_POS)[0]
+    depth = CANOPY_SIDE_WALL + 2.0
+    return cast(Part, Solid.make_box(CANOPY_USB_W, depth, hi - lo).translate(
+        (ucx - CANOPY_USB_W / 2, (CANOPY_NORTH_OUTER_Y - CANOPY_SIDE_WALL) - 1.0, lo)))
+
 
 # Canopy roof-edge chamfer: the same drafted-facet STYLE as the case rim (slope run/drop),
 # scaled down so the north face's chamfer toe stays clear of the USB-C port mouth below it.
-CANOPY_TOP_CHAMFER_V = min(2.4, CANOPY_RIDGE_TOP_Z - CANOPY_USB_Z_HI - 0.2)   # vertical leg
+# Derived from the HIGHER of the two port bands (the neutral half) so one chamfer serves both.
+CANOPY_TOP_CHAMFER_V = min(2.4, CANOPY_RIDGE_TOP_Z - canopy_usb_z("right")[1] - 0.2)   # vertical leg
 CANOPY_TOP_CHAMFER_H = CANOPY_TOP_CHAMFER_V * C.RIM_FACET_RUN / C.RIM_FACET_DROP  # horizontal leg
 assert CANOPY_TOP_CHAMFER_V > 0.5, "USB port leaves no room for the canopy roof chamfer"
 
@@ -288,7 +319,7 @@ def _round_west_top_edges(part: Part, x_w: float, x_e: float, r: float) -> Part:
     return part
 
 
-def build_canopy(hollow: bool = True) -> Part:
+def build_canopy(hollow: bool = True, side: str = "right") -> Part:
     """The fastback canopy that FUSES into the TOP cover over the bay.
 
     The ramp foot merges tangentially into the cover surface (``CANOPY_FOOT_Z``) — no tongue;
@@ -296,7 +327,11 @@ def build_canopy(hollow: bool = True) -> Part:
     union. Its −X / +Y walls land at the chamfer FIRST point (``CANOPY_WEST_OUTER_X`` /
     ``CANOPY_NORTH_OUTER_Y``), chamfer EXPOSED; the NW corner is rounded to the case's own
     corner radius. ``hollow=False`` returns the solid envelope; ``hollow=True`` (default) the
-    printed shell. ``case.build_top_part`` adds the result onto the TOP."""
+    printed shell. ``case.build_top_part`` adds the result onto the TOP.
+
+    ``side`` selects the USB port band only (``canopy_usb_z``) — the two halves carry the MCU
+    in opposite orientations, so their jacks sit at different Z. Everything else, the ridge
+    included, is common, so the halves keep an identical silhouette."""
     x_w, x_e = CANOPY_WEST_OUTER_X, CANOPY_EAST_X
     y_n = CANOPY_NORTH_OUTER_Y
     z_base, z_ridge = CANOPY_FUSE_BASE_Z, CANOPY_RIDGE_TOP_Z
@@ -328,10 +363,9 @@ def build_canopy(hollow: bool = True) -> Part:
         shell = cast(Part, shell - cav)
 
     # USB-C port through the north (+Y) wall, centred on the MCU X column (required for fit).
-    ucx = C.pcb_to_case(*C.MCU_POS)[0]
-    usb = Solid.make_box(CANOPY_USB_W, w_side + 2.0, CANOPY_USB_Z_HI - CANOPY_USB_Z_LO).translate(
-        (ucx - CANOPY_USB_W / 2, (y_n - w_side) - 1.0, CANOPY_USB_Z_LO))
-    shell = cast(Part, shell - usb)
+    # Band is per-half — see canopy_usb_z. Cut again post-fuse in build_top_part; see
+    # usb_port_cutter for why.
+    shell = cast(Part, shell - usb_port_cutter(side))
 
     # Reset poke-hole: vertical bore + funnel down through the roof over RSW1.
     shell = cast(Part, shell - _reset_poke_hole())

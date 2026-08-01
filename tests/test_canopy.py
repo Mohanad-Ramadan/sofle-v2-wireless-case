@@ -38,6 +38,15 @@ def _curved_faces(part):
     return [f for f in part.faces() if f.geom_type != GeomType.PLANE]
 
 
+def _mirror_back(part):
+    """Undo build_top_part's left-half mirror, so a left TOP can be compared against the
+    phantoms — which are always built in right-half (un-mirrored) coordinates."""
+    from build123d import Plane, Pos, mirror
+    p = Pos(-C.OUTER_WIDTH / 2, 0, 0) * part
+    p = mirror(p, about=Plane.YZ)
+    return Pos(C.OUTER_WIDTH / 2, 0, 0) * p
+
+
 @pytest.mark.parametrize("hollow", [False, True])
 def test_canopy_is_valid_single_solid(hollow):
     c = build_canopy(hollow=hollow)
@@ -160,14 +169,32 @@ def test_reset_poke_hole_open_in_fused_top(side):
     assert not _solid_at(top, rx, ry, surf_z - 0.75), f"{side} TOP reset bore blocked"
 
 
-def test_canopy_usb_port_open():
-    """A USB-C hole is cut through the north wall on the MCU X column; the wall stays solid to
-    either side of it."""
-    c = build_canopy()
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_canopy_usb_port_open(side):
+    """A USB-C hole is cut through the north wall on the MCU X column, spanning THIS half's
+    measured jack band; the wall stays solid to either side of it and above/below the band."""
+    c = build_canopy(side=side)
     ncx = _mcu_cx()
     yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_SIDE_WALL / 2
-    assert not _solid_at(c, ncx, yw, 16.0), "USB port blocked"
-    assert _solid_at(c, ncx + CAN.CANOPY_USB_W / 2 + 1.5, yw, 15.0), "north wall missing beside the port"
+    lo, hi = CAN.canopy_usb_z(side)
+    assert not _solid_at(c, ncx, yw, (lo + hi) / 2), f"{side} USB port blocked"
+    assert not _solid_at(c, ncx, yw, hi - 0.3), f"{side} USB port short at the top"
+    assert _solid_at(c, ncx, yw, hi + 0.6), f"{side} USB port overshoots above the band"
+    assert _solid_at(c, ncx + CAN.CANOPY_USB_W / 2 + 1.5, yw, (lo + hi) / 2), \
+        "north wall missing beside the port"
+
+
+def test_canopy_usb_bands_differ_between_halves():
+    """The halves carry opposite MCU orientations, so the port sits at a different Z on each.
+    Probed in each half's exclusive band (they overlap only through 19.6–21.1)."""
+    left, right = build_canopy(side="left"), build_canopy(side="right")
+    ncx = _mcu_cx()
+    yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_SIDE_WALL / 2
+    z_left_only, z_right_only = 17.5, 23.5
+    assert not _solid_at(left, ncx, yw, z_left_only), "left port missing in its own band"
+    assert _solid_at(right, ncx, yw, z_left_only), "right port reaches into the flipped band"
+    assert not _solid_at(right, ncx, yw, z_right_only), "right port missing in its own band"
+    assert _solid_at(left, ncx, yw, z_right_only), "left port reaches into the neutral band"
 
 
 # ---------------------------------------------------------------------------
@@ -181,13 +208,19 @@ def test_canopy_fused_into_top_single_solid(side):
     assert abs(top.bounding_box().max.Z - CAN.CANOPY_RIDGE_TOP_Z) < 0.01, "TOP not raised to the canopy ridge"
 
 
-def test_fused_top_clears_all_bay_components():
-    """The fused TOP (cover + canopy) must not touch any component above the cover."""
-    top = build_top_part("right")
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_fused_top_clears_all_bay_components(side):
+    """The fused TOP (cover + canopy) must not touch any component above the cover.
+
+    Probed against the SIDE-MATCHED phantom: the jack stub moves with the MCU orientation,
+    so the right half must clear a jack at 20.4–24.4 and the left one at 16.4–20.4."""
+    top = build_top_part(side)
+    if side == "left":
+        top = _mirror_back(top)
     above = Solid.make_box(200, 200, 60).translate((-20, -20, C.COVER_TOP_Z + 0.1))
     # build123d raises on `empty & shape` rather than returning empty, and an empty first
     # intersection is the PASSING case here — so short-circuit instead of chaining blindly.
-    touching = top & build_pcb_phantom()
+    touching = top & build_pcb_phantom(side)
     clash = (touching & above) if touching else None
     vol = 0.0 if clash is None else sum(s.volume for s in clash.solids())
-    assert vol < 1e-2, f"canopy clashes bay components by {vol:.2f} mm^3"
+    assert vol < 1e-2, f"{side} canopy clashes bay components by {vol:.2f} mm^3"

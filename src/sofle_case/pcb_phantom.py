@@ -75,9 +75,9 @@ def _pcb_plate() -> Part:
 
 
 def _mcu_block() -> Part:
-    """nice!nano + header legs block above the main PCB plate."""
+    """nice!nano + socket stack block above the main PCB plate, up to the board top."""
     cx, cy = C.pcb_to_case(*C.MCU_POS)
-    block_h  = C.MCU_HILL_Z - C.PCB_TOP_Z   # 11.0 mm: full MCU + header legs
+    block_h  = C.MCU_PCB_TOP_Z - C.PCB_TOP_Z   # 11.0 mm: sockets + nano board
     center_z = C.PCB_TOP_Z + block_h / 2
 
     with BuildPart() as bp:
@@ -88,13 +88,17 @@ def _mcu_block() -> Part:
     return bp.part
 
 
-def _usb_c_stub() -> Part:
-    """USB-C jack body stub at the +Y face of the MCU block."""
+def _usb_c_stub(side: str = "right") -> Part:
+    """USB-C jack body stub at the +Y face of the MCU block, at this half's measured band.
+
+    On the FLIPPED half the jack hangs under the nano board, so the stub falls entirely
+    inside ``_mcu_block`` and is not separately visible in the viewer — expected."""
     cx, cy = C.pcb_to_case(*C.MCU_POS)
     mcu_y_face = cy + C.MCU_BODY_L / 2    # +Y face of MCU block (≈ 118.59 case-Y)
     stub_center_y = mcu_y_face + _USB_C_STUB_Y / 2
-    stub_h = C.USB_C_BODY_TOP_Z - C.MCU_PCB_TOP_Z
-    center_z = C.MCU_PCB_TOP_Z + stub_h / 2
+    jack_lo, jack_hi = C.usb_jack_z(side)
+    stub_h = jack_hi - jack_lo
+    center_z = jack_lo + stub_h / 2
 
     with BuildPart() as bp:
         with Locations((cx, stub_center_y, center_z)):
@@ -132,10 +136,12 @@ def _slide_switch_body() -> Part:
     return bp.part
 
 
-def build_pcb_phantom() -> Part:
-    """PCB plate + MCU daughter board + USB-C jack stub + slide-switch body + pin holes."""
+def build_pcb_phantom(side: str = "right") -> Part:
+    """PCB plate + MCU daughter board + USB-C jack stub + slide-switch body + pin holes.
+
+    ``side`` picks the MCU orientation, which sets where the jack stub sits in Z."""
     return Part(children=[
-        _pcb_plate(), _mcu_block(), _usb_c_stub(),
+        _pcb_plate(), _mcu_block(), _usb_c_stub(side),
         _slide_switch_body(), _slide_switch_pin_holes(),
     ])
 

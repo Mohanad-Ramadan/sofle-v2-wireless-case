@@ -277,9 +277,10 @@ def test_top_ceiling_closed_over_mcu_switch_column():
         assert not solid_at(x, 110.0, z), f"wire-channel bay wrongly closed at ({x}, 110)"
 
 
-@pytest.mark.parametrize("builder", [build_top_part, build_bottom_part])
-def test_split_left_equals_right(builder):
-    left, right = builder("left"), builder("right")
+def test_split_bottom_left_equals_right():
+    """The BOTTOM plate carries no MCU features, so it stays a strict mirror — one STL
+    serves both halves."""
+    left, right = build_bottom_part("left"), build_bottom_part("right")
     # 1e-5 rel tolerates OCC mirror/heal float noise; a real asymmetry is far larger.
     assert abs(left.volume - right.volume) / left.volume < 1e-5
     lbb, rbb = left.bounding_box(), right.bounding_box()
@@ -289,6 +290,67 @@ def test_split_left_equals_right(builder):
         (lbb.min.Z, rbb.min.Z), (lbb.max.Z, rbb.max.Z),
     ):
         assert abs(a - b) < 1e-6
+
+
+def test_split_top_same_silhouette_different_window():
+    """The TOP is deliberately NOT mirror-identical: the halves carry opposite MCU
+    orientations, so the USB port sits at a different Z on each. The ridge is common, so
+    the silhouette (bounding box) must still match exactly — only the hole moves, and the
+    volume difference is the proof it did."""
+    left, right = build_top_part("left"), build_top_part("right")
+    lbb, rbb = left.bounding_box(), right.bounding_box()
+    for a, b in (
+        (lbb.min.X, rbb.min.X), (lbb.max.X, rbb.max.X),
+        (lbb.min.Y, rbb.min.Y), (lbb.max.Y, rbb.max.Y),
+        (lbb.min.Z, rbb.min.Z), (lbb.max.Z, rbb.max.Z),
+    ):
+        assert abs(a - b) < 1e-6, "TOP silhouette should be common to both halves"
+    # Guards the other direction too: an accidentally-symmetric window fails here.
+    assert abs(left.volume - right.volume) / left.volume > 1e-5, \
+        "TOP halves are identical — the per-side USB window is not being applied"
+
+
+def test_top_usb_window_is_side_specific():
+    """Each half is open only across its own measured jack band. Probed at the MCU column
+    on the canopy's north wall, in the bands the two windows do NOT share."""
+    from build123d import Solid
+    from sofle_case import canopy as CAN
+
+    def solid_at(part, x, y, z, s=0.3):
+        box = Solid.make_box(s, s, s).translate((x - s / 2, y - s / 2, z - s / 2))
+        inter = part & box
+        return inter is not None and sum(ss.volume for ss in inter.solids()) > 1e-6
+
+    yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_SIDE_WALL / 2
+    z_left_only, z_right_only, z_shared = 17.5, 23.5, 20.4
+    for side, open_z, solid_z in (("left", z_left_only, z_right_only),
+                                  ("right", z_right_only, z_left_only)):
+        top = build_top_part(side)
+        cx = C.pcb_to_case(*C.MCU_POS)[0]
+        if side == "left":
+            cx = C.OUTER_WIDTH - cx
+        assert not solid_at(top, cx, yw, open_z), f"{side} TOP blocked in its own band"
+        assert solid_at(top, cx, yw, solid_z), f"{side} TOP open in the other half's band"
+        assert not solid_at(top, cx, yw, z_shared), f"{side} TOP blocked at the shared seam"
+
+
+def test_top_usb_window_floor_survives_the_cover_fuse():
+    """Regression guard. The flipped half's port floor (15.6) sits BELOW COVER_TOP_Z (16.0),
+    so fusing the cover on backfills the bottom of the window unless the port is re-cut
+    afterwards. This was measured, not hypothetical — see canopy.usb_port_cutter."""
+    from build123d import Solid
+    from sofle_case import canopy as CAN
+
+    top = build_top_part("left")
+    cx = C.OUTER_WIDTH - C.pcb_to_case(*C.MCU_POS)[0]
+    yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_SIDE_WALL / 2
+    lo, _ = CAN.canopy_usb_z("left")
+    assert lo < C.COVER_TOP_Z, "premise changed: floor no longer dips under the cover"
+    for z in (lo + 0.2, C.COVER_TOP_Z - 0.1, C.COVER_TOP_Z + 0.1):
+        box = Solid.make_box(0.3, 0.3, 0.3).translate((cx - 0.15, yw - 0.15, z - 0.15))
+        inter = top & box
+        vol = 0.0 if inter is None else sum(s.volume for s in inter.solids())
+        assert vol <= 1e-6, f"window backfilled by the cover at z={z:.2f}"
 
 
 @pytest.mark.parametrize("builder", [build_top_part, build_bottom_part])

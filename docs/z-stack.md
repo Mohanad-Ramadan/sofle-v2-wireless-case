@@ -5,7 +5,13 @@ All values are defined in `src/sofle_case/constants.py`. Edit there; derived qua
 
 This is the **minimal short case**: the perimeter walls end flush with the switch
 plate's top surface (`MAIN_RIM_Z == PLATE_TOP_Z`). There is no MCU hill — every
-wall is flat at the rim, and the nice!nano + USB-C jack sit open above it.
+perimeter wall is flat at the rim. The MCU bay is hooded by the fastback canopy,
+which is fused into the TOP part.
+
+> ⚠️ **Partially stale.** Everything outside the *MCU stack* section below predates
+> the `FLOOR_THICKNESS` 3.8 → 6.3 change, so its absolute Z values read 2.5 mm low
+> (`PCB_TOP_Z` is shown as 7.9; it is 10.4). The MCU stack section is current and
+> caliper-measured. Trust `constants.py` over this file until the rest is regenerated.
 
 ---
 
@@ -66,15 +72,46 @@ switch, not structural case geometry.
 
 ### MCU stack (at the MCU corner, not the switch column)
 
-The nice!nano and its USB-C jack sit above the flat +Y / −X walls at the MCU
-corner. These heights drive the PCB phantom's MCU/jack visuals only — there is no
-case material above the rim there:
+**Caliper-measured** on the real hardware, referenced to the main PCB top face
+(`PCB_TOP_Z` = 10.4). Unlike the rest of this document, these values are current.
 
-| Z (mm) | Boundary                     | Source             |
-|-------:|------------------------------|--------------------|
-|   19.8 | USB-C jack body top          | `USB_C_BODY_TOP_Z` |
-|   18.9 | MCU + header legs top        | `MCU_HILL_Z`       |
-|   13.8 | nice!nano PCB top            | `MCU_PCB_TOP_Z`    |
+The bay is no longer open air: the fastback canopy (`canopy.py`) is fused into the
+TOP and hoods the whole MCU, with the USB-C port punched through its north wall.
+
+| Z (mm) | Boundary                          | Source                  |
+|-------:|-----------------------------------|-------------------------|
+|   26.5 | canopy ridge (roof top)           | `CANOPY_RIDGE_TOP_Z`    |
+|   25.0 | canopy roof underside             | ridge − `CANOPY_ROOF_WALL` |
+|   24.4 | USB-C jack top — **neutral only** | `USB_JACK_NEUTRAL_HI_Z` |
+|   21.4 | nice!nano board top (both)        | `MCU_PCB_TOP_Z`         |
+|   20.4 | jack seam: neutral bottom = flipped top | `USB_JACK_*`      |
+|   16.4 | USB-C jack bottom — **flipped only** | `USB_JACK_FLIPPED_LO_Z` |
+|   10.4 | main PCB top                      | `PCB_TOP_Z`             |
+
+#### The two MCU orientations
+
+The halves are assembled with the nice!nano facing opposite ways
+(`C.MCU_ORIENTATION`), so the same 4.0 mm connector lands at two different heights:
+
+| half | orientation | jack body | canopy window |
+|------|-------------|-----------|---------------|
+| left  | flipped (components down) | 16.4 → 20.4 | 15.6 → 21.1 |
+| right | neutral (components up)   | 20.4 → 24.4 | 19.6 → 25.1 |
+
+The bands abut at 20.4 — the nano board's underside — and the windows overlap
+through 19.6 → 21.1. Query them with `C.usb_jack_z(side)` and
+`canopy.canopy_usb_z(side)`; never hard-code.
+
+The **ridge is common to both halves** at 26.5, derived from
+`max(USB_JACK_NEUTRAL_HI_Z, MCU_PCB_TOP_Z) + 0.6 clear + 1.5 roof wall`. The `max`
+matters: on the flipped half the board (21.4) is taller than its jack (20.4), so a
+jack-only derivation would sink the roof 0.4 mm into the board. The left half could
+safely drop to 23.5, but a common ridge was chosen so the halves keep an identical
+silhouette.
+
+The flipped half's window floor (15.6) dips below `COVER_TOP_Z` (16.0), so the port
+is cut **twice** — once in `build_canopy`, again in `build_top_part` after the cover
+is fused on. Without the second cut the cover backfills the bottom of the window.
 
 ---
 
@@ -101,9 +138,10 @@ solder joints on the PCB underside.
 
 ### PCB top — Z = 7.9 (`PCB_TOP_Z = 7.9`)
 Top surface of the main PCB. Derived from `PCB_SEAT_Z + 1.6 mm` (standard FR4
-thickness). The nice!nano daughter board adds ~5.9 mm above this (`MCU_PCB_TOP_Z`
-= 13.8), and its USB-C jack body reaches Z ≈ 19.8 (`USB_C_BODY_TOP_Z`) — both
-above the flat wall, so the port is accessible over the rim with no cutout.
+thickness). It is also the reference face for every measured MCU height — see the
+*MCU stack* section above, which supersedes this paragraph: the nano board top is
++11.0 (`MCU_PCB_TOP_Z`), and the jack band depends on which way the nano faces.
+The port is **not** open over the rim; it is cut through the canopy's north wall.
 
 ### Plate seat — Z = 10.9 (`PLATE_SEAT_Z = 10.9`)
 Bottom surface of the switch plate. The 3.0 mm gap above PCB top accommodates the
