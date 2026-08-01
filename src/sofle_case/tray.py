@@ -7,10 +7,12 @@ import math
 from functools import cache
 from typing import cast
 from build123d import (
-    Part, Wire, Pos, Polyline, make_face, extrude, offset, Kind, Solid,
-    Plane, BuildPart, BuildSketch, BuildLine, Axis, fillet, chamfer, loft,
+    Part, Wire, Face, Pos, Polyline, make_face, extrude, offset, Kind, Solid,
+    Plane, BuildPart, BuildSketch, BuildLine, Axis, fillet, chamfer,
 )
+from OCP.LocOpe import LocOpe_DPrism
 from OCP.Standard import Standard_Failure
+from OCP.TopoDS import TopoDS
 from . import constants as C
 from .pcb_geometry import polygon_in_case_coords, thumb_switch_midpoint_x
 
@@ -328,31 +330,42 @@ def _fillet_bump_neg_x_corner(part: Part) -> Part:
 # Drafted rim facet (outer-top treatment; replaces the old flat chamfer)
 # ---------------------------------------------------------------------------
 
-def _rim_facet_frustum(drop: float, run: float, rim_z: float) -> Part:
+# End extension of the facet frustum beyond the toe and the rim. Below the toe the
+# frustum is then WIDER than the outer band, so the wedge cutter (band − frustum) has
+# zero width there and no coincident cap face for OCC to trip on.
+_FACET_END_EXT = 0.6
+
+
+def _rim_facet_frustum(drop: float, run: float, rim_z: float) -> Solid:
     """The 'keep' frustum whose sloped outer wall IS the facet plane.
 
-    A loft between two concentric PCB-polygon offsets (both Kind.ARC, so topologically
-    identical — the loft is well-conditioned even on the arc corners): the outer wall
-    offset at the toe (Z = rim_z − drop) tapering inward by ``run`` at the rim (Z = rim_z).
-    Both cross-sections are extended ``e`` past the toe/rim along the same slope so the
-    wedge cutter (outer band − this frustum) has no coincident cap faces to trip OCC."""
+    A DRAFTED PRISM raised from ONE cross-section — the outer-wall offset taken at
+    Z = rim_z − drop − e and drafted inward by atan(run/drop), so it has shed exactly
+    ``run`` by the time it reaches the rim.
+
+    Drafting one section is what keeps the facet clean. The previous implementation
+    lofted between two independently computed Kind.ARC offsets of the same wire, but
+    an outward arc-offset does not preserve edge count: at the perimeter amounts the
+    two sections come out 23 vs 24 edges, at the front amounts 23 vs 27. With no 1:1
+    vertex correspondence OCC abandons ruled surfaces and approximates the whole band
+    with BSpline patches whose rulings skew — that was the source of the creases, the
+    wandering facet width and the toe line dipping below Z = rim_z − drop.
+    ``LocOpe_DPrism`` instead drafts each prism face in place, so a straight outline
+    segment yields an exact PLANE and an arc corner an exact CONE."""
     outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
     slope = run / drop                       # radial inset per unit Z
-    e = 0.6                                   # end extension beyond toe and rim
+    e = _FACET_END_EXT
     z0, z1 = rim_z - drop - e, rim_z + e
-    amt0 = outer + slope * e                  # wider than the band below the toe → no cut there
-    amt1 = outer - run - slope * e            # narrower above the rim
-    wire = _rounded_wire()                    # reflex-rounded → facet continuous at the jogs
-    with BuildPart() as bp:
-        with BuildSketch(Plane(origin=(0, 0, z0))):
-            face = make_face(wire)  # type: ignore[arg-type]
-            face = offset(face, amount=amt0, kind=Kind.ARC)
-        with BuildSketch(Plane(origin=(0, 0, z1))):
-            face = make_face(wire)  # type: ignore[arg-type]
-            face = offset(face, amount=amt1, kind=Kind.ARC)
-        loft()
-    assert bp.part is not None
-    return cast(Part, bp.part)
+    amt0 = outer + slope * e                 # widest section, below the toe
+    wire = _rounded_wire()                   # reflex-rounded → facet continuous at the jogs
+    with BuildSketch(Plane(origin=(0, 0, z0))) as sk:
+        face = make_face(wire)  # type: ignore[arg-type]
+        face = offset(face, amount=amt0, kind=Kind.ARC)
+    profile = cast(Face, sk.sketch.faces()[0])  # type: ignore[union-attr]
+    angle = math.atan(slope)
+    # LocOpe_DPrism takes the SLANT height along the drafted wall, not the rise.
+    prism = LocOpe_DPrism(profile.wrapped, (z1 - z0) / math.cos(angle), angle)
+    return Solid(TopoDS.Solid_s(prism.Shape()))
 
 
 def _rim_facet_cutter(drop: float, run: float, rim_z: float) -> Part:
@@ -360,7 +373,7 @@ def _rim_facet_cutter(drop: float, run: float, rim_z: float) -> Part:
     frustum. Zero width at the toe (Z = rim_z − drop), ``run`` wide at the rim. Subtracting
     it from the tray slopes the outer-top edge inward — the drafted facet."""
     outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
-    e = 0.6
+    e = _FACET_END_EXT
     band = offset_extruded(outer, rim_z - drop - e, rim_z + e, rounded=True)
     return cast(Part, band - _rim_facet_frustum(drop, run, rim_z))
 
