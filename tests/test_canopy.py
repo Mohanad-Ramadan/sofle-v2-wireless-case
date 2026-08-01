@@ -184,6 +184,43 @@ def test_canopy_usb_port_open(side):
         "north wall missing beside the port"
 
 
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_usb_port_cutter_corners_are_filleted(side):
+    """The mouth is a ROUNDED rectangle. The fillet in ``usb_port_cutter`` is wrapped in a
+    try/except that degrades to a square mouth rather than aborting the port, so assert the
+    arcs are actually there — otherwise a silent OCC failure would go unnoticed."""
+    cutter = CAN.usb_port_cutter(side)
+    cyl = [f for f in cutter.faces() if f.geom_type == GeomType.CYLINDER]
+    assert len(cyl) == 4, f"{side} mouth has {len(cyl)} rounded corners, expected 4"
+    radii = {round(f.geom_adaptor().Cylinder().Radius(), 3) for f in cyl}
+    assert radii == {round(CAN.CANOPY_USB_R, 3)}, f"unexpected corner radii: {radii}"
+    # Rounding must not shrink the opening.
+    bb = cutter.bounding_box()
+    lo, hi = CAN.canopy_usb_z(side)
+    assert abs((bb.max.X - bb.min.X) - CAN.CANOPY_USB_W) < 1e-6
+    assert abs(bb.min.Z - lo) < 1e-6 and abs(bb.max.Z - hi) < 1e-6
+
+
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_fused_top_usb_mouth_is_rounded_not_square(side):
+    """On the FUSED TOP: material fills all four corners of the nominal rectangle, while the
+    mid-span of every edge stays open — i.e. rounded, not pinched and not square."""
+    top = build_top_part(side)
+    cx = _mcu_cx()
+    if side == "left":
+        cx = C.OUTER_WIDTH - cx
+    yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_SIDE_WALL / 2
+    lo, hi = CAN.canopy_usb_z(side)
+    hw, d, mid = CAN.CANOPY_USB_W / 2, 0.25, (lo + hi) / 2
+    for sx, sz, name in ((+1, +1, "NE"), (-1, +1, "NW"), (+1, -1, "SE"), (-1, -1, "SW")):
+        z = (hi - d) if sz > 0 else (lo + d)
+        assert _solid_at(top, cx + sx * (hw - d), yw, z, s=0.2), \
+            f"{side} {name} corner still square"
+    for x, z, name in ((cx + hw - d, mid, "+X"), (cx - hw + d, mid, "-X"),
+                       (cx, hi - d, "top"), (cx, lo + d, "bottom")):
+        assert not _solid_at(top, x, yw, z, s=0.2), f"{side} port pinched at the {name} edge"
+
+
 def test_canopy_usb_bands_differ_between_halves():
     """The halves carry opposite MCU orientations, so the port sits at a different Z on each.
     Probed in each half's exclusive band (they overlap only through 19.6–21.1)."""

@@ -96,6 +96,12 @@ CANOPY_CORNER_R     = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE - C.RIM_FACET_RUN   
 CANOPY_USB_W        = C.USB_C_W + 2.0                              # 11.0; port width (jack + plug clearance)
 CANOPY_USB_CLEAR_LO = 0.8                                          # below the jack body
 CANOPY_USB_CLEAR_HI = 0.7                                          # above the jack body
+# Port mouth corner radius. The opening is a ROUNDED rectangle, not a sharp one: it matches
+# the plug overmold's own profile, kills four stress risers in a thin wall, and prints better
+# — the arc at the top of the hole self-supports where a square corner needs a hard bridge.
+# Clamped below half the port's short side (5.5 / 2) so the fillet can always be built; at the
+# clamp the mouth degenerates to a stadium, which is still valid.
+CANOPY_USB_R        = 1.5
 
 
 def canopy_usb_z(side: str) -> tuple[float, float]:
@@ -116,8 +122,18 @@ def usb_port_cutter(side: str) -> Part:
     lo, hi = canopy_usb_z(side)
     ucx = C.pcb_to_case(*C.MCU_POS)[0]
     depth = CANOPY_SIDE_WALL + 2.0
-    return cast(Part, Solid.make_box(CANOPY_USB_W, depth, hi - lo).translate(
+    box = cast(Part, Solid.make_box(CANOPY_USB_W, depth, hi - lo).translate(
         (ucx - CANOPY_USB_W / 2, (CANOPY_NORTH_OUTER_Y - CANOPY_SIDE_WALL) - 1.0, lo)))
+    # Round the four mouth corners: the edges running along Y (the bore axis), so the
+    # rounding shows on the X–Z opening the plug enters. Filleted on the ISOLATED box —
+    # same reason as _slide_scoop, a 3-D fillet on the boolean result is fragile.
+    r = min(CANOPY_USB_R, (hi - lo) / 2 - 1e-3, CANOPY_USB_W / 2 - 1e-3)
+    axial = [e for e in box.edges() if abs(e.tangent_at(0.5).Y) > 0.9]
+    try:
+        box = cast(Part, fillet(axial, radius=r))
+    except (ValueError, Standard_Failure):
+        pass   # never abort the port over its cosmetic rounding; a square mouth still fits
+    return box
 
 
 # Canopy roof-edge chamfer: the same drafted-facet STYLE as the case rim (slope run/drop),

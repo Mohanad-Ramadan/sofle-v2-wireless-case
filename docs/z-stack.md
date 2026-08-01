@@ -102,6 +102,13 @@ The bands abut at 20.4 — the nano board's underside — and the windows overla
 through 19.6 → 21.1. Query them with `C.usb_jack_z(side)` and
 `canopy.canopy_usb_z(side)`; never hard-code.
 
+Both mouths are 11.0 wide and **rounded**, not square: `CANOPY_USB_R` = 1.5 on all
+four corners (`canopy.usb_port_cutter`). The rounding matches the plug overmold,
+removes four stress risers from a thin wall, and prints cleaner — the arc at the top
+of the bore self-supports where a square corner needs a hard bridge. The radius is
+clamped below half the port's short side, so raising it past 2.75 degrades the mouth
+to a stadium rather than failing.
+
 The **ridge is common to both halves** at 26.5, derived from
 `max(USB_JACK_NEUTRAL_HI_Z, MCU_PCB_TOP_Z) + 0.6 clear + 1.5 roof wall`. The `max`
 matters: on the flipped half the board (21.4) is taller than its jack (20.4), so a
