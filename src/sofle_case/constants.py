@@ -60,11 +60,11 @@ OUTER_TOP_CHAMFER = 1.9   # mm, 45° outer-top bevel leg (~40% of WALL_THICKNESS
 # plate colour, and keeps the boolean/print non-degenerate). The window corners are
 # mitered square (Kind.INTERSECTION), not rounded, so the switch box's square corners
 # clear too. Keycaps float entirely above it — skirt at full
-# press ~14.0 mm > cover top 13.5 mm — so 1.0 mm is safe (1.5 mm would just kiss the
+# press ~14.0 mm > cover top 16.0 mm — so 1.0 mm is safe (1.5 mm would just kiss the
 # skirt on a hard edge press). The plate's own inner notch leaves the MCU/OLED/
 # slide/JST bay open for free.
 MX_TOP_HOUSING_W        = 15.6   # mm; widest part of a Cherry MX switch (rests on plate) — drives the window size
-COVER_THICKNESS         = 1.0    # mm; lid thickness, top at MAIN_RIM_Z + 1.0 = 13.5
+COVER_THICKNESS         = 1.0    # mm; lid thickness, top at MAIN_RIM_Z + 1.0 = 16.0
 COVER_WINDOW_OFFSET     = 0.85   # mm; 14 mm cutout -> 15.7 mm window, 0.05 mm/side off the 15.6 housing (invisible shadow gap, plate hidden, non-degenerate)
 COVER_SCREW_CLEARANCE_DIA = 2.4  # mm; M2 screw shaft clearance through the cover
 
@@ -104,7 +104,7 @@ COVER_FUSE_MARGIN       = 1.0    # mm; membrane→upper-wall fusion overlap in t
 # that tucks up behind the skin and joins via a RABBET (stepped lap): the plate's
 # outer rim rises into a pocket in the tub's inner wall, hidden as a shadow line on
 # the underside. See docs/spec deep-dive-sandwich-seam-modification.md.
-COVER_TOP_Z  = MAIN_RIM_Z + COVER_THICKNESS  # 13.5 mm; TOP part rim (membrane top)
+COVER_TOP_Z  = MAIN_RIM_Z + COVER_THICKNESS  # 16.0 mm; TOP part rim (membrane top)
 
 # Rabbet geometry (offsets are radial, from the PCB polygon outward):
 #   skin (tub, → ground)  SEAM_SKIN | gap SEAM_FIT_CLEAR | plate rim SEAM_RIM_THK
@@ -113,7 +113,7 @@ COVER_TOP_Z  = MAIN_RIM_Z + COVER_THICKNESS  # 13.5 mm; TOP part rim (membrane t
 # Clearances follow the design-for-print rule of a 0.3 mm minimum mating gap (below
 # that FDM tends to weld / bind); the fit is intentionally loose because the screws
 # clamp and the 5 standoffs — not the rabbet — set the precise XY registration.
-SEAM_LEDGE_Z    = FLOOR_THICKNESS   # 3.8; rabbet ledge / plate-rim top / the split height
+SEAM_LEDGE_Z    = FLOOR_THICKNESS   # 6.3; rabbet ledge / plate-rim top / the split height
 SEAM_SKIN       = 2.0    # mm; outer skin kept with the tub at the rabbet (descends to ground)
 SEAM_FIT_CLEAR  = 0.3    # mm; per-side XY clearance, plate rim ↔ tub skirt pocket (0.3 min)
 SEAM_LEDGE_CLEAR = 0.3   # mm; Z gap at the ledge so the screws clamp (no over-constraint)
@@ -215,7 +215,7 @@ PCB_LEDGE_WIDTH   = 1.0   # mm; ring width if enabled
 
 # ---------- USB-C jack (physical) ----------
 # The nice!nano USB-C jack sits above the flat rim (jack ~MCU_PCB_TOP_Z 13.8 >
-# MAIN_RIM_Z 12.5), so with no hill the port is open to air over the +Y wall —
+# MAIN_RIM_Z 15.0), so with no hill the port is open to air over the +Y wall —
 # no case cutout is needed. USB_C_W is kept for the PCB phantom's jack stub.
 USB_C_W = 9.0
 

@@ -192,7 +192,7 @@ def _mcu_y_relief_bump(rim_z: float = C.MAIN_RIM_Z) -> Part:
 
     A single box capped at MAIN_RIM_Z: the walls are flat at the rim now (no
     hill), so there is no wall material above the rim to relieve — the B+/B-
-    pads clear into open air above 12.5.
+    pads clear into open air above 15.0.
 
     Z0 starts at the case bottom (not FLOOR_THICKNESS) so this box genuinely
     overlaps the solid floor slab beneath — that's what keeps the resulting
@@ -548,8 +548,8 @@ def _apply_rim_facets(part: Part, rim_z: float) -> Part:
 def build_tray(rim_z: float = C.MAIN_RIM_Z) -> Part:
     """Outer shell + inner cavity, walls flat at ``rim_z``.
 
-    ``rim_z`` defaults to ``MAIN_RIM_Z`` (12.5, flush with the switch plate) — the
-    single-tray case. The sandwich TOP part raises it to ``COVER_TOP_Z`` (13.5) so
+    ``rim_z`` defaults to ``MAIN_RIM_Z`` (15.0, flush with the switch plate) — the
+    single-tray case. The sandwich TOP part raises it to ``COVER_TOP_Z`` (16.0) so
     the upper walls run high enough to carry the membrane ceiling; the outer-top
     chamfer, +Y relief and slide-switch valley all track the rim automatically."""
     shell  = _outer_shell(rim_z)
