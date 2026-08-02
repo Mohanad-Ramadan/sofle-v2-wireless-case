@@ -171,17 +171,28 @@ def test_reset_poke_hole_open_in_fused_top(side):
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_canopy_usb_port_open(side):
-    """A USB-C hole is cut through the north wall on the MCU X column, spanning THIS half's
-    measured jack band; the wall stays solid to either side of it and above/below the band."""
+    """The port is a STEPPED bore: an overmold POCKET in the outer part of the north wall,
+    then a shell-sized NECK the rest of the way. Probe each section at its own depth — a
+    single mid-wall probe now lands inside the pocket and tells you nothing about the neck."""
     c = build_canopy(side=side)
     ncx = _mcu_cx()
-    yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_SIDE_WALL / 2
+    y_pocket = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_USB_OM_DEPTH / 2
+    y_neck = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_USB_OM_DEPTH - 0.5
+
     lo, hi = CAN.canopy_usb_z(side)
-    assert not _solid_at(c, ncx, yw, (lo + hi) / 2), f"{side} USB port blocked"
-    assert not _solid_at(c, ncx, yw, hi - 0.3), f"{side} USB port short at the top"
-    assert _solid_at(c, ncx, yw, hi + 0.6), f"{side} USB port overshoots above the band"
-    assert _solid_at(c, ncx + CAN.CANOPY_USB_W / 2 + 1.5, yw, (lo + hi) / 2), \
-        "north wall missing beside the port"
+    assert not _solid_at(c, ncx, y_neck, (lo + hi) / 2), f"{side} USB neck blocked"
+    assert not _solid_at(c, ncx, y_neck, hi - 0.3), f"{side} USB neck short at the top"
+    assert _solid_at(c, ncx, y_neck, hi + 0.6), f"{side} USB neck overshoots above the band"
+    assert _solid_at(c, ncx + CAN.CANOPY_USB_W / 2 + 1.5, y_neck, (lo + hi) / 2), \
+        "north wall missing beside the neck"
+
+    plo, phi = CAN.canopy_usb_om_z(side)
+    assert not _solid_at(c, ncx, y_pocket, (plo + phi) / 2), f"{side} USB pocket blocked"
+    assert not _solid_at(c, ncx, y_pocket, phi - 0.3), f"{side} USB pocket short at the top"
+    assert _solid_at(c, ncx + CAN.CANOPY_USB_OM_W / 2 + 1.0, y_pocket, (plo + phi) / 2), \
+        "north wall missing beside the pocket"
+    # The pocket must be strictly wider than the neck, or the step does nothing.
+    assert CAN.CANOPY_USB_OM_W > CAN.CANOPY_USB_W and (phi - plo) > (hi - lo)
 
 
 @pytest.mark.parametrize("side", ["right", "left"])
@@ -191,14 +202,16 @@ def test_usb_port_cutter_corners_are_filleted(side):
     arcs are actually there — otherwise a silent OCC failure would go unnoticed."""
     cutter = CAN.usb_port_cutter(side)
     cyl = [f for f in cutter.faces() if f.geom_type == GeomType.CYLINDER]
-    assert len(cyl) == 4, f"{side} mouth has {len(cyl)} rounded corners, expected 4"
+    # EIGHT, not four: the stepped bore is two rounded-rectangle sections (pocket + neck).
+    assert len(cyl) == 8, f"{side} mouth has {len(cyl)} rounded corners, expected 8"
     radii = {round(f.geom_adaptor().Cylinder().Radius(), 3) for f in cyl}
     assert radii == {round(CAN.CANOPY_USB_R, 3)}, f"unexpected corner radii: {radii}"
-    # Rounding must not shrink the opening.
+    # Rounding must not shrink either opening. The bounding box is the POCKET (the larger
+    # section); the neck is checked through canopy_usb_z in test_canopy_usb_port_open.
     bb = cutter.bounding_box()
-    lo, hi = CAN.canopy_usb_z(side)
-    assert abs((bb.max.X - bb.min.X) - CAN.CANOPY_USB_W) < 1e-6
-    assert abs(bb.min.Z - lo) < 1e-6 and abs(bb.max.Z - hi) < 1e-6
+    plo, phi = CAN.canopy_usb_om_z(side)
+    assert abs((bb.max.X - bb.min.X) - CAN.CANOPY_USB_OM_W) < 1e-6
+    assert abs(bb.min.Z - plo) < 1e-6 and abs(bb.max.Z - phi) < 1e-6
 
 
 @pytest.mark.parametrize("side", ["right", "left"])
@@ -209,16 +222,53 @@ def test_fused_top_usb_mouth_is_rounded_not_square(side):
     cx = _mcu_cx()
     if side == "left":
         cx = C.OUTER_WIDTH - cx
-    yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_SIDE_WALL / 2
-    lo, hi = CAN.canopy_usb_z(side)
-    hw, d, mid = CAN.CANOPY_USB_W / 2, 0.25, (lo + hi) / 2
-    for sx, sz, name in ((+1, +1, "NE"), (-1, +1, "NW"), (+1, -1, "SE"), (-1, -1, "SW")):
-        z = (hi - d) if sz > 0 else (lo + d)
-        assert _solid_at(top, cx + sx * (hw - d), yw, z, s=0.2), \
-            f"{side} {name} corner still square"
-    for x, z, name in ((cx + hw - d, mid, "+X"), (cx - hw + d, mid, "-X"),
-                       (cx, hi - d, "top"), (cx, lo + d, "bottom")):
-        assert not _solid_at(top, x, yw, z, s=0.2), f"{side} port pinched at the {name} edge"
+    d = 0.25
+    # Both sections of the stepped bore, each probed at its OWN depth and cross-section.
+    sections = (
+        ("neck", CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_USB_OM_DEPTH - 0.5,
+         CAN.CANOPY_USB_W / 2, *CAN.canopy_usb_z(side)),
+        ("pocket", CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_USB_OM_DEPTH / 2,
+         CAN.CANOPY_USB_OM_W / 2, *CAN.canopy_usb_om_z(side)),
+    )
+    for label, yw, hw, lo, hi in sections:
+        mid = (lo + hi) / 2
+        for sx, sz, name in ((+1, +1, "NE"), (-1, +1, "NW"), (+1, -1, "SE"), (-1, -1, "SW")):
+            z = (hi - d) if sz > 0 else (lo + d)
+            assert _solid_at(top, cx + sx * (hw - d), yw, z, s=0.2), \
+                f"{side} {label} {name} corner still square"
+        for x, z, name in ((cx + hw - d, mid, "+X"), (cx - hw + d, mid, "-X"),
+                           (cx, hi - d, "top"), (cx, lo + d, "bottom")):
+            assert not _solid_at(top, x, yw, z, s=0.2), \
+                f"{side} {label} pinched at the {name} edge"
+
+
+def test_usb_port_delivers_the_engagement_target():
+    """The whole point of the stepped bore: buy the plug shell enough ENGAGEMENT in the jack.
+
+    The receptacle never swallows the whole shell — the wall hides the rest — so what matters
+    is how much shell ends up inside. A straight shell-sized hole leaves only
+    6.65 − 4.41 = 2.24 mm (34%) AND blocks the overmold on the outer face, i.e. that port
+    would not take a standard cable at all. The pocket lets the overmold sink into the wall
+    and the shell picks that depth up one-for-one.
+    """
+    engagement = C.USB_PLUG_SHELL_L + CAN.CANOPY_USB_OM_DEPTH - CAN.CANOPY_USB_TRAVEL
+    assert abs(engagement - C.USB_PORT_ENGAGE_TARGET) < 1e-9, \
+        f"stepped bore yields {engagement:.2f} mm, target {C.USB_PORT_ENGAGE_TARGET}"
+    # The pocket must stop short of the jack — it is wall relief, not a bigger port.
+    assert CAN.CANOPY_USB_OM_DEPTH < CAN.CANOPY_USB_TRAVEL, "pocket reaches the jack"
+    # ...and must admit a worst-case USB-IF-compliant overmold, or "any cable fits" is a lie.
+    assert CAN.CANOPY_USB_OM_W >= C.USB_OVERMOLD_W
+    assert CAN.CANOPY_USB_OM_H >= C.USB_OVERMOLD_H
+
+
+def test_usb_pocket_stays_buried_under_the_north_shoulder():
+    """The pocket is 7 mm tall in a wall whose top edge is rounded away by
+    CANOPY_NORTH_ROUND_R. If the ridge does not clear both, the pocket breaks out through the
+    shoulder and the port stops being a closed hole — which no volume or bbox check catches.
+    """
+    pocket_top = max(CAN.canopy_usb_om_z(s)[1] for s in ("left", "right"))
+    assert CAN.CANOPY_RIDGE_TOP_Z - CAN.CANOPY_NORTH_ROUND_R - pocket_top >= \
+        CAN.CANOPY_USB_OM_ROOF_MIN - 1e-9, "pocket breaks into the north wall's round-over"
 
 
 def test_canopy_usb_bands_differ_between_halves():

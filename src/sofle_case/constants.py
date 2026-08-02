@@ -266,6 +266,27 @@ USB_PORT_CLEAR_LO = 0.8   # mm; port floor below the jack body
 USB_PORT_CLEAR_HI = 0.7   # mm; port ceiling above the jack body
 USB_PORT_W_CLEAR  = 2.0   # mm; port width = USB_C_W + this (jack + plug clearance)
 
+# ---------- USB-C PLUG (the cable end) — drives the port's STEPPED bore ----------
+# The receptacle never swallows the whole plug shell. On any real device part of the shell
+# stays outside and the case wall hides it, so it only LOOKS fully seated. What matters is
+# ENGAGEMENT — how much shell is inside the jack — not seating:
+#
+#     engagement = USB_PLUG_SHELL_L − (wall outer face → jack mouth)
+#
+# Here the jack mouth sits 4.41 mm behind the canopy's outer face, so a straight shell-sized
+# hole leaves 2.24 mm of engagement (34%) AND blocks the overmold outright — that port would
+# not take a standard cable at all. The fix is a stepped bore: a wide outer POCKET that
+# admits the overmold for part of the wall, then a narrow NECK sized for the shell.
+USB_PLUG_SHELL_L = 6.65   # mm; USB-IF plug shell insertion depth (shell itself 8.34 × 2.56)
+USB_OVERMOLD_W   = 12.35  # mm; USB-IF MAXIMUM plug overmold width.  Overmolds are NOT
+USB_OVERMOLD_H   = 6.50   # mm; USB-IF MAXIMUM plug overmold height. standardised, so sizing
+#                           to the published max is what makes ANY compliant cable fit.
+USB_OVERMOLD_CLEAR = 0.5  # mm; total (not per-side) slop added to the pocket cross-section
+USB_PORT_ENGAGE_TARGET = 5.0  # mm of shell inside the jack (75%). NOT a spec figure — the
+#                           USB-IF documents publish no minimum. Anchored on shipping
+#                           hardware, which runs 0.8–2.0 mm of wall in front of the
+#                           receptacle, i.e. 4.6–5.8 mm of engagement.
+
 # Neutral: components UP, so the component face is the board TOP.
 USB_JACK_NEUTRAL_LO_Z = MCU_PCB_TOP_Z - USB_JACK_SINK    # 20.40
 USB_JACK_NEUTRAL_HI_Z = MCU_PCB_TOP_Z + USB_JACK_PROUD   # 23.56

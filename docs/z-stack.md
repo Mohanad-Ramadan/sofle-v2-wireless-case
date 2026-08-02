@@ -80,8 +80,8 @@ TOP and hoods the whole MCU, with the USB-C port punched through its north wall.
 
 | Z (mm) | Boundary                          | Source                  |
 |-------:|-----------------------------------|-------------------------|
-|  25.66 | canopy ridge (roof top)           | `CANOPY_RIDGE_TOP_Z`    |
-|  24.16 | canopy roof underside             | ridge − `CANOPY_ROOF_WALL` |
+|  26.98 | canopy ridge (roof top)           | `CANOPY_RIDGE_TOP_Z`    |
+|  25.48 | USB overmold pocket top (neutral) | `canopy_usb_om_z`       |
 |  23.56 | USB-C jack top — **neutral only** | `USB_JACK_NEUTRAL_HI_Z` |
 |   21.4 | nice!nano board top (both)        | `MCU_PCB_TOP_Z`         |
 |   20.8 | USB-C jack top — **flipped only** | `USB_JACK_FLIPPED_HI_Z` |
@@ -117,20 +117,47 @@ Query them with `C.usb_jack_z(side)` and `canopy.canopy_usb_z(side)`; never hard
 > 1.6 mm PCB, the same as the nice!nano v2 it clones. It positions the *flipped* band only;
 > the neutral band and the ridge reference the board TOP, which is measured.
 
-Both mouths are 11.0 wide × 4.66 tall and **rounded**, not square: `CANOPY_USB_R` = 1.5
-on all four corners (`canopy.usb_port_cutter`). The rounding matches the plug overmold,
-removes four stress risers from a thin wall, and prints cleaner — the arc at the top
-of the bore self-supports where a square corner needs a hard bridge. The radius is
-clamped below half the port's short side, so raising it past 2.33 degrades the mouth
-to a stadium rather than failing. (The mouth was 5.5 tall under the old 4.0 mm jack
-model; 4.66 still clears a USB-C plug shell, which is ~2.5 × 8.4.)
+#### The port is a STEPPED bore, not a straight hole
 
-The **ridge is common to both halves** at 25.66, derived from
-`max(USB_JACK_NEUTRAL_HI_Z, MCU_PCB_TOP_Z) + 0.6 clear + 1.5 roof wall`. The `max`
-matters: on the flipped half the board (21.4) is taller than its jack (20.8), so a
-jack-only derivation would sink the roof 0.6 mm into the board. The left half could
-safely drop to 22.9, but a common ridge was chosen so the halves keep an identical
-silhouette.
+The jack mouth sits **4.41 mm behind the canopy's outer face**. A USB-C plug only owns
+6.65 mm of shell (`USB_PLUG_SHELL_L`), so a straight shell-sized hole would leave
+`6.65 − 4.41 =` **2.24 mm of engagement (34%)** — and its 4.66 mm height would stop the
+cable's overmold dead on the outer face anyway. That port would not accept a standard
+cable at all.
+
+The receptacle never swallows the whole shell on any device; the case wall hides the rest,
+which is why a seated plug *looks* fully inserted. So the bore is stepped:
+
+| section | size | depth |
+|---|---|---|
+| overmold **pocket** (outer) | 12.85 × 7.00 | 2.76 mm |
+| shell **neck** (inner) | 11.00 × 4.66 | 1.65 mm |
+
+The pocket lets the overmold sink into the wall and the shell picks that depth up
+one-for-one, giving `USB_PORT_ENGAGE_TARGET` = **5.0 mm (75%)**. The pocket is sized to the
+USB-IF **maximum** overmold (12.35 × 6.50) so any compliant cable fits — overmolds are not
+standardised. Both sections are **rounded**, not square: `CANOPY_USB_R` = 1.5 on all four
+corners of each (`canopy.usb_port_cutter` builds them as two filleted boxes, so the cutter
+carries eight arc faces). The radius is clamped below half the short side, so raising it
+degrades a mouth to a stadium rather than failing.
+
+> `USB_PORT_ENGAGE_TARGET` = 5.0 is **not a spec figure** — USB-IF publishes no minimum
+> insertion depth. It is anchored on shipping hardware, which runs 0.8–2.0 mm of wall in
+> front of the receptacle, i.e. 4.6–5.8 mm of engagement.
+
+The **ridge is common to both halves** at 26.98, now the larger of two constraints:
+
+- the physical stack, `max(USB_JACK_NEUTRAL_HI_Z, MCU_PCB_TOP_Z) + 0.6 clear + 1.5 roof`
+  = 25.66. The `max` matters: on the flipped half the board (21.4) is taller than its jack
+  (20.8), so a jack-only derivation would sink the roof 0.6 mm into the board.
+- the **overmold pocket**, `pocket top + CANOPY_NORTH_ROUND_R + CANOPY_USB_OM_ROOF_MIN`
+  = 25.48 + 1.0 + 0.5 = **26.98**, which wins.
+
+That second term is why `CANOPY_NORTH_ROUND_R` dropped 2.5 → 1.0: the north wall's top
+round-over eats material from `ridge − R` downward, so a 2.5 mm shoulder would have forced
+the ridge to 28.48 to keep the 7 mm pocket buried. Trading shoulder radius for 1.5 mm of
+height is the cheaper side of that deal. The left half could safely drop to 24.22, but a
+common ridge keeps the halves' silhouettes identical.
 
 The port is cut **twice** — once in `build_canopy`, again in `build_top_part` after the
 cover is fused on. That second cut used to be load-bearing: under the old 4.0 mm jack

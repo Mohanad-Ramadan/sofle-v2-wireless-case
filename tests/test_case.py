@@ -305,9 +305,12 @@ def test_split_top_same_silhouette_different_window():
         (lbb.min.Z, rbb.min.Z), (lbb.max.Z, rbb.max.Z),
     ):
         assert abs(a - b) < 1e-6, "TOP silhouette should be common to both halves"
-    # Guards the other direction too: an accidentally-symmetric window fails here.
-    assert abs(left.volume - right.volume) / left.volume > 1e-5, \
-        "TOP halves are identical — the per-side USB window is not being applied"
+    # This test used to also assert a volume DIFFERENCE between the halves as proof the
+    # per-side window was applied. That proxy is gone: it was really measuring how much cover
+    # material the flipped half's low window scooped out, and once the mid-mount correction
+    # lifted that window the two halves differ by only ~0.2 mm³ — a threshold that small is
+    # noise, not a guard. ``test_top_usb_window_is_side_specific`` asserts the same claim
+    # directly, by probing each half open at its own band and closed at the other's.
 
 
 def test_top_usb_window_is_side_specific():
@@ -349,7 +352,9 @@ def test_top_usb_window_is_open_through_its_whole_band():
 
     top = build_top_part("left")
     cx = C.OUTER_WIDTH - C.pcb_to_case(*C.MCU_POS)[0]
-    yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_SIDE_WALL / 2
+    # Probe in the NECK, past the overmold pocket — a mid-wall Y now lands inside the pocket,
+    # where the opening is the taller pocket band and the sill check below would read void.
+    yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_USB_OM_DEPTH - 0.5
     lo, hi = CAN.canopy_usb_z("left")
 
     def probe(z: float) -> float:

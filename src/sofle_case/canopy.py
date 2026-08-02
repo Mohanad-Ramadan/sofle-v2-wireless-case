@@ -72,7 +72,7 @@ CANOPY_RAMP_FOOT_Y  = (C.pcb_to_case(*C.SW_ENCODER_POS)[1]
 CANOPY_RAMP_TOP_OLED_GAP = 0.5
 CANOPY_RAMP_TOP_Y   = C.pcb_to_case(*C.J_OLED_POS)[1] - CANOPY_RAMP_TOP_OLED_GAP            # ≈ 81.6
 CANOPY_RAMP_SAMPLES = 9      # control points pinning the S-curve for the Spline (smooth)
-CANOPY_NORTH_ROUND_R = 2.5
+CANOPY_NORTH_ROUND_R = 1.0
 # Round-over of the tall WEST + NW top shoulder so it reads with the case's soft corners, not a
 # hard block. The EAST top edge (switch-column side) is left sharp on purpose. 3.35 (the case
 # corner radius) can't fit — OCC caps this edge set at ~2.36 where the ramp meets the flat roof
@@ -82,12 +82,45 @@ CANOPY_WEST_ROUND_R = 2.3
 # (to MAIN_RIM_Z) so it overlaps the cover/walls for a clean fuse into the TOP.
 CANOPY_FOOT_Z       = C.COVER_TOP_Z                                # 13.5; ramp foot = cover surface
 CANOPY_FUSE_BASE_Z  = C.MAIN_RIM_Z                                 # 12.5; base overlaps the cover for the fuse
+# ---------------------------------------------------------------------------
+# USB port STEPPED bore: overmold pocket (outer) → shell neck (inner).
+# See constants.USB_PLUG_SHELL_L for why: the jack mouth sits well behind the outer face, so
+# a straight shell-sized hole both blocks the overmold and starves the shell of engagement.
+# ---------------------------------------------------------------------------
+CANOPY_USB_OM_W = C.USB_OVERMOLD_W + C.USB_OVERMOLD_CLEAR      # 12.85; pocket width
+CANOPY_USB_OM_H = C.USB_OVERMOLD_H + C.USB_OVERMOLD_CLEAR      # 7.00;  pocket height
+# How far the plug must travel from the outer face before it reaches the jack, and how deep
+# the pocket must therefore be so USB_PORT_ENGAGE_TARGET of shell ends up inside the jack.
+CANOPY_USB_TRAVEL    = CANOPY_NORTH_OUTER_Y - (C.MCU_BODY_N_Y + C.USB_JACK_Y_PROTRUDE)       # 4.41
+CANOPY_USB_OM_DEPTH  = C.USB_PORT_ENGAGE_TARGET - (C.USB_PLUG_SHELL_L - CANOPY_USB_TRAVEL)   # 2.76
+# Minimum solid wall left above the pocket, measured where the north wall's top round-over
+# starts eating material (at CANOPY_RIDGE_TOP_Z − CANOPY_NORTH_ROUND_R). Without this term
+# a 7 mm-tall pocket breaks out through the rounded top shoulder and the port stops being a
+# closed hole.
+CANOPY_USB_OM_ROOF_MIN = 0.5
+
+
+def canopy_usb_om_z(side: str) -> tuple[float, float]:
+    """(lo, hi) Z of the overmold POCKET for a half.
+
+    Centred on the jack band: the plug's overmold is centred on its shell, and the shell is
+    centred in the receptacle, so the pocket cannot be biased away from the jack centre."""
+    lo, hi = C.usb_jack_z(side)
+    mid = (lo + hi) / 2
+    return mid - CANOPY_USB_OM_H / 2, mid + CANOPY_USB_OM_H / 2
+
+
 # Roof height is COMMON to both halves (identical silhouette) and clears the tallest thing
-# under the flat roof. The max() is load-bearing: on the FLIPPED half the nano board (21.4)
-# stands taller than its jack (20.8), so a jack-only derivation would sink the roof underside
-# 0.6 mm into the board.
-CANOPY_RIDGE_TOP_Z  = (max(C.USB_JACK_NEUTRAL_HI_Z, C.MCU_PCB_TOP_Z)
-                       + CANOPY_ROOF_CLEAR + CANOPY_ROOF_WALL)                               # 25.66
+# under the flat roof. Two independent constraints, whichever is taller:
+#   1. the physical stack — on the FLIPPED half the nano board (21.4) stands taller than its
+#      jack (20.8), so a jack-only derivation would sink the roof underside into the board;
+#   2. the overmold pocket — it must stay buried in solid wall, including under the top
+#      round-over, or the plug's pocket opens into the roof shoulder.
+_RIDGE_FROM_STACK  = (max(C.USB_JACK_NEUTRAL_HI_Z, C.MCU_PCB_TOP_Z)
+                      + CANOPY_ROOF_CLEAR + CANOPY_ROOF_WALL)                                # 25.66
+_RIDGE_FROM_POCKET = (max(canopy_usb_om_z(s)[1] for s in ("left", "right"))
+                      + CANOPY_NORTH_ROUND_R + CANOPY_USB_OM_ROOF_MIN)
+CANOPY_RIDGE_TOP_Z  = max(_RIDGE_FROM_STACK, _RIDGE_FROM_POCKET)
 # NW corner radius = the case's own rounded corner AT the facet's rim line.
 CANOPY_CORNER_R     = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE - C.RIM_FACET_RUN                # ≈ 3.25
 # USB-C port through the north wall — REQUIRED: the plug must pass the wall (the jack itself
@@ -123,20 +156,33 @@ def usb_port_cutter(side: str) -> Part:
     is idempotent, it costs one boolean, and it is the only thing standing between a future
     band/cover change and a silently half-filled port. Same reason ``_slide_scoop`` is cut
     post-fuse."""
-    lo, hi = canopy_usb_z(side)
     ucx = C.pcb_to_case(*C.MCU_POS)[0]
-    depth = CANOPY_SIDE_WALL + 2.0
-    box = cast(Part, Solid.make_box(CANOPY_USB_W, depth, hi - lo).translate(
-        (ucx - CANOPY_USB_W / 2, (CANOPY_NORTH_OUTER_Y - CANOPY_SIDE_WALL) - 1.0, lo)))
-    # Round the four mouth corners: the edges running along Y (the bore axis), so the
-    # rounding shows on the X–Z opening the plug enters. Filleted on the ISOLATED box —
-    # same reason as _slide_scoop, a 3-D fillet on the boolean result is fragile.
-    r = min(CANOPY_USB_R, (hi - lo) / 2 - 1e-3, CANOPY_USB_W / 2 - 1e-3)
-    axial = [e for e in box.edges() if abs(e.tangent_at(0.5).Y) > 0.9]
-    try:
-        box = cast(Part, fillet(axial, radius=r))
-    except (ValueError, Standard_Failure):
-        pass   # never abort the port over its cosmetic rounding; a square mouth still fits
+
+    def _bore(w: float, lo: float, hi: float, y0: float, y1: float) -> Part:
+        """One rounded-rectangle bore section, w × (hi−lo), spanning y0→y1."""
+        b = cast(Part, Solid.make_box(w, y1 - y0, hi - lo).translate((ucx - w / 2, y0, lo)))
+        # Round the four mouth corners: the edges running along Y (the bore axis), so the
+        # rounding shows on the X–Z opening the plug enters. Filleted on the ISOLATED box —
+        # same reason as _slide_scoop, a 3-D fillet on the boolean result is fragile.
+        r = min(CANOPY_USB_R, (hi - lo) / 2 - 1e-3, w / 2 - 1e-3)
+        axial = [e for e in b.edges() if abs(e.tangent_at(0.5).Y) > 0.9]
+        try:
+            b = cast(Part, fillet(axial, radius=r))
+        except (ValueError, Standard_Failure):
+            pass   # never abort the port over its cosmetic rounding; a square mouth still fits
+        return b
+
+    # NECK — shell-sized, runs the whole way through (and 1 mm proud on each side so the
+    # boolean never leaves a skin).
+    lo, hi = canopy_usb_z(side)
+    neck = _bore(CANOPY_USB_W, lo, hi,
+                 (CANOPY_NORTH_OUTER_Y - CANOPY_SIDE_WALL) - 1.0, CANOPY_NORTH_OUTER_Y + 1.0)
+    # POCKET — overmold-sized, only the outer CANOPY_USB_OM_DEPTH of the wall. This is what
+    # buys the shell its engagement: without it the overmold stops dead on the outer face.
+    plo, phi = canopy_usb_om_z(side)
+    pocket = _bore(CANOPY_USB_OM_W, plo, phi,
+                   CANOPY_NORTH_OUTER_Y - CANOPY_USB_OM_DEPTH, CANOPY_NORTH_OUTER_Y + 1.0)
+    box = cast(Part, neck + pocket)
     return box
 
 
