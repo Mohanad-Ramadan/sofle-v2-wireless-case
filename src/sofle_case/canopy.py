@@ -84,17 +84,17 @@ CANOPY_FOOT_Z       = C.COVER_TOP_Z                                # 13.5; ramp 
 CANOPY_FUSE_BASE_Z  = C.MAIN_RIM_Z                                 # 12.5; base overlaps the cover for the fuse
 # Roof height is COMMON to both halves (identical silhouette) and clears the tallest thing
 # under the flat roof. The max() is load-bearing: on the FLIPPED half the nano board (21.4)
-# stands taller than its jack (20.4), so a jack-only derivation would sink the roof underside
-# 0.4 mm into the board.
+# stands taller than its jack (20.8), so a jack-only derivation would sink the roof underside
+# 0.6 mm into the board.
 CANOPY_RIDGE_TOP_Z  = (max(C.USB_JACK_NEUTRAL_HI_Z, C.MCU_PCB_TOP_Z)
-                       + CANOPY_ROOF_CLEAR + CANOPY_ROOF_WALL)                               # 26.5
+                       + CANOPY_ROOF_CLEAR + CANOPY_ROOF_WALL)                               # 25.66
 # NW corner radius = the case's own rounded corner AT the facet's rim line.
 CANOPY_CORNER_R     = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE - C.RIM_FACET_RUN                # ≈ 3.25
 # USB-C port through the north wall — REQUIRED: the plug must pass the wall (the jack itself
 # stops ~0.4 mm short of the inner face — C.USB_JACK_Y_PROTRUDE; it used to sit open over the
 # +Y wall). Centred on the MCU X column. The BAND is per-half: the two MCU orientations put
-# the jack at different Z, so left and right are NOT mirror images here (left 15.6→21.1,
-# right 19.6→25.1; they overlap through 19.6→21.1). The design margins live in constants.py
+# the jack at different Z, so left and right are NOT mirror images here (left 16.84→21.5,
+# right 19.6→24.26; they overlap through 19.6→21.5). The design margins live in constants.py
 # (USB_PORT_CLEAR_LO/HI, USB_PORT_W_CLEAR) — single source of truth, like the other CLEARs.
 CANOPY_USB_W        = C.USB_C_W + C.USB_PORT_W_CLEAR               # 11.0; port width (jack + plug clearance)
 # Port mouth corner radius. The opening is a ROUNDED rectangle, not a sharp one: it matches
@@ -116,10 +116,13 @@ def usb_port_cutter(side: str) -> Part:
 
     Subtracted TWICE, deliberately. ``build_canopy`` cuts it so the standalone canopy is
     complete on its own, and ``case.build_top_part`` cuts it AGAIN after the cover is fused
-    on. The second pass is not redundant: the FLIPPED half's port floor (15.6) sits below
-    ``COVER_TOP_Z`` (16.0), so the cover fuse backfills the bottom of the window — measured,
-    not theoretical. Same reason ``_slide_scoop`` is cut post-fuse. Booleans are idempotent,
-    so the neutral half (floor 19.6, clear of the cover) is unaffected."""
+    on. The second pass USED to be load-bearing: with the old 4.0 mm jack model the FLIPPED
+    half's port floor was 15.6, below ``COVER_TOP_Z`` (16.0), so the cover fuse backfilled
+    the bottom of the window. The mid-mount correction lifted that floor to 16.84, clear of
+    the cover, so today both halves would survive a single cut. The second pass is KEPT: it
+    is idempotent, it costs one boolean, and it is the only thing standing between a future
+    band/cover change and a silently half-filled port. Same reason ``_slide_scoop`` is cut
+    post-fuse."""
     lo, hi = canopy_usb_z(side)
     ucx = C.pcb_to_case(*C.MCU_POS)[0]
     depth = CANOPY_SIDE_WALL + 2.0

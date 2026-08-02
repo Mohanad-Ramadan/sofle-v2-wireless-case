@@ -217,35 +217,60 @@ PCB_HOLE_DIA     = 4.1
 PCB_LEDGE_ENABLED = False
 PCB_LEDGE_WIDTH   = 1.0   # mm; ring width if enabled
 
-# ---------- USB-C jack (measured, per MCU orientation) ----------
-# Caliper-measured on the real stack, referenced to the main PCB top face (PCB_TOP_Z).
-# The nice!nano board top is +11.0 in BOTH orientations. The same 4.0 mm jack body
-# sits ON the board (neutral, components up) or hangs UNDER it (flipped, components
-# down):
-#     flipped   +6.0 -> +10.0   (16.4 -> 20.4 absolute)
-#     neutral  +10.0 -> +14.0   (20.4 -> 24.4 absolute)
-# The two envelopes abut at 20.4. The halves are built with DIFFERENT orientations,
-# so the TOP part is no longer mirror-identical — only the canopy window band differs,
-# the silhouette stays common (see canopy.canopy_usb_z and CANOPY_RIDGE_TOP_Z).
-USB_C_W    = 9.0
-USB_JACK_H = 4.0   # jack body height; identical in both orientations
+# ---------- MCU physical stack (nice!nano v2 / SuperMini nRF52840) ----------
+# Used by the PCB phantom (board/jack visuals), by the canopy roof derivation, and as a
+# convenient over-tall bound for the slide-switch wall cutters. Declared HERE, ahead of the
+# USB-C block, because the jack bands are derived from the nano's two board faces.
+MCU_PCB_TOP_Z    = PCB_TOP_Z + 11.0   # measured nano board top, identical both orientations (was +5.9 — 5.1 mm short)
+MCU_HILL_Z       = MCU_PCB_TOP_Z      # physical stack top excluding the jack; coincides with the board top by measurement
+MCU_BODY_L       = 33.0    # MCU body length in Y (mm)
+MCU_BOARD_THK    = 1.6     # nano PCB thickness — CONFIRMED: Mechboards and Keebio both spec the
+#                            SuperMini at a 1.6 mm PCB, same as the nice!nano v2 it clones.
+#                            Positions the FLIPPED jack band (see USB_JACK_* below).
+MCU_PCB_BOT_Z    = MCU_PCB_TOP_Z - MCU_BOARD_THK   # 19.8; nano board underside
+
+# ---------- USB-C jack (MID-MOUNT; derived from the nano board faces) ----------
+# The SuperMini nRF52840 (like the nice!nano v2 it clones) carries a MID-MOUNT USB-C: the
+# shell straddles a routed slot in the nano board instead of sitting on top of it. GCT's
+# Type-C selection guide lists 16-pin mid-mount parts at a 3.16 mm profile with sink offsets
+# of 0.80 / 1.00 / 1.60 / 2.10 mm; this board is the 1.00 mm sink — caliper-confirmed
+# (~3 mm shell, ~1 mm buried in the board, ~2 mm proud of the component face).
+#
+# So the shell hangs USB_JACK_SINK below the board's COMPONENT face and USB_JACK_PROUD
+# above it. Flipping the nano flips which physical face that is — the whole reason the two
+# halves need different bands:
+#     flipped (components down, jack under the board)   17.64 -> 20.80
+#     neutral (components up,   jack on top)            20.40 -> 23.56
+# They now OVERLAP through 20.40 -> 20.80 (they used to abut exactly at 20.4, an artifact of
+# the old guessed 4.0 mm body). The halves are built with DIFFERENT orientations, so the TOP
+# part is not mirror-identical — only the canopy window band differs, the silhouette stays
+# common (see canopy.canopy_usb_z and CANOPY_RIDGE_TOP_Z).
+USB_C_W       = 9.0
+USB_JACK_H    = 3.16   # mm; mid-mount shell height (was 4.0 — a guess, 0.84 mm too tall)
+USB_JACK_SINK = 1.00   # mm; shell depth BELOW the board's component-side face
+USB_JACK_PROUD = USB_JACK_H - USB_JACK_SINK   # 2.16; shell height above that face
 USB_JACK_Y_PROTRUDE = 1.0   # mm; measured: the jack's +Y face sits this far past the
 #                            nano board's +Y edge. The jack stops ~0.4 mm short of the
 #                            canopy north wall's inner face — only the plug bridges the
 #                            wall. (The pcb_phantom stub depth uses this.)
 
-# Port-mouth DESIGN MARGINS around the measured jack body (NOT measurements — the
-# measurements above are the hardware; these are the slack the printed port adds).
-# The canopy port cutter is the jack band grown by these clears. They also absorb the
-# measured ~0.4 mm stack error (real plate-top → jack-top 9.0 mm vs design 9.4 mm).
+# Port-mouth DESIGN MARGINS around the jack body (NOT measurements — the values above are
+# the hardware; these are the slack the printed port adds). The canopy port cutter is the
+# jack band grown by these clears. They also cover the residual disagreement between the
+# two hardware readings: a plate-top → jack-top caliper reading of 9.0 mm implies a jack top
+# of 24.0, while the board-face derivation below gives 23.56 — 0.44 mm apart. The derivation
+# wins (it is datasheet-anchored), and 0.7 mm of ceiling clear absorbs the difference either way.
 USB_PORT_CLEAR_LO = 0.8   # mm; port floor below the jack body
 USB_PORT_CLEAR_HI = 0.7   # mm; port ceiling above the jack body
 USB_PORT_W_CLEAR  = 2.0   # mm; port width = USB_C_W + this (jack + plug clearance)
 
-USB_JACK_FLIPPED_LO_Z = PCB_TOP_Z + 6.0
-USB_JACK_FLIPPED_HI_Z = PCB_TOP_Z + 10.0
-USB_JACK_NEUTRAL_LO_Z = PCB_TOP_Z + 10.0
-USB_JACK_NEUTRAL_HI_Z = PCB_TOP_Z + 14.0
+# Neutral: components UP, so the component face is the board TOP.
+USB_JACK_NEUTRAL_LO_Z = MCU_PCB_TOP_Z - USB_JACK_SINK    # 20.40
+USB_JACK_NEUTRAL_HI_Z = MCU_PCB_TOP_Z + USB_JACK_PROUD   # 23.56
+# Flipped: components DOWN, so the component face is the board UNDERSIDE — the proud side of
+# the shell now points down and the sunk side pokes up through the board.
+USB_JACK_FLIPPED_LO_Z = MCU_PCB_BOT_Z - USB_JACK_PROUD   # 17.64
+USB_JACK_FLIPPED_HI_Z = MCU_PCB_BOT_Z + USB_JACK_SINK    # 20.80
 
 # Which way the nice!nano faces on each half. Assembly-time fact, not derivable from
 # the PCB (which is reversible) — flipping a build means flipping this mapping.
@@ -398,13 +423,9 @@ SHOW_PLATE_PHANTOM  = True # True: adds switch plate phantom to case.py __main__
 SHOW_SWITCH_PHANTOM = True # True: adds MX switch phantom to case.py __main__ viewer
 SHOW_TOP_COVER      = True # True: adds the sandwich top cover to case.py __main__ viewer
 
-# MCU physical stack heights — used by the PCB phantom (board/jack visuals), by the
-# canopy roof derivation, and as a convenient over-tall bound for the slide-switch
-# wall cutters. The jack itself is NOT here: it moves with the orientation, so it
-# lives in the USB-C block above (usb_jack_z).
-MCU_PCB_TOP_Z    = PCB_TOP_Z + 11.0   # measured nano board top, identical both orientations (was +5.9 — 5.1 mm short)
-MCU_HILL_Z       = MCU_PCB_TOP_Z      # physical stack top excluding the jack; coincides with the board top by measurement
-MCU_BODY_L       = 33.0    # MCU body length in Y (mm)
+# MCU physical stack heights (MCU_PCB_TOP_Z / MCU_HILL_Z / MCU_BODY_L / MCU_BOARD_THK)
+# moved UP to the "MCU physical stack" block above the USB-C section: the jack bands are
+# now derived from the nano's board faces, so they must be declared before that block.
 
 # ---------- MCU +Y cover relief (B+/B- clearance) ----------
 # The nice!nano's B+/B- pads (unsoldered — meant for direct battery wire, no leg

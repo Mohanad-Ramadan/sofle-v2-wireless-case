@@ -250,7 +250,7 @@ def test_fused_top_clears_all_bay_components(side):
     """The fused TOP (cover + canopy) must not touch any component above the cover.
 
     Probed against the SIDE-MATCHED phantom: the jack stub moves with the MCU orientation,
-    so the right half must clear a jack at 20.4–24.4 and the left one at 16.4–20.4."""
+    so the right half must clear a jack at 20.40–23.56 and the left one at 17.64–20.80."""
     top = build_top_part(side)
     if side == "left":
         top = _mirror_back(top)

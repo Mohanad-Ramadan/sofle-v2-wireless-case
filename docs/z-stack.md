@@ -80,45 +80,64 @@ TOP and hoods the whole MCU, with the USB-C port punched through its north wall.
 
 | Z (mm) | Boundary                          | Source                  |
 |-------:|-----------------------------------|-------------------------|
-|   26.5 | canopy ridge (roof top)           | `CANOPY_RIDGE_TOP_Z`    |
-|   25.0 | canopy roof underside             | ridge − `CANOPY_ROOF_WALL` |
-|   24.4 | USB-C jack top — **neutral only** | `USB_JACK_NEUTRAL_HI_Z` |
+|  25.66 | canopy ridge (roof top)           | `CANOPY_RIDGE_TOP_Z`    |
+|  24.16 | canopy roof underside             | ridge − `CANOPY_ROOF_WALL` |
+|  23.56 | USB-C jack top — **neutral only** | `USB_JACK_NEUTRAL_HI_Z` |
 |   21.4 | nice!nano board top (both)        | `MCU_PCB_TOP_Z`         |
-|   20.4 | jack seam: neutral bottom = flipped top | `USB_JACK_*`      |
-|   16.4 | USB-C jack bottom — **flipped only** | `USB_JACK_FLIPPED_LO_Z` |
+|   20.8 | USB-C jack top — **flipped only** | `USB_JACK_FLIPPED_HI_Z` |
+|   20.4 | USB-C jack bottom — **neutral only** | `USB_JACK_NEUTRAL_LO_Z` |
+|   19.8 | nice!nano board underside (both)  | `MCU_PCB_BOT_Z`         |
+|  17.64 | USB-C jack bottom — **flipped only** | `USB_JACK_FLIPPED_LO_Z` |
 |   10.4 | main PCB top                      | `PCB_TOP_Z`             |
 
 #### The two MCU orientations
 
-The halves are assembled with the nice!nano facing opposite ways
-(`C.MCU_ORIENTATION`), so the same 4.0 mm connector lands at two different heights:
+The connector is **mid-mount**: the shell straddles a routed slot in the nano board
+rather than sitting on it. It is 3.16 mm tall (`USB_JACK_H`) with a 1.00 mm sink
+(`USB_JACK_SINK`), so it hangs 1.00 mm below the board's *component* face and 2.16 mm
+(`USB_JACK_PROUD`) above it. The halves are assembled with the nano facing opposite
+ways (`C.MCU_ORIENTATION`), which flips which physical face that is:
 
 | half | orientation | jack body | canopy window |
 |------|-------------|-----------|---------------|
-| left  | flipped (components down) | 16.4 → 20.4 | 15.6 → 21.1 |
-| right | neutral (components up)   | 20.4 → 24.4 | 19.6 → 25.1 |
+| left  | flipped (components down) | 17.64 → 20.80 | 16.84 → 21.50 |
+| right | neutral (components up)   | 20.40 → 23.56 | 19.60 → 24.26 |
 
-The bands abut at 20.4 — the nano board's underside — and the windows overlap
-through 19.6 → 21.1. Query them with `C.usb_jack_z(side)` and
-`canopy.canopy_usb_z(side)`; never hard-code.
+The bands **overlap** through 20.40 → 20.80 and the windows through 19.60 → 21.50.
+Query them with `C.usb_jack_z(side)` and `canopy.canopy_usb_z(side)`; never hard-code.
 
-Both mouths are 11.0 wide and **rounded**, not square: `CANOPY_USB_R` = 1.5 on all
-four corners (`canopy.usb_port_cutter`). The rounding matches the plug overmold,
+> An earlier revision modelled the shell as 4.0 mm and had the two bands *abut* exactly
+> at 20.4. That was a guess, not a measurement — the 4.0 was 1.0 mm of sink plus 3.0 mm
+> of assumed protrusion. GCT's Type-C selection guide lists 16-pin mid-mount parts at a
+> 3.16 mm profile with 0.80 / 1.00 / 1.60 / 2.10 mm sink options; caliper (≈3 mm shell,
+> ≈1 mm buried, ≈2 mm proud) identifies the 1.00 mm sink. Correcting it dropped the ridge
+> 26.5 → 25.66.
+>
+> **`MCU_BOARD_THK` = 1.6 is confirmed** — Mechboards and Keebio both spec the SuperMini at a
+> 1.6 mm PCB, the same as the nice!nano v2 it clones. It positions the *flipped* band only;
+> the neutral band and the ridge reference the board TOP, which is measured.
+
+Both mouths are 11.0 wide × 4.66 tall and **rounded**, not square: `CANOPY_USB_R` = 1.5
+on all four corners (`canopy.usb_port_cutter`). The rounding matches the plug overmold,
 removes four stress risers from a thin wall, and prints cleaner — the arc at the top
 of the bore self-supports where a square corner needs a hard bridge. The radius is
-clamped below half the port's short side, so raising it past 2.75 degrades the mouth
-to a stadium rather than failing.
+clamped below half the port's short side, so raising it past 2.33 degrades the mouth
+to a stadium rather than failing. (The mouth was 5.5 tall under the old 4.0 mm jack
+model; 4.66 still clears a USB-C plug shell, which is ~2.5 × 8.4.)
 
-The **ridge is common to both halves** at 26.5, derived from
+The **ridge is common to both halves** at 25.66, derived from
 `max(USB_JACK_NEUTRAL_HI_Z, MCU_PCB_TOP_Z) + 0.6 clear + 1.5 roof wall`. The `max`
-matters: on the flipped half the board (21.4) is taller than its jack (20.4), so a
-jack-only derivation would sink the roof 0.4 mm into the board. The left half could
-safely drop to 23.5, but a common ridge was chosen so the halves keep an identical
+matters: on the flipped half the board (21.4) is taller than its jack (20.8), so a
+jack-only derivation would sink the roof 0.6 mm into the board. The left half could
+safely drop to 22.9, but a common ridge was chosen so the halves keep an identical
 silhouette.
 
-The flipped half's window floor (15.6) dips below `COVER_TOP_Z` (16.0), so the port
-is cut **twice** — once in `build_canopy`, again in `build_top_part` after the cover
-is fused on. Without the second cut the cover backfills the bottom of the window.
+The port is cut **twice** — once in `build_canopy`, again in `build_top_part` after the
+cover is fused on. That second cut used to be load-bearing: under the old 4.0 mm jack
+model the flipped window floor was 15.6, below `COVER_TOP_Z` (16.0), so the cover
+backfilled the bottom of the window. The mid-mount correction lifted that floor to 16.84,
+clear of the cover — the second cut is now belt-and-braces, kept because it is idempotent
+and cheap.
 
 ---
 
@@ -147,7 +166,8 @@ solder joints on the PCB underside.
 Top surface of the main PCB. Derived from `PCB_SEAT_Z + 1.6 mm` (standard FR4
 thickness). It is also the reference face for every measured MCU height — see the
 *MCU stack* section above, which supersedes this paragraph: the nano board top is
-+11.0 (`MCU_PCB_TOP_Z`), and the jack band depends on which way the nano faces.
++11.0 (`MCU_PCB_TOP_Z`), and the mid-mount jack band hangs off whichever board face
+the nano's components point at.
 The port is **not** open over the rim; it is cut through the canopy's north wall.
 
 ### Plate seat — Z = 10.9 (`PLATE_SEAT_Z = 10.9`)

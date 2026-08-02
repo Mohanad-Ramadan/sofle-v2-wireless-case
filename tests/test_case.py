@@ -334,23 +334,34 @@ def test_top_usb_window_is_side_specific():
         assert not solid_at(top, cx, yw, z_shared), f"{side} TOP blocked at the shared seam"
 
 
-def test_top_usb_window_floor_survives_the_cover_fuse():
-    """Regression guard. The flipped half's port floor (15.6) sits BELOW COVER_TOP_Z (16.0),
-    so fusing the cover on backfills the bottom of the window unless the port is re-cut
-    afterwards. This was measured, not hypothetical — see canopy.usb_port_cutter."""
+def test_top_usb_window_is_open_through_its_whole_band():
+    """Regression guard on the post-fuse re-cut in ``canopy.usb_port_cutter``.
+
+    Under the old (guessed) 4.0 mm jack model the flipped half's window floor was 15.6 —
+    BELOW ``COVER_TOP_Z`` (16.0) — so fusing the cover on backfilled the bottom of the
+    window. That was measured, not hypothetical. The mid-mount correction lifted the floor
+    to 16.84, clear of the cover, so the original failure no longer reproduces on today's
+    numbers. The probe is therefore band-relative rather than pinned to COVER_TOP_Z: it
+    still fires if a future band (or a thicker cover) drops back into the cover, and the
+    solid-below check keeps it from passing vacuously if the window ever vanishes."""
     from build123d import Solid
     from sofle_case import canopy as CAN
 
     top = build_top_part("left")
     cx = C.OUTER_WIDTH - C.pcb_to_case(*C.MCU_POS)[0]
     yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_SIDE_WALL / 2
-    lo, _ = CAN.canopy_usb_z("left")
-    assert lo < C.COVER_TOP_Z, "premise changed: floor no longer dips under the cover"
-    for z in (lo + 0.2, C.COVER_TOP_Z - 0.1, C.COVER_TOP_Z + 0.1):
+    lo, hi = CAN.canopy_usb_z("left")
+
+    def probe(z: float) -> float:
         box = Solid.make_box(0.3, 0.3, 0.3).translate((cx - 0.15, yw - 0.15, z - 0.15))
         inter = top & box
-        vol = 0.0 if inter is None else sum(s.volume for s in inter.solids())
-        assert vol <= 1e-6, f"window backfilled by the cover at z={z:.2f}"
+        return 0.0 if inter is None else sum(s.volume for s in inter.solids())
+
+    for z in (lo + 0.2, (lo + hi) / 2, hi - 0.2):
+        assert probe(z) <= 1e-6, f"window backfilled at z={z:.2f}"
+    # The wall must still be solid just under the sill — otherwise the probes above pass
+    # for the wrong reason (no wall there at all).
+    assert probe(lo - 0.4) > 1e-3, "no wall below the window sill — window is not a bounded hole"
 
 
 @pytest.mark.parametrize("builder", [build_top_part, build_bottom_part])

@@ -442,8 +442,8 @@ def build_top_part(side: Side) -> Part:
 
     **The TOP is the one part that is NOT mirror-identical between halves.** The two builds
     carry the nice!nano in opposite orientations (``C.MCU_ORIENTATION``: left flipped, right
-    neutral), so the canopy's USB port sits at a different Z on each — left 15.6→21.1, right
-    19.6→25.1. Everything else, ridge included, is common, so the silhouette (and the bounding
+    neutral), so the canopy's USB port sits at a different Z on each — left 16.84→21.5, right
+    19.6→24.26. Everything else, ridge included, is common, so the silhouette (and the bounding
     box) still matches; only the window band moves. ``build_bottom_part`` and the legacy
     ``build_case_half`` remain strict mirrors.
 

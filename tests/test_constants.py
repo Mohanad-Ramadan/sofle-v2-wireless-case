@@ -56,15 +56,31 @@ def test_mcu_stack_order():
     assert C.PCB_TOP_Z < C.MCU_PCB_TOP_Z < C.USB_JACK_NEUTRAL_HI_Z
 
 
-def test_usb_jack_bands_are_measured_values():
-    """Caliper-measured, referenced to the main PCB top face. Both bands are the same
-    4.0 mm connector; they abut at the nano board's underside (20.4)."""
-    assert C.usb_jack_z("left") == (C.PCB_TOP_Z + 6.0, C.PCB_TOP_Z + 10.0)    # flipped
-    assert C.usb_jack_z("right") == (C.PCB_TOP_Z + 10.0, C.PCB_TOP_Z + 14.0)  # neutral
+def test_usb_jack_bands_derive_from_the_board_faces():
+    """Both bands are the SAME mid-mount shell, straddling whichever board face the nano's
+    components point at: USB_JACK_SINK below it, USB_JACK_PROUD above it.
+
+    Neutral (components up) references the board TOP, flipped (components down) the board
+    UNDERSIDE. The bands do NOT abut — an earlier revision asserted they met exactly at
+    20.4, but that was an artifact of a guessed 4.0 mm shell, not geometry.
+    """
+    assert C.usb_jack_z("right") == (C.MCU_PCB_TOP_Z - C.USB_JACK_SINK,
+                                     C.MCU_PCB_TOP_Z + C.USB_JACK_PROUD)   # neutral
+    assert C.usb_jack_z("left") == (C.MCU_PCB_BOT_Z - C.USB_JACK_PROUD,
+                                    C.MCU_PCB_BOT_Z + C.USB_JACK_SINK)     # flipped
     for side in ("left", "right"):
         lo, hi = C.usb_jack_z(side)
         assert abs((hi - lo) - C.USB_JACK_H) < 1e-9
-    assert C.usb_jack_z("left")[1] == C.usb_jack_z("right")[0], "bands must abut"
+
+
+def test_usb_jack_is_mid_mount_not_top_mount():
+    """The shell straddles the board — it must poke out BOTH faces, or the constants have
+    silently reverted to a top-mount part (3.46 mm sitting wholly on the board)."""
+    assert 0 < C.USB_JACK_SINK < C.USB_JACK_H, "sink must be inside the shell height"
+    assert C.USB_JACK_SINK < C.MCU_BOARD_THK, "shell would punch clean through the board"
+    for side in ("left", "right"):
+        lo, hi = C.usb_jack_z(side)
+        assert lo < C.MCU_PCB_TOP_Z < hi or lo < C.MCU_PCB_BOT_Z < hi
 
 
 def test_usb_jack_z_rejects_bad_side():
@@ -82,7 +98,7 @@ def test_usb_port_z_is_jack_band_plus_clears():
         plo, phi = C.usb_port_z(side)
         assert plo == jlo - C.USB_PORT_CLEAR_LO
         assert phi == jhi + C.USB_PORT_CLEAR_HI
-        # 4.0 jack + 0.8 + 0.7 = 5.5 mm mouth on BOTH halves.
+        # 3.16 jack + 0.8 + 0.7 = 4.66 mm mouth on BOTH halves.
         assert abs((phi - plo) - (C.USB_JACK_H + C.USB_PORT_CLEAR_LO + C.USB_PORT_CLEAR_HI)) < 1e-9
 
 
