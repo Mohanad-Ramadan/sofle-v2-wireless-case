@@ -223,7 +223,9 @@ PCB_LEDGE_WIDTH   = 1.0   # mm; ring width if enabled
 # USB-C block, because the jack bands are derived from the nano's two board faces.
 MCU_PCB_TOP_Z    = PCB_TOP_Z + 11.0   # measured nano board top, identical both orientations (was +5.9 — 5.1 mm short)
 MCU_HILL_Z       = MCU_PCB_TOP_Z      # physical stack top excluding the jack; coincides with the board top by measurement
-MCU_BODY_L       = 33.0    # MCU body length in Y (mm)
+MCU_BODY_L       = 34.1    # SuperMini nRF52840 overall length in Y (Mechboards; the nice!nano
+#                            it clones is 33.0). Consume via MCU_BODY_N_Y / MCU_BODY_S_Y below —
+#                            the board is anchored at its pin array, not centred on MCU_POS.
 MCU_BOARD_THK    = 1.6     # nano PCB thickness — CONFIRMED: Mechboards and Keebio both spec the
 #                            SuperMini at a 1.6 mm PCB, same as the nice!nano v2 it clones.
 #                            Positions the FLIPPED jack band (see USB_JACK_* below).
@@ -382,6 +384,10 @@ FOOT_POSITIONS: tuple[tuple[float, float], ...] = (
 )
 
 # ---------- Component positions (PCB coords, mm) ----------
+# MCU_POS is the centre of the nano's 24-hole PIN ARRAY, not the centre of its board —
+# verified against data/raw/SofleKeyboard-PTH.drl: 12 Ø1.092 holes per row, 2.540 pitch,
+# 27.940 span, rows 15.240 apart (0.600" — stock Pro Micro), array centre (10.269, -16.157).
+# (The 0.457 X stagger inside each row is the Sofle's reversible dual footprint.)
 MCU_POS        = (10.27, -16.16)
 SW_SLIDE_POS   = (2.945, -45.23)
 SW_RESET_POS   = (7.72,  -45.35)
@@ -426,6 +432,22 @@ SHOW_TOP_COVER      = True # True: adds the sandwich top cover to case.py __main
 # MCU physical stack heights (MCU_PCB_TOP_Z / MCU_HILL_Z / MCU_BODY_L / MCU_BOARD_THK)
 # moved UP to the "MCU physical stack" block above the USB-C section: the jack bands are
 # now derived from the nano's board faces, so they must be declared before that block.
+
+# ---------- MCU board Y extent (anchored to the pin array, NOT centred on it) ----------
+# The nano is located by its 24 pin holes, so the board's Y faces must be derived from the
+# northmost pin — never from ``MCU_POS ± MCU_BODY_L/2``. That centred form happened to give
+# the right answer only while MCU_BODY_L was the nice!nano's 33.0, which IS centred on the
+# pins; at the SuperMini's 34.1 it silently walks the USB end 0.55 mm north and manufactures
+# a collision with the canopy wall. The extra 1.1 mm is at the FAR end (the SuperMini's extra
+# breakout pads): the footprint here is stock Pro Micro (0.600" rows, 2.54 pitch, 27.94 span,
+# see MCU_POS), and the board would not be Pro-Micro-drop-in if its USB end had moved.
+MCU_PIN_SPAN_Y      = 27.94   # mm; 11 × 2.54 between the outer pins — from the drill file
+MCU_PIN_TO_USB_EDGE = 2.53    # mm; northmost pin centre → the board's USB-end edge
+#                               (33.0 nice!nano centred on a 27.94 span ⇒ (33.0 − 27.94)/2)
+MCU_BODY_N_Y = pcb_to_case(*MCU_POS)[1] + MCU_PIN_SPAN_Y / 2 + MCU_PIN_TO_USB_EDGE  # 116.09
+MCU_BODY_S_Y = MCU_BODY_N_Y - MCU_BODY_L                                            # 81.99
+# For reference: the PCB's own north edge at this column is 115.75, so the board overhangs
+# it by 0.34 mm — that overhang is the unsupported B+/B- pad end (see the relief below).
 
 # ---------- MCU +Y cover relief (B+/B- clearance) ----------
 # The nice!nano's B+/B- pads (unsoldered — meant for direct battery wire, no leg

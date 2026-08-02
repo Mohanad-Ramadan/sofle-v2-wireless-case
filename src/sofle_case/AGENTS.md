@@ -36,7 +36,8 @@ Key invariants to preserve:
 4. `tray.py` must produce **exactly 1 solid** — `test_tray_is_single_solid` guards this. Both sandwich parts (`build_top_part`/`build_bottom_part`) must also each be a single valid solid — `test_split_parts_are_valid_single_solids`.
 5. No wall rises above the tray's `rim_z` (default `MAIN_RIM_Z`; the sandwich tub deliberately passes `COVER_TOP_Z`) — `test_no_wall_above_rim` guards the default flat-wall tray.
 6. Rabbet fit is set by `SEAM_FIT_CLEAR` (0.2 mm XY) / `SEAM_LEDGE_CLEAR` (0.3 mm Z) — the parts nest with clearance (zero interference); the screws + standoffs, not the rabbet, set the clamp and precise registration.
-7. The USB-C jack is **mid-mount** (`USB_JACK_H` 3.16 / `USB_JACK_SINK` 1.00): it straddles the nano board, so both jack bands derive from the board faces and differ per orientation. Never model it as a top-mount part sitting on the board.
+7. The nano's Y extent comes from `MCU_BODY_N_Y` / `MCU_BODY_S_Y`, **never** `MCU_POS ± MCU_BODY_L/2`. `MCU_POS` is the pin-array centre, and the board is anchored at its USB end — a longer board grows southward. Centring it instead drives the USB jack into the canopy's north wall. Guarded by `test_mcu_board_is_anchored_to_its_pin_array_not_centred_on_it` and `test_usb_jack_stops_short_of_the_north_wall`.
+8. The USB-C jack is **mid-mount** (`USB_JACK_H` 3.16 / `USB_JACK_SINK` 1.00): it straddles the nano board, so both jack bands derive from the board faces and differ per orientation. Never model it as a top-mount part sitting on the board.
 
 **Phantom modules** (`pcb_phantom.py`, `plate_phantom.py`, `switch_phantom.py`) are visual only. They must not be imported by structural modules. Guard all phantom imports inside `if __name__ == "__main__":` blocks.
 

@@ -256,7 +256,7 @@ def _mcu_y_relief_widen(rim_z: float = C.MAIN_RIM_Z) -> Part:
     widen  = cast(Part, base + corner)
     if rim_z > C.MAIN_RIM_Z + 1e-6:
         bay_x = C.pcb_to_case(C.MCU_Y_RELIEF_CEILING_X, 0)[0]
-        board_y_hi = C.pcb_to_case(*C.MCU_POS)[1] + C.MCU_BODY_L / 2   # nice!nano +Y face
+        board_y_hi = C.MCU_BODY_N_Y                                    # nano's USB-end (+Y) face
         z_hi  = rim_z + 0.01
         u_base   = _axis_box(inner_x + 0.3, bay_x, y_safe_lo, board_y_hi, z_mid, z_hi)
         u_corner = _axis_box(inner_x, inner_x + 0.35, corner_y, board_y_hi, z_mid, z_hi)

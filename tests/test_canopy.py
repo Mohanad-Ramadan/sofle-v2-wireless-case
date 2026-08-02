@@ -245,6 +245,19 @@ def test_canopy_fused_into_top_single_solid(side):
     assert abs(top.bounding_box().max.Z - CAN.CANOPY_RIDGE_TOP_Z) < 0.01, "TOP not raised to the canopy ridge"
 
 
+def test_usb_jack_stops_short_of_the_north_wall():
+    """The mid-mount jack must NOT reach the canopy's north wall — only the plug bridges it.
+
+    This is the guard for the MCU_BODY_L trap: the nano's USB-end face is anchored to its pin
+    array, so a longer board grows southward. Centring it on MCU_POS instead drives the jack
+    into the wall (0.14 mm at MCU_BODY_L = 34.1), which no geometry test would otherwise catch.
+    """
+    jack_end   = C.MCU_BODY_N_Y + C.USB_JACK_Y_PROTRUDE
+    wall_inner = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_SIDE_WALL
+    assert jack_end < wall_inner, f"jack reaches the wall: {jack_end:.2f} >= {wall_inner:.2f}"
+    assert wall_inner - jack_end > 0.3, "air gap under 0.3 mm — re-check the board Y anchor"
+
+
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_fused_top_clears_all_bay_components(side):
     """The fused TOP (cover + canopy) must not touch any component above the cover.

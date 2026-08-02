@@ -83,6 +83,22 @@ def test_usb_jack_is_mid_mount_not_top_mount():
         assert lo < C.MCU_PCB_TOP_Z < hi or lo < C.MCU_PCB_BOT_Z < hi
 
 
+def test_mcu_board_is_anchored_to_its_pin_array_not_centred_on_it():
+    """The nano is located by its 24 pin holes (``MCU_POS`` = the array centre, verified
+    against data/raw/SofleKeyboard-PTH.drl), so its USB-end face must derive from the
+    northmost pin — NEVER from ``MCU_POS ± MCU_BODY_L/2``.
+
+    The centred form agreed by luck while MCU_BODY_L was the nice!nano's 33.0, which is
+    centred on the 27.94 pin span. At the SuperMini's 34.1 it walks the USB end 0.55 mm
+    north and invents a collision with the canopy wall. Growing MCU_BODY_L must extend the
+    SOUTH end only.
+    """
+    assert abs(C.MCU_BODY_N_Y - 116.09) < 1e-6, "USB-end face moved — jack/wall gap is at risk"
+    assert abs((C.MCU_BODY_N_Y - C.MCU_BODY_S_Y) - C.MCU_BODY_L) < 1e-9
+    centred = C.pcb_to_case(*C.MCU_POS)[1] + C.MCU_BODY_L / 2
+    assert C.MCU_BODY_N_Y < centred, "board is being centred on MCU_POS again"
+
+
 def test_usb_jack_z_rejects_bad_side():
     import pytest as _pt
     with _pt.raises(ValueError):

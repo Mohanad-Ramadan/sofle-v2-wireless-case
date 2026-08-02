@@ -76,12 +76,15 @@ def _pcb_plate() -> Part:
 
 def _mcu_block() -> Part:
     """nice!nano + socket stack block above the main PCB plate, up to the board top."""
-    cx, cy = C.pcb_to_case(*C.MCU_POS)
+    cx, _ = C.pcb_to_case(*C.MCU_POS)
     block_h  = C.MCU_PCB_TOP_Z - C.PCB_TOP_Z   # 11.0 mm: sockets + nano board
     center_z = C.PCB_TOP_Z + block_h / 2
+    # Anchored at the pin array (MCU_BODY_N_Y), not centred on MCU_POS — the board's extra
+    # length over a Pro Micro is at the SOUTH end. See constants.MCU_BODY_N_Y.
+    center_y = (C.MCU_BODY_N_Y + C.MCU_BODY_S_Y) / 2
 
     with BuildPart() as bp:
-        with Locations((cx, cy, center_z)):
+        with Locations((cx, center_y, center_z)):
             Box(_MCU_W, C.MCU_BODY_L, block_h)
 
     assert bp.part is not None
@@ -97,8 +100,8 @@ def _usb_c_stub(side: str = "right") -> Part:
     tongue that poked ~1.6 mm PAST the wall's outer face — a visual lie. On the FLIPPED
     half the jack hangs under the nano board: its Z band (17.64→20.80) falls inside
     ``_mcu_block``'s Z span, so only the 1.0 mm tongue shows there — expected."""
-    cx, cy = C.pcb_to_case(*C.MCU_POS)
-    mcu_y_face = cy + C.MCU_BODY_L / 2    # +Y face of MCU block (= 116.09 case-Y)
+    cx, _ = C.pcb_to_case(*C.MCU_POS)
+    mcu_y_face = C.MCU_BODY_N_Y           # +Y (USB-end) face of the board = 116.09 case-Y
     stub_center_y = mcu_y_face + C.USB_JACK_Y_PROTRUDE / 2
     jack_lo, jack_hi = C.usb_jack_z(side)
     stub_h = jack_hi - jack_lo
