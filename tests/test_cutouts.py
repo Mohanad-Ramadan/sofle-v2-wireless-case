@@ -166,5 +166,10 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # floor→SEAM_LEDGE_Z, which rose with the floor, so the plate is taller than before.
     # Rebased for SEAM_FIT_CLEAR 0.3→0.2: the derived rim (SEAM_RIM_THK 2.45→2.55) adds
     # ~311.8 mm³ of plate material (was 72618.786656).
-    # 1e-2 abs tolerates OCC mirror/heal float noise on the left half (~3e-3).
-    assert abs(build_bottom_part(side).volume - 72930.559471) < 1e-2
+    # Rebased again for the TENT WEDGE: the bottom case grew the wedge that stands the
+    # keyboard at TENT_ANGLE_DEG, +47.9 cm³ of solid (was 72930.559471), less the
+    # elephant-foot chamfer cut on its tilted ground rim. The wedge rides the PLATE's rim
+    # profile (inset behind the tub skin), not the tub footprint. The test's point is
+    # unchanged — the slide cavity is a TOP feature and must not show up in this number.
+    # 2e-2 abs tolerates OCC mirror/heal float noise on the left half (~1e-2).
+    assert abs(build_bottom_part(side).volume - 120795.946631) < 2e-2

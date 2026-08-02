@@ -8,8 +8,12 @@ still screw together through the same standoffs. See
 ``.omc/specs/deep-dive-sandwich-seam-modification.md``.
 """
 from __future__ import annotations
+import math
+from functools import cache
 from typing import Literal, cast
-from build123d import Part, mirror, Plane, Pos, fillet, chamfer, Axis, BuildPart, Locations, Cylinder, Sphere, Solid, Box, Location
+from build123d import (Part, mirror, Plane, Pos, fillet, chamfer, Axis, BuildPart,
+                       BuildSketch, BuildLine, Line, Spline, Locations, Cylinder,
+                       Sphere, Solid, Box, Location, GeomType, add, extrude, make_face)
 from OCP.Standard import Standard_Failure
 from OCP.ShapeFix import ShapeFix_Shape
 from OCP.TopoDS import TopoDS
@@ -172,19 +176,225 @@ def build_case_half(side: Side) -> Part:
     return shell
 
 
+# ---------------------------------------------------------------------------
+# Integrated tent wedge (BOTTOM case)
+# ---------------------------------------------------------------------------
+
+def tent_plane() -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    """``(origin, unit up-normal)`` of the plane the tented case stands on.
+
+    Pitched about X only, so it slopes front-to-back and never side to side: the south edge
+    sits at ``-TENT_WEDGE_MIN_H`` and it falls away northward at ``TENT_ANGLE_DEG``. Stand
+    that plane on a desk and it goes flat, tipping the whole assembly — plate, PCB, switch
+    plate, top case — forward by the tent angle as one rigid body. Nothing inside moves
+    relative to anything else, which is the entire point: the Z ladder is untouched."""
+    th = math.radians(C.TENT_ANGLE_DEG)
+    return (0.0, 0.0, -C.TENT_WEDGE_MIN_H), (0.0, math.sin(th), math.cos(th))
+
+
+def tent_ground_z(y: float) -> float:
+    """Z of the tent plane at a given case-Y — i.e. the underside of the bottom case there."""
+    origin, up = tent_plane()
+    return origin[2] - (up[1] / up[2]) * (y - origin[1])
+
+
+def _below_plane_cutter(origin: tuple[float, float, float],
+                        up: tuple[float, float, float]) -> Part:
+    """Half-space solid filling everything below the given plane."""
+    big = 500.0
+    box = Solid.make_box(big, big, big).translate((-big / 2, -big / 2, -big))
+    return cast(Part, Plane(origin=origin, z_dir=up).location * box)
+
+
+@cache
+def wedge_deep_z() -> float:
+    """Z of the wedge's deepest point — its north edge.
+
+    NOT ``-TENT_WEDGE_MAX_H``. That constant is the depth at ``OUTER_DEPTH``, i.e. at the
+    TUB's outline; the wedge rides the PLATE's rim profile, which stops SEAM_SKIN +
+    SEAM_FIT_CLEAR short of it and so tops out around y=123.8. The constant stays a safe
+    upper bound for sizing the stock; this is what the part actually reaches."""
+    rim_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK
+    y_max = offset_extruded(rim_outer, 0.0, 1.0).bounding_box().max.Y
+    return tent_ground_z(y_max)
+
+
+def _below_seam_cutter() -> Part:
+    """Everything BELOW the top case's bottom edge, as a solid swept across the full width.
+
+    The edge profile is drawn once in the Y-Z plane and extruded along X, so every wall gets
+    the same handover with no per-wall special casing — it is a function of Y alone.
+
+    Three stretches, south to north: riding the tent plane; a SPLINE sweeping up off it; then
+    Z=0. The spline is given the tent plane's slope as its start tangent and horizontal as its
+    end tangent, so it leaves the desk and arrives at Z=0 tangentially — swept, not kinked."""
+    y1, y2 = C.TENT_SEAM_Y1, C.TENT_SEAM_Y2
+    z1 = tent_ground_z(y1)
+    slope = -math.tan(math.radians(C.TENT_ANGLE_DEG))
+    y_s, y_n = -20.0, C.OUTER_DEPTH + 60.0
+    bot = wedge_deep_z() - 20.0
+    with BuildSketch(Plane.YZ) as sk:            # sketch u -> case Y, sketch v -> case Z
+        with BuildLine():
+            Line((y_s, tent_ground_z(y_s)), (y1, z1))
+            Spline((y1, z1), (y2, 0.0), tangents=((1.0, slope), (1.0, 0.0)))
+            Line((y2, 0.0), (y_n, 0.0))
+            Line((y_n, 0.0), (y_n, bot))
+            Line((y_n, bot), (y_s, bot))
+            Line((y_s, bot), (y_s, tent_ground_z(y_s)))
+        make_face()
+    # Extrude the LOCATED face functionally, along its own +X normal. Doing it via
+    # `add(sketch)` inside a BuildPart instead loses the plane association and extrudes along
+    # global +Z — which yields a zero-thickness cutter that silently deletes everything.
+    face = sk.sketch.faces()[0]  # type: ignore[union-attr]
+    solid = extrude(face, amount=C.OUTER_WIDTH + 120.0)
+    return cast(Part, solid.translate((-60.0, 0.0, 0.0)))
+
+
+def skirt_extension() -> Part:
+    """The TOP case's skin carried on below Z=0, down to the desk over the southern stretch.
+
+    Only the outer ``SEAM_SKIN`` band — the same ring the tub's wall already is below the
+    rabbet ledge — so it descends OUTBOARD of the wedge (which is inset SEAM_SKIN +
+    SEAM_FIT_CLEAR) and the two never meet. Bounded below by the tent plane and above by the
+    seam profile, which is what makes it die away to nothing by ``TENT_SEAM_Y2``.
+
+    Adds no height: it fills space that already existed between Z=0 and the tent plane."""
+    outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+    pocket_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK + C.SEAM_FIT_CLEAR
+    z_bot = wedge_deep_z() - 1.0
+    band = cast(Part, offset_extruded(outer, z_bot, 0.0, rounded=True)
+                - offset_extruded(pocket_outer, z_bot - 1.0, 0.1))
+    # Keep only what lies BETWEEN the seam and Z=0. Subtracting everything below the seam does
+    # both jobs at once: south of y1 the seam IS the tent plane, so this trims the skin to the
+    # desk; north of y2 the seam IS Z=0, so the skin vanishes and the wedge shows instead.
+    band = cast(Part, band - _below_seam_cutter())
+    return _chamfer_skirt_lead_in(band)
+
+
+def _chamfer_skirt_lead_in(skirt: Part) -> Part:
+    """Lead-in on the skirt's inner bottom edge, where the bottom case enters.
+
+    Over the southern stretch the skin descends past the wedge with only ``SEAM_FIT_CLEAR``
+    (0.3 mm) between them, and the mouth of that channel is now at the DESK, not at Z=0 — so
+    ``_chamfer_pocket_mouth``'s Z=0 starter is buried inboard and does nothing here. Left
+    square, the bottom case has to arrive within 0.3 mm to start, and catches on the corner
+    instead of guiding in. Same job, and the same leg, as the rim's ``SEAM_LEAD_IN``.
+
+    Cut on the standalone skirt, before it is fused: it is a plain ring here, so the edge is
+    easy to pick out and the chamfer cannot wander onto the tub's other features. Selected by
+    "lies on the tent plane" plus the radial probe the pocket mouth already uses — material
+    OUTWARD, air INWARD, which is what tells the inner edge from the outer one."""
+    origin, up = tent_plane()
+    cx, cy = C.OUTER_WIDTH / 2, C.OUTER_DEPTH / 2
+
+    def _solid(x: float, y: float, z: float) -> bool:
+        probe = Solid.make_box(0.3, 0.3, 0.3).translate((x - 0.15, y - 0.15, z - 0.15))
+        return cast(float, (skirt & probe).volume) > 1e-9
+
+    inner = []
+    for e in skirt.edges():
+        m = e.position_at(0.5)
+        gap = ((m.X - origin[0]) * up[0] + (m.Y - origin[1]) * up[1]
+               + (m.Z - origin[2]) * up[2])
+        if abs(gap) > 0.05:                     # not on the desk — not the entry edge
+            continue
+        dx, dy = m.X - cx, m.Y - cy
+        n = (dx * dx + dy * dy) ** 0.5
+        if n < 1e-6:
+            continue
+        ux, uy = dx / n, dy / n
+        if _solid(m.X + ux * 0.6, m.Y + uy * 0.6, m.Z + 0.4) and not _solid(
+                m.X - ux * 0.6, m.Y - uy * 0.6, m.Z + 0.4):
+            inner.append(e)
+    if not inner:
+        return skirt
+    for length in (C.SEAM_LEAD_IN, C.SEAM_LEAD_IN * 0.5):
+        try:
+            return cast(Part, chamfer(inner, length=length))
+        except (ValueError, Standard_Failure):
+            continue
+    return skirt
+
+
+def tent_wedge() -> Part:
+    """The bottom case's tent wedge: the block below Z=0 that stands the keyboard at an angle.
+
+    Follows the PLATE's own rim profile, so the bottom case stays inset behind the tub's skin
+    by SEAM_SKIN + SEAM_FIT_CLEAR (2.3 mm) — the "skinny" look. The tub's skin therefore ends
+    at Z=0 and floats clear of the desk; it is carried by the screws through the standoffs and
+    by its rabbet on the plate rim, not by the wedge.
+
+    Being the same profile as ``_plate_envelope`` is what keeps this cheap: no need to chase
+    the tub's real footprint (the +Y bump squares the NW corner off proud of the nominal
+    offset and carries a fillet), and no tray build inside ``build_bottom_part``.
+
+    ``TENT_WEDGE_MIN_H`` thick at the south, climbing to ``TENT_WEDGE_MAX_H`` at the north.
+    Solid rather than shelled — only a few mm thick, and the mass is welcome."""
+    rim_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK
+    stock = offset_extruded(rim_outer, -(C.TENT_WEDGE_MAX_H + 1.0), 0.0)
+    return cast(Part, stock - _below_plane_cutter(*tent_plane()))
+
+
+def ground_face(part: Part):
+    """The wedge's underside — the face that meets the desk — or None.
+
+    Selected by "parallel to the tent plane AND lying ON it", not by lowest centre. On a
+    tilted plane, lowest-centre is simply wrong: a foot seat's floor near the north sits at
+    Z ≈ -4.2 while the main ground face's CENTRE is at Z ≈ -3.2, so the seat wins and you
+    end up chamfering a foot recess instead of the case's rim."""
+    origin, up = tent_plane()
+    on_plane = []
+    for f in part.faces().filter_by(GeomType.PLANE):
+        n = f.normal_at(f.center())
+        if abs(n.Z + up[2]) > 0.02 or abs(n.Y + up[1]) > 0.02:
+            continue                                  # not parallel to the tent plane
+        c = f.center()
+        gap = ((c.X - origin[0]) * up[0] + (c.Y - origin[1]) * up[1]
+               + (c.Z - origin[2]) * up[2])
+        if abs(gap) > 1e-3:
+            continue                                  # parallel, but offset from it
+        on_plane.append(f)
+    return max(on_plane, key=lambda f: f.area) if on_plane else None
+
+
+def _chamfer_wedge_ground_edge(part: Part) -> Part:
+    """Counter-chamfer the wedge's ground rim (elephant-foot pre-compensation).
+
+    The bottom case now meets the desk on the tilted wedge face, not at Z=0, so this is where
+    the squished first layers would otherwise bulge past the footprint. Falls back to a
+    smaller leg, then to none, rather than aborting the build."""
+    ground = ground_face(part)
+    if ground is None:
+        return part
+    for length in (C.BOTTOM_CHAMFER, C.BOTTOM_CHAMFER * 0.5):
+        try:
+            return cast(Part, chamfer(ground.outer_wire().edges(), length=length))
+        except (ValueError, Standard_Failure):
+            continue
+    return part
+
+
 def _foot_recesses() -> Part:
     """Cutter: shallow Ø FOOT_DIA seats in the OUTER bottom face (Z=0) at FOOT_POSITIONS.
 
     Stick-on rubber feet locate in these seats at the 4 corners so the keyboard grips
-    the desk. Each cylinder spans Z = −0.5 → FOOT_DEPTH (starts below the bottom face so
-    it opens cleanly through Z=0, no coincident face), recessing FOOT_DEPTH into the plate.
+    the desk. Each cylinder starts 0.5 mm outside the face (so it opens cleanly, no
+    coincident face) and recesses FOOT_DEPTH into the material.
+
+    Cut PERPENDICULAR to the tent plane, not plumb. The ground face is tilted now, so a
+    vertical cylinder would meet it obliquely — the seat depth would vary by ±0.17 mm across
+    a Ø10 seat and the pad would sit on a slight ramp instead of flat against the desk.
     """
-    with BuildPart() as bp:
-        for x, y in C.FOOT_POSITIONS:
-            with Locations((x, y, (C.FOOT_DEPTH - 0.5) / 2)):
-                Cylinder(radius=C.FOOT_DIA / 2, height=C.FOOT_DEPTH + 0.5)
-    assert bp.part is not None
-    return bp.part
+    _origin, up = tent_plane()
+    seats = None
+    for x, y in C.FOOT_POSITIONS:
+        z = tent_ground_z(y)
+        start = (x - up[0] * 0.5, y - up[1] * 0.5, z - up[2] * 0.5)
+        cyl = Solid.make_cylinder(C.FOOT_DIA / 2, C.FOOT_DEPTH + 0.5,
+                                  Plane(origin=start, z_dir=up))
+        seats = cyl if seats is None else cast(Part, seats + cyl)
+    assert seats is not None
+    return cast(Part, seats)
 
 
 def build_bottom_part(side: Side) -> Part:
@@ -200,6 +410,10 @@ def build_bottom_part(side: Side) -> Part:
         raise ValueError(f"side must be 'left' or 'right', got {side!r}")
 
     bottom = _plate_envelope()
+    # The tent wedge IS the bottom case below Z=0: same rim profile as the plate, so it stays
+    # inset behind the tub's skin, thin at the south and thick at the north. Added, never cut —
+    # see the tent section in constants.py for why cutting would wreck the Z ladder.
+    bottom = cast(Part, bottom + tent_wedge())
 
     for hx, hy in C.MOUNTING_HOLES:
         cx, cy = C.pcb_to_case(hx, hy)
@@ -207,6 +421,7 @@ def build_bottom_part(side: Side) -> Part:
 
     bottom = cast(Part, bottom - battery_pocket())
     bottom = cast(Part, bottom - _foot_recesses())
+    bottom = _chamfer_wedge_ground_edge(_as_part(bottom))
     bottom = _as_part(bottom)
 
     if side == "left":
@@ -456,8 +671,11 @@ def build_top_part(side: Side) -> Part:
     # Deep tub: the FULL-height tray (outer skin to the ground), then carve the inset
     # plate pocket out of its base. This leaves the SEAM_SKIN skirt as the descending
     # outer wall — no mid-wall seam — and the rabbet ledge that receives the plate rim.
-    top = cast(Part, build_tray(rim_z=C.COVER_TOP_Z) - _plate_pocket())
+    top = cast(Part, build_tray(rim_z=C.COVER_TOP_Z, bottom_chamfer=False) - _plate_pocket())
     top = _chamfer_pocket_mouth(top)   # tub-side starter chamfer at the pocket mouth
+    # Carry the skin down to the desk over the southern stretch, so the front of the case
+    # reads as one piece and the bottom wedge only shows further north. Costs no height.
+    top = cast(Part, top + skirt_extension())
     top = cast(Part, top + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     top = cast(Part, top + _encoder_shell())
     top = cast(Part, top + build_canopy(side=side))

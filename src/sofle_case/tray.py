@@ -545,7 +545,7 @@ def _apply_rim_facets(part: Part, rim_z: float) -> Part:
 # Public entry
 # ---------------------------------------------------------------------------
 
-def build_tray(rim_z: float = C.MAIN_RIM_Z) -> Part:
+def build_tray(rim_z: float = C.MAIN_RIM_Z, bottom_chamfer: bool = True) -> Part:
     """Outer shell + inner cavity, walls flat at ``rim_z``.
 
     ``rim_z`` defaults to ``MAIN_RIM_Z`` (15.0, flush with the switch plate) — the
@@ -561,7 +561,12 @@ def build_tray(rim_z: float = C.MAIN_RIM_Z) -> Part:
     # that also lowers the fused canopy, so case.build_top_part applies it (see case._slide_scoop).
     hollow = _fillet_bump_neg_x_corner(hollow)
     faceted = _apply_rim_facets(hollow, rim_z)
-    chamfered = _chamfer_bottom_edges(faceted)
+    # The sandwich TOP passes bottom_chamfer=False. Its skin no longer ENDS at Z=0 — over the
+    # southern stretch case.skirt_extension carries it on down to the desk — so a counter-
+    # chamfer there is not an outer bottom edge at all, it is a 0.5 mm V-groove ploughed
+    # through the middle of a continuous wall. It bought nothing anyway: the tub prints
+    # rim-down, so its Z=0 edge is at the TOP of the print, nowhere near an elephant foot.
+    chamfered = _chamfer_bottom_edges(faceted) if bottom_chamfer else faceted
     if isinstance(chamfered, Part):
         return chamfered
     solids = chamfered.solids()

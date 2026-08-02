@@ -1,4 +1,5 @@
 """All dimensions in mm. Single source of truth for the case geometry."""
+import math
 
 # ---------- Heights (Z = 0 at case bottom) ----------
 # The whole Z ladder is DERIVED from FLOOR_THICKNESS via named gaps, so raising
@@ -179,6 +180,58 @@ assert FRONT_FACET_RUN <= WALL_THICKNESS - 1.5, "front facet thins the rim wall 
 assert RIM_FACET_RUN <= WALL_THICKNESS - 1.5, "perimeter facet thins the rim wall below 1.5 mm"
 assert FRONT_FACET_RUN < WALL_THICKNESS - COVER_FUSE_MARGIN, "front facet reaches the membrane fuse band"
 assert COVER_TOP_Z - FRONT_FACET_DROP >= SEAM_LEDGE_Z + 1.0, "front facet toe intrudes on the rabbet skin zone"
+
+# ---------- Integrated tent wedge (BOTTOM case) ----------
+# The keyboard is tented by the BOTTOM CASE growing into a wedge, the way the WOBKEY Crush 80
+# does it: top case is a constant-section shell, bottom case is thick at the back and thin at
+# the front, and the whole assembly tips forward on it. The parting line between them therefore
+# runs parallel to the KEYS, not to the desk -- which is what reads as "tented" from the side.
+#
+# The wedge is ADDED, never cut. Cutting the bottom case is what would wreck the Z ladder: the
+# floor is 6.3 mm and only 2.0 mm of it is free, because the battery pocket's floor spans
+# Y 30.8-103.8 through the middle. At a north pivot, 1.0 deg already leaves 0.34 mm under that
+# pocket and 1.5 deg breaches it. Growing downward instead leaves FLOOR_THICKNESS, PCB_SEAT_Z,
+# PLATE_SEAT_Z, COVER_TOP_Z and the whole rabbet completely untouched -- the internals simply
+# ride the wedge as a rigid body.
+#
+# Cost, stated plainly: the back gets taller. That is unavoidable. Tilting means the switch
+# plate stops being parallel to the desk, and with the internals rigid that height comes from
+# the front dropping (impossible -- the battery) or the back rising. There is no third option.
+#
+# TENT_WEDGE_MIN_H is the wedge's thickness at the SOUTH. It is not padding:
+#   * a wedge tapering to zero is a feather edge -- the first ~6 mm would be under one layer
+#     and simply would not print;
+#   * the front foot seats are FOOT_DEPTH deep, and at y=22 a zero-min wedge is only 0.77 mm
+#     thick, so a 0.6 mm seat would leave 0.17 mm of floor under the pad;
+#   * the reference keeps a visible band of bottom case at the front too.
+TENT_ANGLE_DEG   = 2.0   # deg; typing angle the wedge stands the case at
+TENT_WEDGE_MIN_H = 1.0   # mm; wedge thickness at the south (the thin end)
+
+# ---- Where the two cases hand over: the visible parting line ----
+# Like the reference, the TOP case does not stop at Z=0 all the way round. Over the southern
+# stretch its skin carries on down and lands on the desk, so the front of the keyboard reads
+# as one unbroken piece and no bottom case shows there at all. Further north the skin stops at
+# Z=0 as before and the bottom wedge is exposed beneath it.
+#
+# Seen from the side with the case standing, that gives the reference's profile exactly: flat
+# along the desk at the front, a sweep up, then a long run that rises at the tilt angle. That
+# last run needs no geometry -- it IS the Z=0 plane, which slopes at TENT_ANGLE_DEG once the
+# case is standing on its wedge. Only the first two stretches are built.
+#
+# The handover costs NO height. The skin drops into space that already exists between Z=0 and
+# the tent plane, so the envelope is unchanged.
+#
+# The two joins are swept, not kinked (TENT_SEAM_RAMP_FRAC controls how drawn-out): the profile
+# leaves the desk tangentially and arrives at Z=0 tangentially.
+TENT_SEAM_SOUTH_FRAC = 0.60   # fraction of depth where the top case rides the desk
+TENT_SEAM_RAMP_FRAC  = 0.18   # fraction of depth the sweep takes to climb back to Z=0
+
+assert 0.0 < TENT_SEAM_SOUTH_FRAC < 1.0, "TENT_SEAM_SOUTH_FRAC must be a fraction of the depth"
+assert TENT_SEAM_RAMP_FRAC > 0.0, "the sweep needs a non-zero run"
+
+assert 0.0 < TENT_ANGLE_DEG <= 5.0, "TENT_ANGLE_DEG outside the sane 0-5 deg range"
+# The rest of the guards need OUTER_DEPTH and FOOT_DEPTH, both defined further down; they sit
+# with the envelope. Search for TENT_RISE.
 
 # ---------- Encoder plateau (TOP part, around EC11 rotary encoder) ----------
 # The EC11 body is a ~12 mm box that mounts through the plate's encoder cutout
@@ -434,6 +487,21 @@ PCB_Y_MIN, PCB_Y_MAX = -110.5, 5.0
 # the footprint tracks WALL_THICKNESS automatically and the PCB stays centred.
 OUTER_WIDTH  = (PCB_X_MAX - PCB_X_MIN) + 2 * (WALL_THICKNESS + PCB_XY_CLEARANCE)  # = 154.0
 OUTER_DEPTH  = (PCB_Y_MAX - PCB_Y_MIN) + 2 * (WALL_THICKNESS + PCB_XY_CLEARANCE)  # = 126.0
+
+# How far the tent wedge climbs from its thin (south) end to its thick (north) end, and the
+# total thickness of the bottom case at the back. Defined here because it needs OUTER_DEPTH.
+TENT_RISE     = OUTER_DEPTH * math.tan(math.radians(TENT_ANGLE_DEG))   # 4.40 at 2 deg
+TENT_WEDGE_MAX_H = TENT_WEDGE_MIN_H + TENT_RISE                        # 5.40 -> the case grows by this
+assert TENT_WEDGE_MIN_H >= FOOT_DEPTH + 0.3, (
+    "wedge too thin at the south to host a foot seat -- raise TENT_WEDGE_MIN_H")
+
+# Where the top case leaves the desk, and where its skin gets back to Z=0.
+TENT_SEAM_Y1 = TENT_SEAM_SOUTH_FRAC * OUTER_DEPTH                        # 75.6
+TENT_SEAM_Y2 = TENT_SEAM_Y1 + TENT_SEAM_RAMP_FRAC * OUTER_DEPTH          # 98.3
+assert TENT_SEAM_Y2 < OUTER_DEPTH - 20.0, (
+    "the sweep must finish south of the +Y relief bump (y>=115). The bump stands proud of the "
+    "nominal outline offset, so a skirt reaching it would have to chase the tub's real "
+    "footprint instead of a plain offset")
 
 PCB_OFFSET_X = (OUTER_WIDTH - (PCB_X_MAX - PCB_X_MIN)) / 2 - PCB_X_MIN
 PCB_OFFSET_Y = (OUTER_DEPTH - (PCB_Y_MAX - PCB_Y_MIN)) / 2 - PCB_Y_MIN

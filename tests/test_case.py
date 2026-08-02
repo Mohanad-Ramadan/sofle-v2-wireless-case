@@ -54,11 +54,17 @@ def test_split_parts_are_valid_single_solids(side):
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_top_part_z_range(side):
-    """TOP is a deep tub: its outer skin runs to the ground (min Z = 0), so there is
-    no mid-wall seam. It reaches up to the fused bay-canopy ridge (21.9)."""
+    """TOP is a deep tub whose outer skin runs unbroken to the ground — no mid-wall seam.
+
+    'The ground' is no longer Z=0 over the southern stretch: the skin carries on down and
+    lands on the tent plane there, so the front reads as one piece and the bottom wedge only
+    shows further north. Its deepest point is therefore the desk at TENT_SEAM_Y1. Above Z=0
+    nothing moved — the ceiling is still the fused bay-canopy ridge."""
     from sofle_case import canopy as CAN
+    from sofle_case.case import tent_ground_z
     bb = build_top_part(side).bounding_box()
-    assert abs(bb.min.Z - 0.0) < 0.01
+    assert abs(bb.min.Z - tent_ground_z(C.TENT_SEAM_Y1)) < 0.05, \
+        f"tub floor at {bb.min.Z:.3f}, expected the desk at y1 {tent_ground_z(C.TENT_SEAM_Y1):.3f}"
     assert abs(bb.max.Z - CAN.CANOPY_RIDGE_TOP_Z) < 0.01
 
 
@@ -125,10 +131,21 @@ def test_slide_scoop_top_open(side):
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_bottom_part_z_range(side):
-    """BOTTOM starts at the floor; standoffs rise to their tap tops (PLATE_SEAT_Z),
-    so the plate is taller than the rabbet ledge (SEAM_LEDGE_Z) by design."""
+    """BOTTOM runs from the tent wedge's deepest point up to the standoff tap tops.
+
+    The floor is no longer Z=0: the bottom case now carries the tent wedge, which hangs
+    TENT_WEDGE_MAX_H below the old bottom face at the north and TENT_WEDGE_MIN_H at the
+    south. The top stays at PLATE_SEAT_Z — the standoffs stop under the switch plate, so
+    the part is taller than the rabbet ledge by design."""
+    import math
     bb = build_bottom_part(side).bounding_box()
-    assert abs(bb.min.Z - 0.0) < 0.01
+    # A hair above the nominal deep end: the elephant-foot counter-chamfer trims the ground
+    # rim inboard by BOTTOM_CHAMFER, and 0.5 mm inboard on a 2 deg plane lifts the deepest
+    # surviving point by 0.5*tan(2 deg) ~ 0.017 mm. Never below, though.
+    from sofle_case.case import wedge_deep_z
+    lift = C.BOTTOM_CHAMFER * math.tan(math.radians(C.TENT_ANGLE_DEG))
+    assert wedge_deep_z() <= bb.min.Z <= wedge_deep_z() + lift + 1e-3, \
+        f"floor at {bb.min.Z:.4f}, expected the wedge's deep end {wedge_deep_z():.4f}"
     assert abs(bb.max.Z - C.PLATE_SEAT_Z) < 0.01
 
 
@@ -143,10 +160,16 @@ def test_split_conserves_volume(side):
     from sofle_case.standoffs import stepped_standoff
     from sofle_case.battery import battery_pocket
     from sofle_case.top_cover import build_top_cover
-    from sofle_case.case import _encoder_shell, _slide_scoop, _slide_actuator_cavity, _foot_recesses
+    from sofle_case.case import (_encoder_shell, _slide_scoop, _slide_actuator_cavity,
+                                 _foot_recesses, tent_wedge, skirt_extension)
     from sofle_case.canopy import build_canopy
 
-    ref = build_tray(rim_z=C.COVER_TOP_Z)
+    ref = build_tray(rim_z=C.COVER_TOP_Z, bottom_chamfer=False)
+    # Both parts now carry material below Z=0 that exists in no other build: the BOTTOM's tent
+    # wedge, and the TOP's skin extension over the southern stretch. Without them here the
+    # split looks like it invented ~50 cm^3 and the sign check below fires.
+    ref = cast(Part, ref + tent_wedge())
+    ref = cast(Part, ref + skirt_extension())
     ref = cast(Part, ref + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     ref = cast(Part, ref + _encoder_shell())
     ref = cast(Part, ref + build_canopy())   # the canopy is fused into the TOP now
