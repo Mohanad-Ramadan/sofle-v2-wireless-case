@@ -223,10 +223,15 @@ TENT_WEDGE_MIN_H = 1.0   # mm; wedge thickness at the south (the thin end)
 #
 # The two joins are swept, not kinked (TENT_SEAM_RAMP_FRAC controls how drawn-out): the profile
 # leaves the desk tangentially and arrives at Z=0 tangentially.
-TENT_SEAM_SOUTH_FRAC = 0.60   # fraction of depth where the top case rides the desk
-TENT_SEAM_RAMP_FRAC  = 0.18   # fraction of depth the sweep takes to climb back to Z=0
+# TENT_SEAM_SOUTH_FRAC is THE dial for this: 0.0 = the skin touches down only at the very
+# front edge, 1.0 = it would ride the desk the whole way. Both ends of that range are accepted
+# in principle, but the usable ceiling is lower in practice -- the sweep has to finish before
+# the +Y relief bump (see the TENT_SEAM_Y2 guard, which computes the ceiling and reports it).
+TENT_SEAM_SOUTH_FRAC = 0.50   # fraction of depth where the top case rides the desk
+TENT_SEAM_RAMP_FRAC  = 0.10   # fraction of depth the sweep takes to climb back to Z=0
 
-assert 0.0 < TENT_SEAM_SOUTH_FRAC < 1.0, "TENT_SEAM_SOUTH_FRAC must be a fraction of the depth"
+assert 0.0 <= TENT_SEAM_SOUTH_FRAC <= 1.0, (
+    f"TENT_SEAM_SOUTH_FRAC must be a fraction of the depth, 0.0-1.0; got {TENT_SEAM_SOUTH_FRAC}")
 assert TENT_SEAM_RAMP_FRAC > 0.0, "the sweep needs a non-zero run"
 
 assert 0.0 < TENT_ANGLE_DEG <= 5.0, "TENT_ANGLE_DEG outside the sane 0-5 deg range"
@@ -496,12 +501,18 @@ assert TENT_WEDGE_MIN_H >= FOOT_DEPTH + 0.3, (
     "wedge too thin at the south to host a foot seat -- raise TENT_WEDGE_MIN_H")
 
 # Where the top case leaves the desk, and where its skin gets back to Z=0.
-TENT_SEAM_Y1 = TENT_SEAM_SOUTH_FRAC * OUTER_DEPTH                        # 75.6
-TENT_SEAM_Y2 = TENT_SEAM_Y1 + TENT_SEAM_RAMP_FRAC * OUTER_DEPTH          # 98.3
+TENT_SEAM_Y1 = TENT_SEAM_SOUTH_FRAC * OUTER_DEPTH                        # 63.0 at 0.50
+TENT_SEAM_Y2 = TENT_SEAM_Y1 + TENT_SEAM_RAMP_FRAC * OUTER_DEPTH          # 85.7 at 0.50
+
+# The sweep must finish south of the +Y relief bump (y>=115). The bump stands proud of the
+# nominal outline offset and carries a corner fillet, so a skirt reaching it would have to
+# chase the tub's real footprint instead of a plain offset -- the complexity this design
+# deliberately avoids. y = OUTER_DEPTH - 20 is the conservative stand-in for that limit.
+TENT_SEAM_FRAC_MAX = (OUTER_DEPTH - 20.0) / OUTER_DEPTH - TENT_SEAM_RAMP_FRAC   # 0.66 at ramp 0.18
 assert TENT_SEAM_Y2 < OUTER_DEPTH - 20.0, (
-    "the sweep must finish south of the +Y relief bump (y>=115). The bump stands proud of the "
-    "nominal outline offset, so a skirt reaching it would have to chase the tub's real "
-    "footprint instead of a plain offset")
+    f"TENT_SEAM_SOUTH_FRAC={TENT_SEAM_SOUTH_FRAC} puts the sweep's end at y={TENT_SEAM_Y2:.1f}, "
+    f"which runs into the +Y relief bump. With TENT_SEAM_RAMP_FRAC={TENT_SEAM_RAMP_FRAC} the "
+    f"ceiling is {TENT_SEAM_FRAC_MAX:.2f} — lower the south fraction or shorten the ramp")
 
 PCB_OFFSET_X = (OUTER_WIDTH - (PCB_X_MAX - PCB_X_MIN)) / 2 - PCB_X_MIN
 PCB_OFFSET_Y = (OUTER_DEPTH - (PCB_Y_MAX - PCB_Y_MIN)) / 2 - PCB_Y_MIN

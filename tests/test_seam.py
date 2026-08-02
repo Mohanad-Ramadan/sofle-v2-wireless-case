@@ -119,27 +119,89 @@ def test_skirt_extension_alone_is_a_clean_solid():
     assert bb.min.Z > tent_ground_z(C.TENT_SEAM_Y1) - 0.05
 
 
-def test_the_channel_mouth_has_a_lead_in():
-    """Where the skin descends past the wedge it forms a channel with only SEAM_FIT_CLEAR
-    between them, and its mouth is at the DESK — not at Z=0, so _chamfer_pocket_mouth's
-    starter is buried inboard and useless there. Without a lead-in the bottom case has to
-    arrive within the fit clearance to start, and catches on a square corner instead."""
-    top, bottom = build_top_part("right"), build_bottom_part("right")
-    y = 40.0
-    g = tent_ground_z(y)
+def test_the_channel_mouth_has_a_lead_in_all_the_way_round():
+    """Where the skin descends past the wedge they form a channel with only SEAM_FIT_CLEAR
+    between them, and its mouth is at the SEAM — not at Z=0, so _chamfer_pocket_mouth's
+    starter is buried inboard and useless there. Without relief the bottom case has to arrive
+    within 0.2 mm to start.
 
-    def inner_x(z, s=0.12):
-        sl = top & Solid.make_box(30.0, s, s).translate((140.0, y - s / 2, z - s / 2))
+    BOTH walls are checked, and that is the point of the test. This was first built as a
+    chamfer, and OCC propagates a chamfer along the tangent-continuous edge chain: a 0.84 mm
+    arc at the SE corner poisoned the whole front-and-east chain at any leg, so the west and
+    thumb edges got their lead-in and the rest silently stayed square. Probing one wall would
+    not have caught it."""
+    top, bottom = build_top_part("right"), build_bottom_part("right")
+
+    def east(y, z, s=0.1):
+        sl = top & Solid.make_box(40.0, s, s).translate((130.0, y - s / 2, z - s / 2))
         return sl.bounding_box().min.X if sl.volume > 1e-12 else None
 
-    seated = inner_x(g + 2.0)
-    mouth = inner_x(g + 0.05)
-    assert seated is not None and mouth is not None
-    assert mouth > seated + 0.3, \
-        f"channel mouth {mouth:.3f} barely wider than the seated face {seated:.3f} — no lead-in"
-    assert mouth - seated <= C.SEAM_LEAD_IN + 0.05, \
-        f"lead-in {mouth - seated:.3f} exceeds SEAM_LEAD_IN — it is eating the skin"
-    # it must close back to the nominal face, not stay flared
-    assert abs(inner_x(g + C.SEAM_LEAD_IN + 0.15) - seated) < 0.02, "lead-in never closes"
-    # and the opening must clear the wedge it guides
-    assert mouth > bottom.bounding_box().max.X, "mouth is narrower than the wedge it accepts"
+    def west(y, z, s=0.1):
+        sl = top & Solid.make_box(40.0, s, s).translate((-16.0, y - s / 2, z - s / 2))
+        return sl.bounding_box().max.X if sl.volume > 1e-12 else None
+
+    for y in (45.0, 55.0, C.TENT_SEAM_Y1 - 1.0):
+        g = tent_ground_z(y)
+        for name, seated, mouth, sign in (("east", east(y, g + 2.0), east(y, g + 0.1), 1.0),
+                                          ("west", west(y, g + 2.0), west(y, g + 0.1), -1.0)):
+            assert seated is not None and mouth is not None, f"{name} y={y}: probe off the wall"
+            relief = (mouth - seated) * sign
+            assert relief >= C.SEAM_LEAD_IN - 0.02, \
+                f"{name} wall y={y}: mouth relieved only {relief:.3f}, want {C.SEAM_LEAD_IN}"
+            assert relief <= C.SEAM_LEAD_IN + 0.02, \
+                f"{name} wall y={y}: relief {relief:.3f} overshoots — it is eating the skin"
+    # closes back to the nominal face rather than staying flared
+    y = 55.0
+    g = tent_ground_z(y)
+    assert abs(east(y, g + C.SEAM_LEAD_IN + 0.2) - east(y, g + 2.0)) < 0.02, "relief never closes"
+    # and the opening clears the wedge it has to accept
+    assert east(55.0, tent_ground_z(55.0) + 0.1) > bottom.bounding_box().max.X, \
+        "mouth is narrower than the wedge it accepts"
+
+
+def test_the_lead_in_tracks_the_sweep_not_a_flat_plane():
+    """The relief is the seam cutter shifted up by SEAM_LEAD_IN, so it follows the blend as
+    well as the flat run. Referenced to a plane instead it would drift off the mouth as the
+    seam climbs, and the guidance would quietly disappear exactly where the channel narrows."""
+    top = build_top_part("right")
+
+    def east(y, z, s=0.1):
+        sl = top & Solid.make_box(40.0, s, s).translate((130.0, y - s / 2, z - s / 2))
+        return sl.bounding_box().min.X if sl.volume > 1e-12 else None
+
+    checked = 0
+    for y in (C.TENT_SEAM_Y1 + 3.0, C.TENT_SEAM_Y1 + 5.0):
+        seam = _lowest_at(top, y)
+        if seam is None or seam > -1.0:
+            continue                      # channel too shallow here to carry a relief
+        relief = east(y, seam + 0.08) - east(y, seam + 0.85)
+        assert abs(relief - C.SEAM_LEAD_IN) < 0.03, \
+            f"y={y:.1f} (in the blend): relief {relief:.3f}, want {C.SEAM_LEAD_IN}"
+        checked += 1
+    assert checked, "no sample landed inside the blend — the test proved nothing"
+
+
+def test_the_south_fraction_is_the_dial():
+    """TENT_SEAM_SOUTH_FRAC alone drives where the handover sits — everything else derives.
+
+    Its range is 0.0-1.0, but the usable ceiling is lower: the sweep has to finish before the
+    +Y relief bump, so TENT_SEAM_FRAC_MAX depends on the ramp length. The constants guard
+    computes that ceiling and names it in its failure, rather than just refusing."""
+    assert 0.0 <= C.TENT_SEAM_SOUTH_FRAC <= 1.0
+    assert abs(C.TENT_SEAM_Y1 - C.TENT_SEAM_SOUTH_FRAC * C.OUTER_DEPTH) < 1e-9
+    assert abs(C.TENT_SEAM_Y2 - (C.TENT_SEAM_Y1 + C.TENT_SEAM_RAMP_FRAC * C.OUTER_DEPTH)) < 1e-9
+    assert C.TENT_SEAM_SOUTH_FRAC <= C.TENT_SEAM_FRAC_MAX, "the dial is past its own ceiling"
+    # the ceiling is exactly the fraction whose sweep ends on the bump limit
+    assert abs((C.TENT_SEAM_FRAC_MAX + C.TENT_SEAM_RAMP_FRAC) * C.OUTER_DEPTH
+               - (C.OUTER_DEPTH - 20.0)) < 1e-9
+
+
+def test_the_handover_actually_sits_where_the_dial_says():
+    """Measured on the solid, not just the arithmetic: on the desk just south of y1, and clear
+    of it just north of y2. Catches the constant being changed without the geometry following."""
+    top = build_top_part("right")
+    south = _lowest_at(top, C.TENT_SEAM_Y1 - 8.0)
+    north = _lowest_at(top, C.TENT_SEAM_Y2 + 8.0)
+    assert abs(south - tent_ground_z(C.TENT_SEAM_Y1 - 8.0)) < 0.06, \
+        "skin is not on the desk south of the handover"
+    assert abs(north) < 0.02, "skin still hangs below Z=0 north of the sweep"

@@ -268,52 +268,32 @@ def skirt_extension() -> Part:
     # both jobs at once: south of y1 the seam IS the tent plane, so this trims the skin to the
     # desk; north of y2 the seam IS Z=0, so the skin vanishes and the wedge shows instead.
     band = cast(Part, band - _below_seam_cutter())
-    return _chamfer_skirt_lead_in(band)
+    return cast(Part, band - _lead_in_relief(z_bot))
 
 
-def _chamfer_skirt_lead_in(skirt: Part) -> Part:
-    """Lead-in on the skirt's inner bottom edge, where the bottom case enters.
+def _lead_in_relief(z_bot: float) -> Part:
+    """Cutter that widens the channel mouth so the bottom case can find it.
 
-    Over the southern stretch the skin descends past the wedge with only ``SEAM_FIT_CLEAR``
-    (0.3 mm) between them, and the mouth of that channel is now at the DESK, not at Z=0 — so
-    ``_chamfer_pocket_mouth``'s Z=0 starter is buried inboard and does nothing here. Left
-    square, the bottom case has to arrive within 0.3 mm to start, and catches on the corner
-    instead of guiding in. Same job, and the same leg, as the rim's ``SEAM_LEAD_IN``.
+    Where the skin descends past the wedge the two form a channel with only ``SEAM_FIT_CLEAR``
+    (0.2 mm) between them, and its mouth is at the SEAM — down on the desk over the southern
+    stretch, not at Z=0. ``_chamfer_pocket_mouth``'s Z=0 starter is buried inboard there and
+    does nothing, so without this the bottom case has to arrive within 0.2 mm to start.
 
-    Cut on the standalone skirt, before it is fused: it is a plain ring here, so the edge is
-    easy to pick out and the chamfer cannot wander onto the tub's other features. Selected by
-    "lies on the tent plane" plus the radial probe the pocket mouth already uses — material
-    OUTWARD, air INWARD, which is what tells the inner edge from the outer one."""
-    origin, up = tent_plane()
-    cx, cy = C.OUTER_WIDTH / 2, C.OUTER_DEPTH / 2
+    BUILT AS A CUTTER, NOT A CHAMFER, and that is deliberate. OCC propagates a chamfer along
+    the tangent-continuous edge chain, and this one runs through a 0.84 mm arc at the SE corner
+    (the 3.25 mm offset radius turning 14.7°). That arc poisons the whole front-and-east chain
+    at ANY leg — it was verified to fail down to 0.05 mm — so chamfering succeeded on the west
+    and thumb edges and silently skipped the rest, leaving half the perimeter square. A cutter
+    is uniform, exact, and has no propagation or edge-ordering failure mode at all.
 
-    def _solid(x: float, y: float, z: float) -> bool:
-        probe = Solid.make_box(0.3, 0.3, 0.3).translate((x - 0.15, y - 0.15, z - 0.15))
-        return cast(float, (skirt & probe).volume) > 1e-9
-
-    inner = []
-    for e in skirt.edges():
-        m = e.position_at(0.5)
-        gap = ((m.X - origin[0]) * up[0] + (m.Y - origin[1]) * up[1]
-               + (m.Z - origin[2]) * up[2])
-        if abs(gap) > 0.05:                     # not on the desk — not the entry edge
-            continue
-        dx, dy = m.X - cx, m.Y - cy
-        n = (dx * dx + dy * dy) ** 0.5
-        if n < 1e-6:
-            continue
-        ux, uy = dx / n, dy / n
-        if _solid(m.X + ux * 0.6, m.Y + uy * 0.6, m.Z + 0.4) and not _solid(
-                m.X - ux * 0.6, m.Y - uy * 0.6, m.Z + 0.4):
-            inner.append(e)
-    if not inner:
-        return skirt
-    for length in (C.SEAM_LEAD_IN, C.SEAM_LEAD_IN * 0.5):
-        try:
-            return cast(Part, chamfer(inner, length=length))
-        except (ValueError, Standard_Failure):
-            continue
-    return skirt
+    It is a square relief rather than a 45° taper: the inner face steps out by ``SEAM_LEAD_IN``
+    for the bottom ``SEAM_LEAD_IN`` of the channel. Measured from the SEAM (this is the seam
+    cutter shifted up by that much) rather than from a plane, so it tracks the sweep through
+    the blend as well as the flat run."""
+    pocket_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK + C.SEAM_FIT_CLEAR
+    wide = offset_extruded(pocket_outer + C.SEAM_LEAD_IN, z_bot - 1.0, 0.1)
+    above_mouth = cast(Part, _below_seam_cutter().translate((0.0, 0.0, C.SEAM_LEAD_IN)))
+    return cast(Part, wide & above_mouth)
 
 
 def tent_wedge() -> Part:
