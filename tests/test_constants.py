@@ -73,6 +73,25 @@ def test_usb_jack_z_rejects_bad_side():
         C.usb_jack_z("middle")
 
 
+def test_usb_port_z_is_jack_band_plus_clears():
+    """The printed port band is the measured jack band grown by the USB_PORT_CLEAR_*
+    design margins — and nothing else. Guards the constants.py single-source split
+    (canopy.canopy_usb_z delegates here)."""
+    for side in ("left", "right"):
+        jlo, jhi = C.usb_jack_z(side)
+        plo, phi = C.usb_port_z(side)
+        assert plo == jlo - C.USB_PORT_CLEAR_LO
+        assert phi == jhi + C.USB_PORT_CLEAR_HI
+        # 4.0 jack + 0.8 + 0.7 = 5.5 mm mouth on BOTH halves.
+        assert abs((phi - plo) - (C.USB_JACK_H + C.USB_PORT_CLEAR_LO + C.USB_PORT_CLEAR_HI)) < 1e-9
+
+
+def test_usb_port_z_rejects_bad_side():
+    import pytest as _pt
+    with _pt.raises(ValueError):
+        C.usb_port_z("middle")
+
+
 def test_mcu_orientation_mapping():
     """Assembly-time fact: left half carries a flipped nano, right a neutral one."""
     assert C.MCU_ORIENTATION == {"left": "flipped", "right": "neutral"}

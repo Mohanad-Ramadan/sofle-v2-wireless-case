@@ -164,5 +164,7 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     from sofle_case.case import build_bottom_part
     # Baseline reflects FLOOR_THICKNESS=6.3 (deep-battery redesign): the inset plate spans
     # floor→SEAM_LEDGE_Z, which rose with the floor, so the plate is taller than before.
+    # Rebased for SEAM_FIT_CLEAR 0.3→0.2: the derived rim (SEAM_RIM_THK 2.45→2.55) adds
+    # ~311.8 mm³ of plate material (was 72618.786656).
     # 1e-2 abs tolerates OCC mirror/heal float noise on the left half (~3e-3).
-    assert abs(build_bottom_part(side).volume - 72618.786656) < 1e-2
+    assert abs(build_bottom_part(side).volume - 72930.559471) < 1e-2

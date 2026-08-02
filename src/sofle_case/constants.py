@@ -110,19 +110,23 @@ COVER_TOP_Z  = MAIN_RIM_Z + COVER_THICKNESS  # 16.0 mm; TOP part rim (membrane t
 #   skin (tub, → ground)  SEAM_SKIN | gap SEAM_FIT_CLEAR | plate rim SEAM_RIM_THK
 # summing to WALL_THICKNESS across the wall. The plate rim seats inside the tub
 # skirt; a small Z gap at the ledge lets the SCREWS (not the rabbet) set the clamp.
-# Clearances follow the design-for-print rule of a 0.3 mm minimum mating gap (below
-# that FDM tends to weld / bind); the fit is intentionally loose because the screws
+# Clearances follow the design-for-print mating-gap rule: 0.3 mm is the conservative
+# FDM minimum (below that FDM tends to weld / bind). SEAM_FIT_CLEAR was tightened
+# 0.3 → 0.2 after the feat/last-printed-case print proved this printer's calibration
+# (PCB_XY_CLEARANCE 0.5 and the slide-switch slot both fit perfectly); 0.2 is as low
+# as is safe on a ~150 mm irregular outline, where warping — not printer accuracy —
+# becomes the binding risk. The fit stays intentionally loose because the screws
 # clamp and the 5 standoffs — not the rabbet — set the precise XY registration.
 SEAM_LEDGE_Z    = FLOOR_THICKNESS   # 6.3; rabbet ledge / plate-rim top / the split height
 SEAM_SKIN       = 2.0    # mm; outer skin kept with the tub at the rabbet (descends to ground)
-SEAM_FIT_CLEAR  = 0.3    # mm; per-side XY clearance, plate rim ↔ tub skirt pocket (0.3 min)
+SEAM_FIT_CLEAR  = 0.2    # mm; per-side XY clearance, plate rim ↔ tub skirt pocket (was 0.3)
 SEAM_LEDGE_CLEAR = 0.3   # mm; Z gap at the ledge so the screws clamp (no over-constraint)
 SEAM_LEAD_IN    = 0.6    # mm; 45° lead-in chamfer on the plate rim's top-outer edge (plate-side starter)
 SEAM_POCKET_LEAD_IN = 0.4  # mm; 45° starter chamfer on the tub pocket MOUTH (tub-side starter, so
 #                            BOTH mating leading edges guide + the mouth can't elephant-foot-pinch).
 #                            Kept small: it stacks with BOTTOM_CHAMFER on the opposite skirt corner,
 #                            so 0.4 leaves ≥1.4 mm of skin at the ground-line first layer.
-SEAM_RIM_THK    = WALL_THICKNESS - SEAM_SKIN - SEAM_FIT_CLEAR   # ≈ 2.45; derived plate-rim thickness
+SEAM_RIM_THK    = WALL_THICKNESS - SEAM_SKIN - SEAM_FIT_CLEAR   # = 2.55; derived plate-rim thickness
 
 # Snap aids (assembly hold-shut) are DEFERRED: the 5 standoff screws are the real
 # clamp and the rabbet self-locates, so the first print validates that fit alone.
@@ -184,7 +188,7 @@ assert COVER_TOP_Z - FRONT_FACET_DROP >= SEAM_LEDGE_Z + 1.0, "front facet toe in
 # (concave ogee foot) and rounds over at the top edge — no hard step, no second
 # tier. The box is hidden; the bushing + 6 mm shaft exit through the shaft hole.
 ENCODER_BODY_PROUD     = 2.0   # mm; EC11 box top above the plate (measured)
-ENCODER_BODY_TOP_Z     = PLATE_TOP_Z + ENCODER_BODY_PROUD   # 14.5; box top (cavity must clear this)
+ENCODER_BODY_TOP_Z     = PLATE_TOP_Z + ENCODER_BODY_PROUD   # 17.0; box top (cavity must clear this)
 ENCODER_SHELL_WALL     = 1.5   # mm; plateau side-wall thickness (thin → smaller footprint)
 ENCODER_SHELL_ROOF     = 1.5   # mm; closed top-face thickness
 ENCODER_SHELL_CAVITY_CLEAR = 0.4  # mm/side; cavity grows past the window so the ring
@@ -225,6 +229,18 @@ PCB_LEDGE_WIDTH   = 1.0   # mm; ring width if enabled
 # the silhouette stays common (see canopy.canopy_usb_z and CANOPY_RIDGE_TOP_Z).
 USB_C_W    = 9.0
 USB_JACK_H = 4.0   # jack body height; identical in both orientations
+USB_JACK_Y_PROTRUDE = 1.0   # mm; measured: the jack's +Y face sits this far past the
+#                            nano board's +Y edge. The jack stops ~0.4 mm short of the
+#                            canopy north wall's inner face — only the plug bridges the
+#                            wall. (The pcb_phantom stub depth uses this.)
+
+# Port-mouth DESIGN MARGINS around the measured jack body (NOT measurements — the
+# measurements above are the hardware; these are the slack the printed port adds).
+# The canopy port cutter is the jack band grown by these clears. They also absorb the
+# measured ~0.4 mm stack error (real plate-top → jack-top 9.0 mm vs design 9.4 mm).
+USB_PORT_CLEAR_LO = 0.8   # mm; port floor below the jack body
+USB_PORT_CLEAR_HI = 0.7   # mm; port ceiling above the jack body
+USB_PORT_W_CLEAR  = 2.0   # mm; port width = USB_C_W + this (jack + plug clearance)
 
 USB_JACK_FLIPPED_LO_Z = PCB_TOP_Z + 6.0
 USB_JACK_FLIPPED_HI_Z = PCB_TOP_Z + 10.0
@@ -243,6 +259,13 @@ def usb_jack_z(side: str) -> tuple[float, float]:
     if MCU_ORIENTATION[side] == "flipped":
         return USB_JACK_FLIPPED_LO_Z, USB_JACK_FLIPPED_HI_Z
     return USB_JACK_NEUTRAL_LO_Z, USB_JACK_NEUTRAL_HI_Z
+
+
+def usb_port_z(side: str) -> tuple[float, float]:
+    """(lo, hi) Z of the north-wall USB PORT for a half: the measured jack band
+    (``usb_jack_z``) grown by the USB_PORT_CLEAR_LO/HI design margins."""
+    lo, hi = usb_jack_z(side)
+    return lo - USB_PORT_CLEAR_LO, hi + USB_PORT_CLEAR_HI
 
 # ---------- Slide-switch finger access (−X wall + canopy) ----------
 # A wide, top-open "decrement" scoop lowers the −X wall AND the canopy over the SK12D07VG3 slide

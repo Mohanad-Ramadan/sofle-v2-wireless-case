@@ -14,7 +14,7 @@ _rotate_2d = rotate_2d
 
 # Phantom-only body dimensions (not structural — not in constants.py)
 _MCU_W         = 18.0  # nice!nano width along case X
-_USB_C_STUB_Y  =  7.0  # depth of USB-C jack stub extending from MCU +Y face
+# USB-C jack stub depth is NOT local: it is the measured C.USB_JACK_Y_PROTRUDE (1.0 mm).
 
 # SK12D07VG3 slide switch geometry (local frame: pins along local X)
 # Pin span from drill data: local X = -2.1 .. +6.1 → center at +2.0
@@ -91,18 +91,22 @@ def _mcu_block() -> Part:
 def _usb_c_stub(side: str = "right") -> Part:
     """USB-C jack body stub at the +Y face of the MCU block, at this half's measured band.
 
-    On the FLIPPED half the jack hangs under the nano board, so the stub falls entirely
-    inside ``_mcu_block`` and is not separately visible in the viewer — expected."""
+    The stub protrudes ``C.USB_JACK_Y_PROTRUDE`` (1.0 mm, measured) past the board's +Y
+    edge — the real jack stops ~0.4 mm short of the canopy north wall's inner face, so
+    the viewer shows that air gap (only the plug bridges the wall). It was a 7.0 mm
+    tongue that poked ~1.6 mm PAST the wall's outer face — a visual lie. On the FLIPPED
+    half the jack hangs under the nano board: its Z band (16.4→20.4) falls inside
+    ``_mcu_block``'s Z span, so only the 1.0 mm tongue shows there — expected."""
     cx, cy = C.pcb_to_case(*C.MCU_POS)
     mcu_y_face = cy + C.MCU_BODY_L / 2    # +Y face of MCU block (≈ 118.59 case-Y)
-    stub_center_y = mcu_y_face + _USB_C_STUB_Y / 2
+    stub_center_y = mcu_y_face + C.USB_JACK_Y_PROTRUDE / 2
     jack_lo, jack_hi = C.usb_jack_z(side)
     stub_h = jack_hi - jack_lo
     center_z = jack_lo + stub_h / 2
 
     with BuildPart() as bp:
         with Locations((cx, stub_center_y, center_z)):
-            Box(C.USB_C_W, _USB_C_STUB_Y, stub_h)
+            Box(C.USB_C_W, C.USB_JACK_Y_PROTRUDE, stub_h)
 
     assert bp.part is not None
     return bp.part

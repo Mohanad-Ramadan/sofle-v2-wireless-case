@@ -16,7 +16,8 @@ X width (case Y, south → north):
   • Roof   — FLAT at ``CANOPY_RIDGE_TOP_Z`` over the MCU (clears the USB-C stack).
   • North / West — VERTICAL walls landing at the chamfer FIRST point (chamfer EXPOSED); the
              NW corner is rounded to the case's own corner radius. The USB-C port is cut
-             through the north wall (required — the jack pokes into it).
+             through the north wall (required — the plug must pass; the jack itself stops
+             ~0.4 mm short of the wall's inner face, see C.USB_JACK_Y_PROTRUDE).
   • East   — plain vertical wall on the switch-column boundary.
 
   • Reset  — a vertical Ø``RESET_POKE_DIA`` poke-hole is bored straight down through the roof
@@ -89,13 +90,13 @@ CANOPY_RIDGE_TOP_Z  = (max(C.USB_JACK_NEUTRAL_HI_Z, C.MCU_PCB_TOP_Z)
                        + CANOPY_ROOF_CLEAR + CANOPY_ROOF_WALL)                               # 26.5
 # NW corner radius = the case's own rounded corner AT the facet's rim line.
 CANOPY_CORNER_R     = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE - C.RIM_FACET_RUN                # ≈ 3.25
-# USB-C port through the north wall — REQUIRED for the fused fit (the jack pokes into the wall;
-# it used to sit open over the +Y wall). Centred on the MCU X column. The BAND is per-half:
-# the two MCU orientations put the jack at different Z, so left and right are NOT mirror
-# images here (left 15.6→21.1, right 19.6→25.1; they overlap through 19.6→21.1).
-CANOPY_USB_W        = C.USB_C_W + 2.0                              # 11.0; port width (jack + plug clearance)
-CANOPY_USB_CLEAR_LO = 0.8                                          # below the jack body
-CANOPY_USB_CLEAR_HI = 0.7                                          # above the jack body
+# USB-C port through the north wall — REQUIRED: the plug must pass the wall (the jack itself
+# stops ~0.4 mm short of the inner face — C.USB_JACK_Y_PROTRUDE; it used to sit open over the
+# +Y wall). Centred on the MCU X column. The BAND is per-half: the two MCU orientations put
+# the jack at different Z, so left and right are NOT mirror images here (left 15.6→21.1,
+# right 19.6→25.1; they overlap through 19.6→21.1). The design margins live in constants.py
+# (USB_PORT_CLEAR_LO/HI, USB_PORT_W_CLEAR) — single source of truth, like the other CLEARs.
+CANOPY_USB_W        = C.USB_C_W + C.USB_PORT_W_CLEAR               # 11.0; port width (jack + plug clearance)
 # Port mouth corner radius. The opening is a ROUNDED rectangle, not a sharp one: it matches
 # the plug overmold's own profile, kills four stress risers in a thin wall, and prints better
 # — the arc at the top of the hole self-supports where a square corner needs a hard bridge.
@@ -105,9 +106,9 @@ CANOPY_USB_R        = 1.5
 
 
 def canopy_usb_z(side: str) -> tuple[float, float]:
-    """(lo, hi) Z of the north-wall USB port for a half, from its measured jack band."""
-    lo, hi = C.usb_jack_z(side)
-    return lo - CANOPY_USB_CLEAR_LO, hi + CANOPY_USB_CLEAR_HI
+    """(lo, hi) Z of the north-wall USB port for a half — delegates to ``C.usb_port_z``
+    (measured jack band + USB_PORT_CLEAR_* margins); kept as the canopy-local call name."""
+    return C.usb_port_z(side)
 
 
 def usb_port_cutter(side: str) -> Part:

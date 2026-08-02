@@ -35,7 +35,7 @@ Key invariants to preserve:
 3. `MAIN_RIM_Z == PLATE_TOP_Z` — minimal short case: the tray walls end flush with the plate top, no hill. (The canopy + encoder plateau rise above this, but they are fused on in `case.py`, not part of `tray.py`.)
 4. `tray.py` must produce **exactly 1 solid** — `test_tray_is_single_solid` guards this. Both sandwich parts (`build_top_part`/`build_bottom_part`) must also each be a single valid solid — `test_split_parts_are_valid_single_solids`.
 5. No wall rises above the tray's `rim_z` (default `MAIN_RIM_Z`; the sandwich tub deliberately passes `COVER_TOP_Z`) — `test_no_wall_above_rim` guards the default flat-wall tray.
-6. Rabbet fit is set by `SEAM_FIT_CLEAR`/`SEAM_LEDGE_CLEAR` (0.3 mm) — the parts nest with clearance (zero interference); the screws + standoffs, not the rabbet, set the clamp and precise registration.
+6. Rabbet fit is set by `SEAM_FIT_CLEAR` (0.2 mm XY) / `SEAM_LEDGE_CLEAR` (0.3 mm Z) — the parts nest with clearance (zero interference); the screws + standoffs, not the rabbet, set the clamp and precise registration.
 
 **Phantom modules** (`pcb_phantom.py`, `plate_phantom.py`, `switch_phantom.py`) are visual only. They must not be imported by structural modules. Guard all phantom imports inside `if __name__ == "__main__":` blocks.
 
