@@ -12,7 +12,7 @@ import math
 
 from build123d import Solid
 from sofle_case import constants as C
-from sofle_case.canopy import CANOPY_RIDGE_TOP_Z
+from sofle_case.canopy import CANOPY_RIDGE_TOP_Z, canopy_ridge_top_z
 from sofle_case.case import (build_bottom_part, build_top_part, ground_face, tent_ground_z,
                              tent_plane, tent_wedge, wedge_deep_z)
 from sofle_case.tray import offset_extruded
@@ -74,14 +74,15 @@ def test_contact_is_the_whole_footprint():
 
 def test_top_case_is_untouched_above_z0():
     """The whole point of adding rather than cutting: everything the internals care about is
-    unmoved. The ceiling is still the canopy ridge, and every facet, the rabbet and the
+    unmoved. The ceiling is still THIS half's canopy ridge (per-half since the ridge-per-half
+    fix — right and left no longer share one number), and every facet, the rabbet and the
     membrane sit where they were.
 
     Below Z=0 the tub DOES now change — it carries the skin extension that runs just above the
     desk over the southern stretch (see test_seam.py). That is additive too, and costs no height."""
     for side in ("right", "left"):
         bb = build_top_part(side).bounding_box()
-        assert abs(bb.max.Z - CANOPY_RIDGE_TOP_Z) < 0.01, f"{side}: tub ceiling moved"
+        assert abs(bb.max.Z - canopy_ridge_top_z(side)) < 0.01, f"{side}: tub ceiling moved"
         assert bb.min.Z > wedge_deep_z(), f"{side}: tub reaches below the wedge's floor"
 
 

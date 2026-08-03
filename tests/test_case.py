@@ -60,14 +60,15 @@ def test_top_part_z_range(side):
     TENT_SKIRT_LIFT above the tent plane there, so the front reads as one piece over a thin
     reveal and the bottom wedge only shows properly further north. Its deepest point is
     therefore that lifted run at TENT_SEAM_Y1. Above Z=0 nothing moved — the ceiling is still
-    the fused bay-canopy ridge."""
+    the fused bay-canopy ridge, now THIS half's own (the ridge is derived per half, so left tops
+    out 2.76 mm lower than right)."""
     from sofle_case import canopy as CAN
     from sofle_case.case import tent_ground_z
     want = tent_ground_z(C.TENT_SEAM_Y1) + C.TENT_SKIRT_LIFT
     bb = build_top_part(side).bounding_box()
     assert abs(bb.min.Z - want) < 0.05, \
         f"tub floor at {bb.min.Z:.3f}, expected the lifted run at y1 {want:.3f}"
-    assert abs(bb.max.Z - CAN.CANOPY_RIDGE_TOP_Z) < 0.01
+    assert abs(bb.max.Z - CAN.canopy_ridge_top_z(side)) < 0.01
 
 
 def test_pocket_mouth_has_starter_chamfer():
@@ -126,7 +127,8 @@ def test_slide_scoop_top_open(side):
     assert not solid_at(top, wall_cx, sw_cy, C.SLIDE_NUB_Z), "scoop not open at the nub"
     assert not solid_at(top, wall_cx, sw_cy, C.MAIN_RIM_Z), "wall not open up to the rim over the nub"
     assert solid_at(top, wall_cx, sw_cy - chan_dy, C.SLIDE_SCOOP_FLOOR_Z - 1.0), "wall not solid below the scoop floor beside the channel"
-    assert solid_at(top, mcu_x, mcu_y, CAN._canopy_roof_z(mcu_y) - 0.6), "canopy roof wrongly cut at the MCU"
+    assert solid_at(top, mcu_x, mcu_y, CAN._canopy_roof_z(mcu_y, CAN.canopy_ridge_top_z(side)) - 0.6), \
+        "canopy roof wrongly cut at the MCU"
     assert solid_at(top, wall_cx, sw_cy + beside_dy, C.SLIDE_NUB_Z), "wall bared beside the scoop"
     assert solid_at(bottom, inboard_x, sw_cy, 2.0), "BOTTOM plate floor wrongly cut at the slide switch"
 
@@ -317,19 +319,30 @@ def test_split_bottom_left_equals_right():
         assert abs(a - b) < 1e-6
 
 
-def test_split_top_same_silhouette_different_window():
-    """The TOP is deliberately NOT mirror-identical: the halves carry opposite MCU
-    orientations, so the USB port sits at a different Z on each. The ridge is common, so
-    the silhouette (bounding box) must still match exactly — only the hole moves, and the
-    volume difference is the proof it did."""
+def test_split_top_same_footprint_different_height_and_window():
+    """The TOP is deliberately NOT mirror-identical: the halves carry opposite MCU orientations,
+    so the USB port sits at a different Z on each.
+
+    The X/Y FOOTPRINT is still common — that is what has to match for the plate, rabbet and seam
+    to interchange. The HEIGHT is not, and no longer claims to be: the ridge is derived per half
+    (``canopy_ridge_top_z``) so each half carries only as much roof as its own port needs, which
+    leaves the left half 2.76 mm shorter. This test used to assert a common ``max.Z`` — that was
+    correct under the shared ridge and is now the thing most likely to be assumed by mistake, so
+    it asserts the difference explicitly instead."""
+    from sofle_case import canopy as CAN
     left, right = build_top_part("left"), build_top_part("right")
     lbb, rbb = left.bounding_box(), right.bounding_box()
     for a, b in (
         (lbb.min.X, rbb.min.X), (lbb.max.X, rbb.max.X),
         (lbb.min.Y, rbb.min.Y), (lbb.max.Y, rbb.max.Y),
-        (lbb.min.Z, rbb.min.Z), (lbb.max.Z, rbb.max.Z),
+        (lbb.min.Z, rbb.min.Z),
     ):
-        assert abs(a - b) < 1e-6, "TOP silhouette should be common to both halves"
+        assert abs(a - b) < 1e-6, "TOP X/Y footprint and floor should be common to both halves"
+    # Heights differ, each pinned to its OWN ridge — not to each other and not to the max.
+    for side, bb in (("left", lbb), ("right", rbb)):
+        assert abs(bb.max.Z - CAN.canopy_ridge_top_z(side)) < 0.01, f"{side} TOP is not at its ridge"
+    assert rbb.max.Z - lbb.max.Z > 2.0, \
+        "the halves' TOPs are the same height — the per-half ridge collapsed back to a shared one"
     # This test used to also assert a volume DIFFERENCE between the halves as proof the
     # per-side window was applied. That proxy is gone: it was really measuring how much cover
     # material the flipped half's low window scooped out, and once the mid-mount correction

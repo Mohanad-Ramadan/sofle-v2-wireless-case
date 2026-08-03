@@ -5,6 +5,9 @@ The canopy's ramp merges tangentially DOWN into the cover surface (no tongue) an
 live on the canopy module (``CAN.CANOPY_*``). South→north: the ramp foot merges into the cover
 → a tangent S-curve slip → flat roof at the ridge → short round-over + vertical north wall with
 the USB-C port; N/W walls land at the chamfer FIRST point, NW corner rounded to the case radius.
+The west top shoulder's drafted facet is cut by a swept boolean, not a 3-D edge chamfer, so it
+survives the ramp spline's control-point density. The ridge is derived per half, not shared,
+since the two halves' ports sit at different Z.
 """
 import pytest
 from build123d import Solid, GeomType
@@ -79,16 +82,62 @@ def test_canopy_closes_strip_in_front_of_plateau():
     )
 
 
-def test_canopy_west_shoulder_rounded_east_left_sharp():
-    """The tall west + NW top shoulder is rounded (case style); the east top edge stays sharp."""
-    c = build_canopy()
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_canopy_west_top_facet_runs_the_whole_shoulder(side):
+    """The west top shoulder carries its drafted facet along the WHOLE run — ramp and flat roof
+    — while the east top edge stays sharp.
+
+    This is the regression that ``_round_west_top_edges`` used to lose SILENTLY: its 3-D
+    ``chamfer()`` (and every fallback) is rejected by OCC once the ramp Spline is interpolated
+    through more than ~9 control points, and it returned the part untouched rather than raising.
+    Measured: the facet landed at CANOPY_RAMP_SAMPLES = 9 and at NO value from 13 up, so raising
+    the sample count to damp the ramp's ringing silently deleted the facet. ``_chamfer_west_top``
+    is a swept boolean instead, so it is independent of sample count — probe the run at several
+    stations, not just one, because a partial cut is the plausible failure now."""
+    c = build_canopy(side=side)
     xw, xe = CAN.CANOPY_WEST_OUTER_X, CAN.CANOPY_EAST_X
-    west = [f for f in _curved_faces(c) if abs(f.center().X - xw) < 3.5
-            and f.center().Z > C.COVER_TOP_Z + 2]
+    z_ridge = CAN.canopy_ridge_top_z(side)
+    # Stations spanning the ramp's upper half and the flat roof (the foot is excluded on
+    # purpose: the facet fades out there, where the west wall is only 1 mm tall).
+    for y in (70.8, 76.8, 82.8, 94.8, 106.8, 112.8):
+        rz = CAN._canopy_roof_z(y, z_ridge)
+        assert not _solid_at(c, xw + 0.35, y, rz - 0.35, s=0.2), \
+            f"{side}: west top shoulder is sharp at Y={y} (facet missing or partial)"
+        assert _solid_at(c, xw + 0.35, y, rz - 3.2, s=0.2), \
+            f"{side}: west wall gone below the facet at Y={y} (cut too deep)"
+    # The fuse overlap under the ramp foot must survive the facet's lead-in.
+    assert _solid_at(c, xw + 0.4, 60.0, 15.4), "facet ate the fuse overlap at the ramp foot"
     east_top = [f for f in _curved_faces(c) if abs(f.center().X - xe) < 2.0
                 and f.center().Z > C.COVER_TOP_Z + 2 and f.center().Y > CAN.CANOPY_RAMP_TOP_Y]
-    assert west, "west top shoulder is not rounded"
     assert not east_top, "east top edge should stay sharp"
+
+
+def test_canopy_ramp_mesh_does_not_detonate():
+    """The ramp spline must stay cheap to TESSELLATE, not just accurate.
+
+    OCC meshes by curvature (angular tolerance), not by deviation, and a denser interpolating
+    spline trades deviation for high-frequency curvature wiggle. Raising CANOPY_RAMP_SAMPLES to
+    51 cut the ramp's deviation to 0.0086 mm — invisible under a 0.2 mm layer — and took the
+    right half's TOP from 50k to 797k triangles (a 2.5 MB STL to 39.9 MB). Nothing caught it:
+    every geometric assertion passed, because the SHAPE was fine and only the mesh was absurd.
+
+    The right half is the one that blows up (its ramp is 2.76 mm taller, so its curvature is
+    worse), so probe it. The bound is deliberately loose — this guards against the order-of-
+    magnitude cliff past ~25 samples, not against normal drift."""
+    from OCP.BRepMesh import BRepMesh_IncrementalMesh
+    from OCP.BRep import BRep_Tool
+    from OCP.TopLoc import TopLoc_Location
+
+    c = build_canopy(side="right")
+    BRepMesh_IncrementalMesh(c.wrapped, 1e-3, False, 0.1, True)
+    n = 0
+    for f in c.faces():
+        tri = BRep_Tool.Triangulation_s(f.wrapped, TopLoc_Location())
+        n += tri.NbTriangles() if tri is not None else 0
+    assert n < 150_000, (
+        f"canopy meshes to {n} triangles — the ramp spline's curvature has detonated. "
+        f"CANOPY_RAMP_SAMPLES is {CAN.CANOPY_RAMP_SAMPLES}; it is a CEILING, see its comment."
+    )
 
 
 def test_canopy_ramp_is_smooth_and_tangent():
@@ -126,13 +175,25 @@ def test_canopy_walls_at_chamfer_first_point():
     assert abs(bb.max.X - CAN.CANOPY_EAST_X) < 0.05
 
 
-def test_canopy_nw_corner_is_rounded():
-    """The NW corner is rounded to the case's corner radius (sharp corner cut back)."""
-    c = build_canopy()
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_canopy_nw_corner_is_rounded(side):
+    """The NW corner is ROUNDED to the case's corner radius (sharp corner cut back), and cleanly
+    so — exactly one CYLINDER face, no kink patches.
+
+    The corner was briefly a flat diagonal chamfer, to escape a measured 64.7° kink (OCC
+    auto-inserting CONE/BSPLINE patches at the seam where the cylinder met the sloped north-top
+    chamfer). That kink was real but misattributed: it was measured while the west top shoulder's
+    facet was silently missing, so the cylinder ran into a raw square shoulder. With the facet
+    actually cut (``_chamfer_west_top``), the corner resolves to a single clean cylindrical face —
+    which is what the geom_type assertion below pins, so a regression to the kink fails loudly."""
+    c = build_canopy(side=side)
     xw, yn, r = CAN.CANOPY_WEST_OUTER_X, CAN.CANOPY_NORTH_OUTER_Y, CAN.CANOPY_CORNER_R
     assert not _solid_at(c, xw + 0.3, yn - 0.3, 16.0), "NW corner is sharp, not rounded"
     assert _solid_at(c, xw + 0.3, 100.0, 16.0), "west wall missing away from the corner"
-    assert [f for f in _curved_faces(c) if f.center().X < xw + r and f.center().Y > yn - r]
+    corner_faces = [f for f in c.faces() if f.center().X < xw + r and f.center().Y > yn - r]
+    kinds = sorted({str(f.geom_type).split(".")[-1] for f in corner_faces})
+    assert kinds == ["CYLINDER"], \
+        f"NW corner should be one clean round, found {kinds} ({len(corner_faces)} faces)"
 
 
 def test_canopy_is_hollow_shell():
@@ -147,7 +208,7 @@ def test_reset_poke_hole_open():
     just beside it, and the countersunk funnel widens the mouth at the surface."""
     c = build_canopy()
     rx, ry = C.pcb_to_case(*C.SW_RESET_POS)
-    surf_z = CAN._canopy_roof_z(ry)
+    surf_z = CAN._canopy_roof_z(ry, CAN.canopy_ridge_top_z("right"))
     z_in_roof = surf_z - 0.75                      # inside the roof shell, on the bore axis
     assert not _solid_at(c, rx, ry, z_in_roof), "reset poke bore is blocked"
     beside = CAN.RESET_POKE_DIA / 2 + 1.5
@@ -165,7 +226,7 @@ def test_reset_poke_hole_open_in_fused_top(side):
     rx, ry = C.pcb_to_case(*C.SW_RESET_POS)
     if side == "left":
         rx = C.OUTER_WIDTH - rx
-    surf_z = CAN._canopy_roof_z(ry)
+    surf_z = CAN._canopy_roof_z(ry, CAN.canopy_ridge_top_z(side))
     assert not _solid_at(top, rx, ry, surf_z - 0.75), f"{side} TOP reset bore blocked"
 
 
@@ -261,14 +322,34 @@ def test_usb_port_delivers_the_engagement_target():
     assert CAN.CANOPY_USB_OM_H >= C.USB_OVERMOLD_H
 
 
-def test_usb_pocket_stays_buried_under_the_north_shoulder():
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_usb_pocket_stays_buried_under_the_north_shoulder(side):
     """The pocket is 7 mm tall in a wall whose top edge is rounded away by
-    CANOPY_NORTH_ROUND_R. If the ridge does not clear both, the pocket breaks out through the
-    shoulder and the port stops being a closed hole — which no volume or bbox check catches.
-    """
-    pocket_top = max(CAN.canopy_usb_om_z(s)[1] for s in ("left", "right"))
-    assert CAN.CANOPY_RIDGE_TOP_Z - CAN.CANOPY_NORTH_ROUND_R - pocket_top >= \
-        CAN.CANOPY_USB_OM_ROOF_MIN - 1e-9, "pocket breaks into the north wall's round-over"
+    CANOPY_NORTH_ROUND_R. If THIS half's ridge does not clear both, the pocket breaks out
+    through the shoulder and the port stops being a closed hole — which no volume or bbox
+    check catches.
+
+    Checked PER HALF now that the ridge is per-half: the old form compared every half's pocket
+    against the shared alias, which happened to be right's own ridge — so it silently verified
+    right against itself while saying nothing about left."""
+    pocket_top = CAN.canopy_usb_om_z(side)[1]
+    ridge = CAN.canopy_ridge_top_z(side)
+    assert ridge - CAN.CANOPY_NORTH_ROUND_R - pocket_top >= \
+        CAN.CANOPY_USB_OM_ROOF_MIN - 1e-9, f"{side} pocket breaks into the north wall's round-over"
+
+
+def test_ridge_to_port_offset_equal_across_halves():
+    """The actual request behind the per-half ridge: both halves should carry the SAME amount
+    of roof material above their own (differently-positioned) port, not a common ridge that
+    buries the shorter-jack half under 2.76 mm of dead air. Both offsets — ridge-to-pocket-top
+    and ridge-to-window-top — must match exactly between halves, since pocket and window are
+    both derived the same way per side."""
+    offsets_pocket = {s: CAN.canopy_ridge_top_z(s) - CAN.canopy_usb_om_z(s)[1] for s in ("left", "right")}
+    offsets_window = {s: CAN.canopy_ridge_top_z(s) - CAN.canopy_usb_z(s)[1] for s in ("left", "right")}
+    assert abs(offsets_pocket["left"] - offsets_pocket["right"]) < 1e-9, offsets_pocket
+    assert abs(offsets_window["left"] - offsets_window["right"]) < 1e-9, offsets_window
+    assert CAN.canopy_ridge_top_z("left") < CAN.canopy_ridge_top_z("right"), \
+        "left carries the flipped (lower) jack band and should end up with the shorter ridge"
 
 
 def test_canopy_usb_bands_differ_between_halves():
@@ -292,7 +373,8 @@ def test_canopy_usb_bands_differ_between_halves():
 def test_canopy_fused_into_top_single_solid(side):
     top = build_top_part(side)
     assert top.is_valid and len(top.solids()) == 1, f"{side} TOP not one valid solid"
-    assert abs(top.bounding_box().max.Z - CAN.CANOPY_RIDGE_TOP_Z) < 0.01, "TOP not raised to the canopy ridge"
+    assert abs(top.bounding_box().max.Z - CAN.canopy_ridge_top_z(side)) < 0.01, \
+        f"{side} TOP not raised to its own canopy ridge"
 
 
 def test_usb_jack_stops_short_of_the_north_wall():

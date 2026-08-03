@@ -5,7 +5,7 @@
 ## Purpose
 Parametric tray case generator for the Sofle V2 Wireless (Alt_Switch) keyboard. Written in Python using build123d (code-CAD). Produces one STL + STEP per half (left / right).
 
-The Sofle PCB is reversible, so the BOTTOM plate and the legacy single-piece tray are strict mirrors — one STL serves both halves. **The TOP part is not.** The two builds carry the nice!nano in opposite orientations (`C.MCU_ORIENTATION`: left flipped / components down, right neutral / components up), which puts the USB-C jack at a different Z on each, so the canopy's north-wall port band differs: left 16.84→21.5, right 19.6→24.26 (shell neck) with a 7 mm-tall overmold pocket around each. The canopy ridge is common (26.98), so the silhouette and bounding box still match — only the window moves. Print the matching TOP for each half.
+The Sofle PCB is reversible, so the BOTTOM plate and the legacy single-piece tray are strict mirrors — one STL serves both halves. **The TOP part is not.** The two builds carry the nice!nano in opposite orientations (`C.MCU_ORIENTATION`: left flipped / components down, right neutral / components up), which puts the USB-C jack at a different Z on each, so the canopy's north-wall port band differs: left 16.84→21.5, right 19.6→24.26 (shell neck) with a 7 mm-tall overmold pocket around each. The canopy ridge is now derived **per half** (`canopy.canopy_ridge_top_z(side)`) rather than shared: left 24.22, right 26.98 — each half carries only as much roof material as its own port needs, so the TOP parts differ in HEIGHT by 2.76 mm as well as in window position. X/Y footprint still matches; Z does not. Print the matching TOP for each half.
 
 ## Key Files
 

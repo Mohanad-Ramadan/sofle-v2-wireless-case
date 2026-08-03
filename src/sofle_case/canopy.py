@@ -15,7 +15,10 @@ X width (case Y, south → north):
              before the OLED pins; the whole south bay is empty (PCB-level) so the low foot clears.
   • Roof   — FLAT at ``CANOPY_RIDGE_TOP_Z`` over the MCU (clears the USB-C stack).
   • North / West — VERTICAL walls landing at the chamfer FIRST point (chamfer EXPOSED); the
-             NW corner is rounded to the case's own corner radius. The USB-C port is cut
+             NW corner is ROUNDED to the case's own corner radius (``_round_nw_corner``). The
+             west wall's top shoulder carries a drafted facet cut by a swept boolean, NOT a 3-D
+             edge chamfer (``_chamfer_west_top`` — an edge chamfer cannot survive the ramp
+             spline's density). The USB-C port is cut
              through the north wall (required — the plug must pass; the jack itself stops
              ~0.4 mm short of the wall's inner face, see C.USB_JACK_Y_PROTRUDE).
   • East   — plain vertical wall on the switch-column boundary.
@@ -32,7 +35,7 @@ from __future__ import annotations
 from typing import cast
 
 from build123d import (
-    Part, Pos, Line, Polyline, Spline, make_face, extrude, fillet, chamfer, Solid,
+    Part, Face, Pos, Line, Polyline, Spline, make_face, extrude, fillet, chamfer, loft, Solid,
     Plane, BuildPart, BuildSketch, BuildLine,
 )
 from OCP.Standard import Standard_Failure
@@ -71,13 +74,36 @@ CANOPY_RAMP_FOOT_Y  = (C.pcb_to_case(*C.SW_ENCODER_POS)[1]
                        + CANOPY_ENCODER_HALF - CANOPY_ENCODER_OVERLAP)                       # ≈ 58.8
 CANOPY_RAMP_TOP_OLED_GAP = 0.5
 CANOPY_RAMP_TOP_Y   = C.pcb_to_case(*C.J_OLED_POS)[1] - CANOPY_RAMP_TOP_OLED_GAP            # ≈ 81.6
-CANOPY_RAMP_SAMPLES = 9      # control points pinning the S-curve for the Spline (smooth)
+# Control points pinning the S-curve for the Spline. 9 was too sparse: the B-spline
+# interpolation through 9 points, forced to an exact horizontal tangent at both ends, RANG —
+# it overshot and undershot the analytic smoothstep by up to 0.14 mm right where the ramp
+# flattens into the roof (measured on the right half's rise; the shorter left ramp rang less —
+# 0.087 mm — but was not immune). Densifying damps it ~4x per 2x the samples.
+#
+# 25 IS A CEILING, NOT A FLOOR — do not raise it chasing the last micron. OCC meshes by
+# CURVATURE (angular tolerance), not by deviation, and a denser interpolating spline trades
+# deviation for high-frequency curvature wiggle. Measured on the bare prism, right half:
+#
+#     samples    9        15       25       41        51
+#     deviation  0.143mm  0.073mm  0.032mm  —         0.0086mm
+#     triangles  28,482   26,988   39,150   216,264   396,620
+#     right STL  2.5 MB   —        3.9 MB   —         39.9 MB
+#
+# Past ~25 the mesh detonates for smoothness that is already an order of magnitude under a
+# 0.2 mm layer line: 51 bought 0.023 mm of invisible flatness for 10x the STL. The left half
+# never blows up (its ramp is 2.76 mm shorter, so its curvature stays mild) — this is a
+# right-half failure mode, so measure the RIGHT half when touching this.
+#
+# NOTE: this number used to be load-bearing for the west top shoulder's facet — OCC's 3-D
+# chamfer on that run silently stopped working above ~9 samples. That coupling is gone;
+# _chamfer_west_top is a boolean and is verified at 9/13/21/51/81. Keep it that way: an edge
+# chamfer here re-introduces a hidden tie between ramp smoothness and wall style.
+CANOPY_RAMP_SAMPLES = 25
 CANOPY_NORTH_ROUND_R = 1.0
-# Round-over of the tall WEST + NW top shoulder so it reads with the case's soft corners, not a
-# hard block. The EAST top edge (switch-column side) is left sharp on purpose. 3.35 (the case
-# corner radius) can't fit — OCC caps this edge set at ~2.36 where the ramp meets the flat roof
-# and where the wall is short at the foot — so it lands just under that ceiling.
-CANOPY_WEST_ROUND_R = 2.3
+# Lead-in of the west top shoulder's drafted facet: the cutter's vertical leg fades to 0 at the
+# ramp foot, where the west wall is only (COVER_TOP_Z − MAIN_RIM_Z) = 1 mm tall, so the facet
+# can never bite into the fuse overlap. Full depth is reached ~7 mm up the ramp (case-Y ≈ 65.7
+# on the right half, 66.9 on the left — the shorter left ramp climbs slower per mm of Y).
 # Heights. The ramp foot merges at the cover surface; the body base drops one cover thickness
 # (to MAIN_RIM_Z) so it overlaps the cover/walls for a clean fuse into the TOP.
 CANOPY_FOOT_Z       = C.COVER_TOP_Z                                # 13.5; ramp foot = cover surface
@@ -110,17 +136,28 @@ def canopy_usb_om_z(side: str) -> tuple[float, float]:
     return mid - CANOPY_USB_OM_H / 2, mid + CANOPY_USB_OM_H / 2
 
 
-# Roof height is COMMON to both halves (identical silhouette) and clears the tallest thing
-# under the flat roof. Two independent constraints, whichever is taller:
+# Roof height is derived PER HALF, so each half carries only as much material above its own
+# port as the port needs — a common ridge left the flipped half with 2.76 mm of dead air above
+# its (lower) port. Two independent constraints per half, whichever is taller:
 #   1. the physical stack — on the FLIPPED half the nano board (21.4) stands taller than its
-#      jack (20.8), so a jack-only derivation would sink the roof underside into the board;
+#      own jack (20.8), so a jack-only derivation would sink the roof underside into the board;
 #   2. the overmold pocket — it must stay buried in solid wall, including under the top
 #      round-over, or the plug's pocket opens into the roof shoulder.
-_RIDGE_FROM_STACK  = (max(C.USB_JACK_NEUTRAL_HI_Z, C.MCU_PCB_TOP_Z)
-                      + CANOPY_ROOF_CLEAR + CANOPY_ROOF_WALL)                                # 25.66
-_RIDGE_FROM_POCKET = (max(canopy_usb_om_z(s)[1] for s in ("left", "right"))
-                      + CANOPY_NORTH_ROUND_R + CANOPY_USB_OM_ROOF_MIN)
-CANOPY_RIDGE_TOP_Z  = max(_RIDGE_FROM_STACK, _RIDGE_FROM_POCKET)
+def canopy_ridge_top_z(side: str) -> float:
+    """Canopy roof height for a half — the taller of the physical-stack and overmold-pocket
+    constraints, both evaluated against THIS half's own jack/pocket Z (see module comment)."""
+    ridge_from_stack = (max(C.usb_jack_z(side)[1], C.MCU_PCB_TOP_Z)
+                        + CANOPY_ROOF_CLEAR + CANOPY_ROOF_WALL)
+    ridge_from_pocket = (canopy_usb_om_z(side)[1]
+                         + CANOPY_NORTH_ROUND_R + CANOPY_USB_OM_ROOF_MIN)
+    return max(ridge_from_stack, ridge_from_pocket)
+
+
+# Kept as the tallest half's ridge: case.py's _slide_scoop uses it purely as a cut CEILING
+# (removes only air above the roof), so over-reaching on the shorter half is harmless. This is
+# the one place the two halves still share a number, and only because nothing downstream cares
+# which half it came from.
+CANOPY_RIDGE_TOP_Z = max(canopy_ridge_top_z(s) for s in ("left", "right"))   # 26.98
 # NW corner radius = the case's own rounded corner AT the facet's rim line.
 CANOPY_CORNER_R     = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE - C.RIM_FACET_RUN                # ≈ 3.25
 # USB-C port through the north wall — REQUIRED: the plug must pass the wall (the jack itself
@@ -188,10 +225,13 @@ def usb_port_cutter(side: str) -> Part:
 
 # Canopy roof-edge chamfer: the same drafted-facet STYLE as the case rim (slope run/drop),
 # scaled down so the north face's chamfer toe stays clear of the USB-C port mouth below it.
-# Derived from the HIGHER of the two port bands (the neutral half) so one chamfer serves both.
-CANOPY_TOP_CHAMFER_V = min(2.4, CANOPY_RIDGE_TOP_Z - canopy_usb_z("right")[1] - 0.2)   # vertical leg
-CANOPY_TOP_CHAMFER_H = CANOPY_TOP_CHAMFER_V * C.RIM_FACET_RUN / C.RIM_FACET_DROP  # horizontal leg
-assert CANOPY_TOP_CHAMFER_V > 0.5, "USB port leaves no room for the canopy roof chamfer"
+# Derived per half now (each half has its own ridge and its own port band).
+def canopy_top_chamfer(side: str) -> tuple[float, float]:
+    """(V, H) legs of the north-top drafted chamfer for a half."""
+    v = min(2.4, canopy_ridge_top_z(side) - canopy_usb_z(side)[1] - 0.2)   # vertical leg
+    h = v * C.RIM_FACET_RUN / C.RIM_FACET_DROP                            # horizontal leg
+    assert v > 0.5, f"USB port leaves no room for the canopy roof chamfer ({side})"
+    return v, h
 
 # Reset poke-hole: a vertical bore straight down through the canopy roof directly above RSW1,
 # with a countersunk funnel mouth on the roof surface so a reset tool self-guides in. The bore
@@ -288,11 +328,13 @@ def _yz_prism(top_pts: list[tuple[float, float]], z_base: float, x_lo: float, x_
     return cast(Part, Pos(x_lo, 0, 0) * bp.part)
 
 
-def _roofline() -> list[tuple[float, float]]:
-    """The Y–Z top edge, south → north: the ramp foot merges into the cover surface (no
-    tongue) → a tangent S-curve slip up → flat roof. The near-vertical north wall comes from
-    the base closure (its top corner is rounded by CANOPY_NORTH_ROUND_R)."""
-    z_foot, z_ridge = CANOPY_FOOT_Z, CANOPY_RIDGE_TOP_Z
+def _roofline(z_ridge: float) -> list[tuple[float, float]]:
+    """The Y–Z top edge, south → north, for a canopy whose roof sits at ``z_ridge``: the ramp
+    foot merges into the cover surface (no tongue) → a tangent S-curve slip up → flat roof.
+    The near-vertical north wall comes from the base closure (its top corner is rounded by
+    CANOPY_NORTH_ROUND_R). ``z_ridge`` is per-half (see ``canopy_ridge_top_z``), so the ramp's
+    rise — and with it the spline's ringing amplitude — differs between halves."""
+    z_foot = CANOPY_FOOT_Z
     roof = [(CANOPY_RAMP_FOOT_Y, z_foot)]
     roof += _smoothstep(CANOPY_RAMP_FOOT_Y, z_foot, CANOPY_RAMP_TOP_Y, z_ridge,
                         CANOPY_RAMP_SAMPLES)
@@ -300,33 +342,41 @@ def _roofline() -> list[tuple[float, float]]:
     return roof
 
 
-def _canopy_roof_z(y: float) -> float:
-    """Outer roof Z at case-Y ``y`` along the swept roofline (south ramp S-curve → flat ridge),
-    matching ``_roofline`` / ``_smoothstep`` so the funnel mouth anchors to the actual sloped
-    surface above RSW1 rather than to a fixed height."""
+def _canopy_roof_z(y: float, z_ridge: float) -> float:
+    """Outer roof Z at case-Y ``y`` along the swept roofline (south ramp S-curve → flat ridge)
+    for a canopy whose roof sits at ``z_ridge``, matching ``_roofline`` / ``_smoothstep`` so the
+    funnel mouth anchors to the actual sloped surface above RSW1 rather than to a fixed height.
+
+    ``z_ridge`` has NO default on purpose: ``CANOPY_RAMP_TOP_Y`` (81.6) sits inside the ramp,
+    not on the flat roof, so a caller that forgets to pass the per-half ridge silently samples
+    the wrong half's slope — the exact bug this signature is designed to force a fix for."""
     y0, y1 = CANOPY_RAMP_FOOT_Y, CANOPY_RAMP_TOP_Y
-    z0, z1 = CANOPY_FOOT_Z, CANOPY_RIDGE_TOP_Z
+    z0 = CANOPY_FOOT_Z
     if y <= y0:
         return z0
     if y >= y1:
-        return z1
+        return z_ridge
     t = (y - y0) / (y1 - y0)
-    return z0 + (z1 - z0) * (3 * t * t - 2 * t ** 3)
+    return z0 + (z_ridge - z0) * (3 * t * t - 2 * t ** 3)
 
 
-def _reset_poke_hole() -> Part:
+def _reset_poke_hole(z_ridge: float) -> Part:
     """Vertical bore + countersunk funnel cutter over RSW1 (subtracted from the fused canopy).
 
     The bore runs from above the ridge down past the canopy base so it is a clean through-cut
     of the roof (and, for the solid ``hollow=False`` envelope, of the whole block). The funnel
     is a cone widening from the bore radius (``RESET_FUNNEL_DEPTH`` below the surface) to the
     mouth radius at the sloped roof surface, so wherever it crosses the roof it leaves a
-    countersunk mouth; it is capped just above the surface to avoid scalloping the uphill roof."""
+    countersunk mouth; it is capped just above the surface to avoid scalloping the uphill roof.
+
+    RSW1 (case-Y ≈ 70.4) sits ON THE RAMP, not the flat roof, so ``z_ridge`` must be the
+    CALLER's half — the ramp's slope (and therefore the countersink surface) differs between
+    halves now that the ridge is per-half."""
     rx, ry = C.pcb_to_case(*C.SW_RESET_POS)
-    surf_z = _canopy_roof_z(ry)
+    surf_z = _canopy_roof_z(ry, z_ridge)
     r_bore = RESET_POKE_DIA / 2
 
-    z_top = CANOPY_RIDGE_TOP_Z + 1.0            # above everything (removes only air up here)
+    z_top = z_ridge + 1.0                       # above everything (removes only air up here)
     z_bot = CANOPY_FUSE_BASE_Z - 1.0            # below the base → through-cut of the roof
     bore = Solid.make_cylinder(r_bore, z_top - z_bot).translate((rx, ry, z_bot))
 
@@ -345,44 +395,97 @@ def _round_nw_corner(part: Part, x_w: float, y_n: float, r: float, z0: float, z1
     """Round the vertical NW corner (west wall ∩ north wall) to radius ``r`` by boolean —
     subtract the sharp sliver outside the corner arc. Robust where a 3-D ``fillet`` fails
     because it collides with the north round-over. Matches the case's own corner radius at the
-    chamfer-first line the cap sets on."""
-    cx, cy = x_w + r, y_n - r                         # arc centre (13.75, 118.25 for r=3.35)
+    chamfer-first line the cap sets on.
+
+    This was briefly replaced by a flat diagonal chamfer, on the theory that a vertical cylinder
+    is non-tangent to the sloped north-top chamfer above it and so forces OCC to patch the seam
+    with a visible kink. That kink was real but MISATTRIBUTED: it was measured on a body whose
+    west-top shoulder facet was silently missing (``_round_west_top_edges`` had been no-oping —
+    see ``_chamfer_west_top``), so the cylinder was running into a raw square shoulder instead of
+    the drafted facet it is meant to meet. With the west facet actually cut, the round is back —
+    it is the case's own corner language, and the flat mitre was a style regression."""
     h = z1 - z0
     box = cast(Part, Solid.make_box(r, r, h).translate((x_w, y_n - r, z0)))
-    cyl = cast(Part, Solid.make_cylinder(r, h).translate((cx, cy, z0)))
+    cyl = cast(Part, Solid.make_cylinder(r, h).translate((x_w + r, y_n - r, z0)))
     sliver = cast(Part, box - cyl)                    # the sharp corner outside the arc
     return cast(Part, part - sliver)
 
 
-def _round_west_top_edges(part: Part, x_w: float, x_e: float, r: float) -> Part:
-    """CHAMFER the highest WEST + NW top-shoulder edges (roof/ramp ↔ west wall) so the tall
-    west side carries the same drafted-facet style as the case walls (was a round-over — the
-    only rounded shoulder left on an otherwise-chamfered case). Only the west half is touched —
-    the EAST top edge (switch-column boundary) is left sharp on purpose. Done on the SOLID
-    envelope (before hollowing) where there is full material below the cut; the cavity is set
-    in one wall thickness so it never reaches it. Asymmetric (facet-slope) chamfer is tried
-    both ways, then symmetric, then the old fillet as a last resort — never left hard."""
-    x_mid = (x_w + x_e) / 2
-    edges = [e for e in part.edges()
-             if e.center().X < x_mid                          # west half only (east stays sharp)
-             and abs(e.center().X - x_w) < 1.0                # on the west wall line
-             and e.center().Z > C.COVER_TOP_Z + 1.0           # the tall upper shoulder
-             and e.length > 1.0
-             and abs(e.tangent_at(0.5).Z) < 0.9]              # top edges, not the vertical corner
-    if not edges:
-        return part
-    v, h = CANOPY_TOP_CHAMFER_V, CANOPY_TOP_CHAMFER_H
-    for args in ((v, h), (h, v), ((v + h) / 2, None)):
-        try:
-            return cast(Part, chamfer(edges, length=args[0], length2=args[1]))
-        except (ValueError, Standard_Failure, TypeError):
-            continue
-    for radius in (r, 2.0, 1.5, 1.0):
-        try:
-            return cast(Part, fillet(edges, radius=radius))
-        except (ValueError, Standard_Failure):
-            continue
-    return part
+# How far WEST of the wall face the chamfer cutter starts. Purely to avoid a coincident-face
+# boolean at x_w (the cutter's own boundary landing exactly on the wall it cuts); the extra
+# reach reduces to air, so any value > 0 gives the same result.
+_WEST_CHAMFER_PAD = 1.0
+
+
+def _west_chamfer_section(roof: list[tuple[float, float]], k: float, v: float,
+                          z_ceil: float) -> Face:
+    """One loft section for ``_chamfer_west_top``: the Y–Z region ABOVE the roofline pushed DOWN
+    by ``k * v_eff(y)``, closed off at ``z_ceil``.
+
+    ``v_eff`` clamps the vertical leg to the wall's own height above the cover surface, so the
+    facet fades to nothing at the ramp foot where the west wall is only 1 mm tall — without it
+    the cut would eat the fuse overlap between MAIN_RIM_Z and COVER_TOP_Z. The ramp is drawn as
+    a real ``Spline`` through the SAME points as the body's roofline, which is what makes this
+    cutter track the body surface at any ``CANOPY_RAMP_SAMPLES``."""
+    def lower(y: float, z: float) -> tuple[float, float]:
+        v_eff = min(v, max(0.0, z - CANOPY_FOOT_Z))
+        return y, z - k * v_eff
+
+    pts = [lower(y, z) for y, z in roof]
+    y_lo, y_hi = pts[0][0], pts[-1][0]
+    ramp = _dedup([p for p in pts
+                   if CANOPY_RAMP_FOOT_Y - 1e-6 <= p[0] <= CANOPY_RAMP_TOP_Y + 1e-6])
+    after = [p for p in pts if p[0] >= CANOPY_RAMP_TOP_Y - 1e-6]
+    with BuildSketch(_YZ) as sk:
+        with BuildLine():
+            Spline(*ramp, tangents=((1.0, 0.0), (1.0, 0.0)))
+            if len(after) >= 2:
+                Polyline(*after)
+            Line(after[-1], (y_hi, z_ceil))
+            Line((y_hi, z_ceil), (y_lo, z_ceil))
+            Line((y_lo, z_ceil), ramp[0])
+        make_face()
+    return cast(Face, sk.sketch.faces()[0])
+
+
+def _chamfer_west_top(part: Part, x_w: float, z_ridge: float,
+                      chamfer_v: float, chamfer_h: float) -> Part:
+    """Cut the drafted facet on the WEST top shoulder (roof/ramp ↔ west wall) so the tall west
+    side carries the same facet style as the case walls. The EAST top edge (switch-column
+    boundary) is left sharp on purpose. Done on the SOLID envelope, before hollowing, where
+    there is full material below the cut; the cavity is set in one wall thickness so it never
+    reaches it.
+
+    A BOOLEAN, not a 3-D edge chamfer. The previous ``chamfer(edges, ...)`` version silently
+    no-oped: OCC rejects a chamfer on the west cap's top edges once the ramp's ``Spline`` is
+    interpolated through many control points, and every fallback (both asymmetric orders, the
+    symmetric leg, four fillet radii) failed too, so the function returned the part untouched
+    and the facet vanished with no error. Measured: it worked at CANOPY_RAMP_SAMPLES = 9 and at
+    NO tested value from 13 up — i.e. it was a hidden coupling between the ramp's smoothness and
+    the west shoulder's style, which is not a tradeoff worth having.
+
+    Instead: ruled-loft a cutter between two Y–Z sections, one at ``x_w − _WEST_CHAMFER_PAD``
+    pushed down by the full leg and one at ``x_w + chamfer_h`` pushed down by nothing. Ruling
+    linearly in X between them IS the facet plane (drop ``chamfer_v`` per ``chamfer_h`` of run),
+    and because both sections are built from the body's own roofline the cutter follows the
+    surface exactly, at any sample count. ``chamfer_v`` is the VERTICAL leg (down the wall) and
+    ``chamfer_h`` the horizontal one (inboard), matching C.RIM_FACET_DROP / C.RIM_FACET_RUN —
+    the old 3-D call left that assignment up to OCC, which applied it the other way round."""
+    roof = _roofline(z_ridge)
+    z_ceil = z_ridge + 5.0
+    k_west = (_WEST_CHAMFER_PAD + chamfer_h) / chamfer_h
+    sections = [Pos(x_w - _WEST_CHAMFER_PAD, 0, 0) * _west_chamfer_section(
+                    roof, k_west, chamfer_v, z_ceil),
+                Pos(x_w + chamfer_h, 0, 0) * _west_chamfer_section(
+                    roof, 0.0, chamfer_v, z_ceil)]
+    with BuildPart() as bp:
+        loft(sections, ruled=True)
+    assert bp.part is not None
+    out = cast(Part, part - cast(Part, bp.part))
+    # Never leave this shoulder hard SILENTLY — the whole point of replacing the edge chamfer.
+    assert part.volume - out.volume > 1.0, \
+        f"west top shoulder facet removed no material (z_ridge={z_ridge})"
+    return out
 
 
 def build_canopy(hollow: bool = True, side: str = "right") -> Part:
@@ -392,26 +495,28 @@ def build_canopy(hollow: bool = True, side: str = "right") -> Part:
     the body base drops to ``CANOPY_FUSE_BASE_Z`` so it overlaps the cover/walls for a clean
     union. Its −X / +Y walls land at the chamfer FIRST point (``CANOPY_WEST_OUTER_X`` /
     ``CANOPY_NORTH_OUTER_Y``), chamfer EXPOSED; the NW corner is rounded to the case's own
-    corner radius. ``hollow=False`` returns the solid envelope; ``hollow=True`` (default) the
+    corner radius (``CANOPY_CORNER_R``) and the west top shoulder carries a swept drafted facet.
+    ``hollow=False`` returns the solid envelope; ``hollow=True`` (default) the
     printed shell. ``case.build_top_part`` adds the result onto the TOP.
 
-    ``side`` selects the USB port band only (``canopy_usb_z``) — the two halves carry the MCU
-    in opposite orientations, so their jacks sit at different Z. Everything else, the ridge
-    included, is common, so the halves keep an identical silhouette."""
+    ``side`` sets BOTH the ridge height (``canopy_ridge_top_z``) and the USB port band
+    (``canopy_usb_z``) — the two halves carry the MCU in opposite orientations, so their jacks
+    sit at different Z, and the roof now sits only as high as its own half's port needs. The
+    two halves are therefore NOT the same height; only the footprint (X/Y) is common."""
     x_w, x_e = CANOPY_WEST_OUTER_X, CANOPY_EAST_X
     y_n = CANOPY_NORTH_OUTER_Y
-    z_base, z_ridge = CANOPY_FUSE_BASE_Z, CANOPY_RIDGE_TOP_Z
+    z_base, z_ridge = CANOPY_FUSE_BASE_Z, canopy_ridge_top_z(side)
     w_roof, w_side = CANOPY_ROOF_WALL, CANOPY_SIDE_WALL
+    chamfer_v, chamfer_h = canopy_top_chamfer(side)
 
     ramp_span = (CANOPY_RAMP_FOOT_Y, CANOPY_RAMP_TOP_Y)
-    roof = _roofline()
+    roof = _roofline(z_ridge)
     body = _yz_prism(roof, z_base=z_base, x_lo=x_w, x_width=x_e - x_w,
-                     chamfers_2d=[(y_n, z_ridge,
-                                   CANOPY_TOP_CHAMFER_V, CANOPY_TOP_CHAMFER_H)],
+                     chamfers_2d=[(y_n, z_ridge, chamfer_v, chamfer_h)],
                      spline_range=ramp_span)
     body = _round_nw_corner(body, x_w, y_n, CANOPY_CORNER_R, z_base - 0.1, z_ridge + 0.1)
-    # Round the tall west + NW top shoulder (east left sharp) on the solid, before hollowing.
-    body = _round_west_top_edges(body, x_w, x_e, CANOPY_WEST_ROUND_R)
+    # Facet the tall west top shoulder (east left sharp) on the solid, before hollowing.
+    body = _chamfer_west_top(body, x_w, z_ridge, chamfer_v, chamfer_h)
     shell = body
 
     if hollow:
@@ -434,7 +539,7 @@ def build_canopy(hollow: bool = True, side: str = "right") -> Part:
     shell = cast(Part, shell - usb_port_cutter(side))
 
     # Reset poke-hole: vertical bore + funnel down through the roof over RSW1.
-    shell = cast(Part, shell - _reset_poke_hole())
+    shell = cast(Part, shell - _reset_poke_hole(z_ridge))
 
     return cast(Part, shell)
 

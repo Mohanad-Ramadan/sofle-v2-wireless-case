@@ -80,7 +80,8 @@ TOP and hoods the whole MCU, with the USB-C port punched through its north wall.
 
 | Z (mm) | Boundary                          | Source                  |
 |-------:|-----------------------------------|-------------------------|
-|  26.98 | canopy ridge (roof top)           | `CANOPY_RIDGE_TOP_Z`    |
+|  26.98 | canopy ridge (roof top) — **right/neutral only** | `canopy_ridge_top_z("right")` |
+|  24.22 | canopy ridge (roof top) — **left/flipped only**  | `canopy_ridge_top_z("left")`  |
 |  25.48 | USB overmold pocket top (neutral) | `canopy_usb_om_z`       |
 |  23.56 | USB-C jack top — **neutral only** | `USB_JACK_NEUTRAL_HI_Z` |
 |   21.4 | nice!nano board top (both)        | `MCU_PCB_TOP_Z`         |
@@ -145,19 +146,40 @@ degrades a mouth to a stadium rather than failing.
 > insertion depth. It is anchored on shipping hardware, which runs 0.8–2.0 mm of wall in
 > front of the receptacle, i.e. 4.6–5.8 mm of engagement.
 
-The **ridge is common to both halves** at 26.98, now the larger of two constraints:
+#### The ridge is derived PER HALF, not shared
 
-- the physical stack, `max(USB_JACK_NEUTRAL_HI_Z, MCU_PCB_TOP_Z) + 0.6 clear + 1.5 roof`
-  = 25.66. The `max` matters: on the flipped half the board (21.4) is taller than its jack
-  (20.8), so a jack-only derivation would sink the roof 0.6 mm into the board.
-- the **overmold pocket**, `pocket top + CANOPY_NORTH_ROUND_R + CANOPY_USB_OM_ROOF_MIN`
-  = 25.48 + 1.0 + 0.5 = **26.98**, which wins.
+`canopy_ridge_top_z(side)` is the larger of two constraints, both evaluated against THIS
+half's own jack/pocket Z:
 
-That second term is why `CANOPY_NORTH_ROUND_R` dropped 2.5 → 1.0: the north wall's top
-round-over eats material from `ridge − R` downward, so a 2.5 mm shoulder would have forced
-the ridge to 28.48 to keep the 7 mm pocket buried. Trading shoulder radius for 1.5 mm of
-height is the cheaper side of that deal. The left half could safely drop to 24.22, but a
-common ridge keeps the halves' silhouettes identical.
+- the physical stack, `max(usb_jack_z(side)[1], MCU_PCB_TOP_Z) + 0.6 clear + 1.5 roof`.
+  On the flipped half the board (21.4) is taller than its OWN jack (20.8), so a jack-only
+  derivation would sink the roof into the board — the `max` guards that per half, not just
+  on one side.
+- the **overmold pocket**, `pocket_top(side) + CANOPY_NORTH_ROUND_R + CANOPY_USB_OM_ROOF_MIN`.
+
+```
+right (neutral)  25.66 stack  vs  25.48 + 1.0 + 0.5 = 26.98 pocket  ->  ridge 26.98
+left  (flipped)  23.50 stack  vs  22.72 + 1.0 + 0.5 = 24.22 pocket  ->  ridge 24.22
+```
+
+Both halves land at the SAME offsets from their own port — `ridge − pocket_top = 1.50` and
+`ridge − window_top = 2.72` on both — which is the actual goal: each half carries only as
+much roof material as its own port needs, not a shared worst-case. A common ridge (the
+previous design) forced the flipped half to sit under the NEUTRAL half's larger offset,
+burying its lower port under 2.76 mm of dead air above the roof.
+
+`CANOPY_RIDGE_TOP_Z` still exists as a module constant — `max(canopy_ridge_top_z(s) for s in
+("left","right"))`, i.e. always 26.98, the taller half. It survives only because ONE caller
+(`case._slide_scoop`) uses it purely as a cut ceiling that removes air above the roof, where
+over-reaching on the shorter half is harmless. Every other consumer must call
+`canopy_ridge_top_z(side)` directly — the alias is a trap for anything that actually cares
+which half it's building.
+
+`CANOPY_NORTH_ROUND_R` dropped 2.5 → 1.0 earlier (part of the stepped-bore work): the north
+wall's top round-over eats material from `ridge − R` downward, so a 2.5 mm shoulder would
+have forced a taller ridge just to keep the 7 mm pocket buried under it. That trade is
+unaffected by going per-half — it just means BOTH halves' ridges are now cheaper than they
+would otherwise be, not just the shared one.
 
 The port is cut **twice** — once in `build_canopy`, again in `build_top_part` after the
 cover is fused on. That second cut used to be load-bearing: under the old 4.0 mm jack
@@ -165,6 +187,106 @@ model the flipped window floor was 15.6, below `COVER_TOP_Z` (16.0), so the cove
 backfilled the bottom of the window. The mid-mount correction lifted that floor to 16.84,
 clear of the cover — the second cut is now belt-and-braces, kept because it is idempotent
 and cheap.
+
+#### The ramp spline used to overshoot its own target curve
+
+The ramp's Y–Z profile is a `Spline` through `CANOPY_RAMP_SAMPLES` points sampled from the
+analytic smoothstep, with a forced horizontal tangent at both ends (so it merges into the
+cover and the roof with no visible crease). At the historical `CANOPY_RAMP_SAMPLES = 9`, the
+interpolated B-spline RANG around that target curve — measured on the fused TOP, up to
+**+0.15 mm above and −0.08 mm below** the intended surface, concentrated right where the
+ramp flattens into the roof (three sign flips in a ~5 mm span). It was still monotonic, so
+the existing smoothness test missed it — monotonicity and flatness are different claims.
+
+`CANOPY_RAMP_SAMPLES` is now **25**. Densifying the interpolation is what damps the ring —
+measured on the built west-top ramp edge against the analytic smoothstep:
+
+| samples | right half | left half |
+|---|---|---|
+| 9 | 0.1426 mm | 0.0865 mm |
+| 15 | 0.0731 mm | 0.0400 mm |
+| **25** | **0.0318 mm** | **0.0164 mm** |
+| 51 | 0.0086 mm | 0.0043 mm |
+
+Roughly 4× less deviation per 2× the samples, and still converging at 51 — an earlier note in
+this file claimed a fixed 0.018 mm floor with zero sign flips above 49 samples; re-measurement
+supports neither half of that (sign flips persist, 4 of them at 51).
+
+**But deviation is the wrong thing to optimise past this point, and it briefly was.** This was
+set to 51 and that detonated the mesh:
+
+| samples | prism triangles | right TOP STL |
+|---|---|---|
+| 9 | 28,482 | 2.5 MB |
+| 15 | 26,988 | — |
+| **25** | **39,150** | **3.9 MB** |
+| 41 | 216,264 | — |
+| 51 | 396,620 | **39.9 MB** |
+
+OCC meshes by **curvature** (angular tolerance), not by deviation. A denser interpolating spline
+trades deviation for high-frequency curvature wiggle — the measured max |d²z/dy²| is *worse* at
+15–51 (4.5–10.3) than at 9 (1.0), even as the deviation falls. So past ~25 the triangle count
+goes up an order of magnitude to buy flatness that is already an order of magnitude below a
+0.2 mm layer line. 51 bought 0.023 mm of invisible smoothness for 10× the STL.
+
+The left half never blows up: its ramp is 2.76 mm shorter, so its curvature stays mild
+(136k triangles at both 25 and 51). This is a **right-half** failure mode — measure that half.
+
+`test_canopy_ramp_mesh_does_not_detonate` now bounds the canopy's triangle count. Nothing caught
+the 51 regression, because every geometric assertion was satisfied: the shape was right and only
+the mesh was absurd. 25 is a ceiling, not a target.
+
+#### Densifying the ramp spline silently deleted the west shoulder's facet
+
+Raising `CANOPY_RAMP_SAMPLES` (above) had a side effect nothing caught: it broke
+`_round_west_top_edges`. That function chamfered the west wall's top-edge run with a 3-D
+`chamfer()`, and OCC rejects a chamfer on the west cap face once the ramp `Spline` is
+interpolated through more than ~9 control points. Every fallback failed too — both asymmetric
+leg orders, the symmetric leg, and four fillet radii — and the function's last line was
+`return part`. So it handed back an unchamfered solid with no error, and the whole west
+shoulder went square.
+
+Measured across sample counts, on the selected edge set:
+
+| `CANOPY_RAMP_SAMPLES` | intended `chamfer(2.4, 1.2)` | any fallback | facet volume removed |
+|---|---|---|---|
+| 9 | works | — | 92.1 mm³ |
+| 13, 21 | fails | all fail | **0.0 mm³** |
+| 33, 41, 49 | fails | works only at the *shorter* half's ridge | partial |
+| 51 (shipped) | fails | all fail | **0.0 mm³** |
+
+The per-half ridge made it worse rather than causing it: at the shorter half's 25.66 ridge some
+fallback still rescued the cut, but at the taller half's 26.98 nothing did.
+
+The facet is now cut by `_chamfer_west_top`, a **swept boolean** instead of an edge op. It
+ruled-lofts a cutter between two Y–Z sections — one at `x_w − 1` pushed down by the full
+vertical leg, one at `x_w + chamfer_h` pushed down by nothing — so ruling linearly in X *is* the
+facet plane (drop `chamfer_v` per `chamfer_h` of run). Both sections are built from the body's
+own roofline, so the cutter tracks the surface at **any** sample count: verified landing at 9,
+13, 21, 51 and 81. Two side benefits: the leg assignment is now explicit (`chamfer_v` vertical,
+`chamfer_h` inboard, matching `RIM_FACET_DROP`/`RIM_FACET_RUN` — the old 3-D call left it to OCC,
+which applied it the other way round), and the cutter's vertical leg fades to zero at the ramp
+foot, where the west wall is only 1 mm tall, so it can never bite into the fuse overlap.
+
+`_chamfer_west_top` **asserts** that it removed material. The silent `return part` is what let
+this ship; a no-op there is now a hard failure.
+
+#### The NW corner kink was the missing facet, not the round
+
+`_round_nw_corner` cuts a VERTICAL CYLINDER at the NW corner (west wall ∩ north wall), full
+height, to the case's own corner radius. That was briefly replaced by a flat diagonal chamfer,
+on the theory that a cylinder is only tangent to VERTICAL walls and so is non-tangent to the
+SLOPED north-top chamfer above it — OCC was observed closing the seam with unrelated CONE and
+BSPLINE patches, measured up to **64.7°** between adjacent faces: a visible kink, not a blend.
+
+The kink was real but **misattributed**. It was measured on a body whose west top shoulder facet
+was silently missing (above), so the cylinder was running into a raw square shoulder instead of
+the drafted facet it is designed to meet. With the facet actually cut, the corner resolves to
+**exactly one `CYLINDER` face** on both halves — no CONE, no BSPLINE, no kink. The round is
+therefore back; the flat mitre was a style regression bought with a misdiagnosis.
+
+`test_canopy_nw_corner_is_rounded` now pins `kinds == ["CYLINDER"]`, so a regression to the
+patched-seam state fails loudly instead of being argued about.
 
 ---
 
