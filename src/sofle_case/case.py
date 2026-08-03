@@ -225,22 +225,38 @@ def _below_seam_cutter() -> Part:
     The edge profile is drawn once in the Y-Z plane and extruded along X, so every wall gets
     the same handover with no per-wall special casing — it is a function of Y alone.
 
-    Three stretches, south to north: riding the tent plane; a SPLINE sweeping up off it; then
-    Z=0. The spline is given the tent plane's slope as its start tangent and horizontal as its
-    end tangent, so it leaves the desk and arrives at Z=0 tangentially — swept, not kinked."""
+    Three stretches, south to north: running parallel to the tent plane; a SPLINE sweeping up
+    off it; then Z=0. The spline is given the tent plane's slope as its start tangent and
+    horizontal as its end tangent, so it leaves the desk and arrives at Z=0 tangentially —
+    swept, not kinked.
+
+    The southern run is offset ``TENT_SKIRT_LIFT`` ABOVE the plane rather than lying on it, so
+    the skin floats clear of the desk and a band of bottom case shows beneath it. Offsetting
+    the whole profile (spline start included) keeps the tangency: the run is still parallel to
+    the plane, so the sweep still leaves it without a kink."""
     y1, y2 = C.TENT_SEAM_Y1, C.TENT_SEAM_Y2
-    z1 = tent_ground_z(y1)
+    lift = C.TENT_SKIRT_LIFT
+    z1 = tent_ground_z(y1) + lift
     slope = -math.tan(math.radians(C.TENT_ANGLE_DEG))
     y_s, y_n = -20.0, C.OUTER_DEPTH + 60.0
+    z_s = tent_ground_z(y_s) + lift
     bot = wedge_deep_z() - 20.0
     with BuildSketch(Plane.YZ) as sk:            # sketch u -> case Y, sketch v -> case Z
         with BuildLine():
-            Line((y_s, tent_ground_z(y_s)), (y1, z1))
+            # The cutter starts 20 mm south of the case, by which point the LIFTED plane has
+            # risen above Z=0. Hold the profile at Z=0 until it drops back under: the cutter
+            # must never reach above Z=0 anywhere, or it eats the tub proper, not the skirt.
+            # (Purely a guard on the overhang — the case itself starts at y=0.)
+            if z_s > 0.0:
+                Line((y_s, 0.0), (y_s - z_s / slope, 0.0))
+                Line((y_s - z_s / slope, 0.0), (y1, z1))
+            else:
+                Line((y_s, z_s), (y1, z1))
             Spline((y1, z1), (y2, 0.0), tangents=((1.0, slope), (1.0, 0.0)))
             Line((y2, 0.0), (y_n, 0.0))
             Line((y_n, 0.0), (y_n, bot))
             Line((y_n, bot), (y_s, bot))
-            Line((y_s, bot), (y_s, tent_ground_z(y_s)))
+            Line((y_s, bot), (y_s, min(0.0, z_s)))   # back to wherever the run actually started
         make_face()
     # Extrude the LOCATED face functionally, along its own +X normal. Doing it via
     # `add(sketch)` inside a BuildPart instead loses the plane association and extrudes along
@@ -251,12 +267,15 @@ def _below_seam_cutter() -> Part:
 
 
 def skirt_extension() -> Part:
-    """The TOP case's skin carried on below Z=0, down to the desk over the southern stretch.
+    """The TOP case's skin carried on below Z=0, down toward the desk over the southern stretch.
 
     Only the outer ``SEAM_SKIN`` band — the same ring the tub's wall already is below the
     rabbet ledge — so it descends OUTBOARD of the wedge (which is inset SEAM_SKIN +
-    SEAM_FIT_CLEAR) and the two never meet. Bounded below by the tent plane and above by the
-    seam profile, which is what makes it die away to nothing by ``TENT_SEAM_Y2``.
+    SEAM_FIT_CLEAR) and the two never meet. Bounded above by Z=0 and below by the seam
+    profile, which is what makes it die away to nothing by ``TENT_SEAM_Y2``.
+
+    It stops ``TENT_SKIRT_LIFT`` short of the tent plane rather than landing on it, so the
+    wedge alone carries the ground contact and a reveal of bottom case shows under the skin.
 
     Adds no height: it fills space that already existed between Z=0 and the tent plane."""
     outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
@@ -275,7 +294,7 @@ def _lead_in_relief(z_bot: float) -> Part:
     """Cutter that widens the channel mouth so the bottom case can find it.
 
     Where the skin descends past the wedge the two form a channel with only ``SEAM_FIT_CLEAR``
-    (0.2 mm) between them, and its mouth is at the SEAM — down on the desk over the southern
+    (0.2 mm) between them, and its mouth is at the SEAM — just above the desk over the southern
     stretch, not at Z=0. ``_chamfer_pocket_mouth``'s Z=0 starter is buried inboard there and
     does nothing, so without this the bottom case has to arrive within 0.2 mm to start.
 

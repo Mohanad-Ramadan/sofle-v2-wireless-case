@@ -77,8 +77,8 @@ def test_top_case_is_untouched_above_z0():
     unmoved. The ceiling is still the canopy ridge, and every facet, the rabbet and the
     membrane sit where they were.
 
-    Below Z=0 the tub DOES now change — it carries the skin extension that lands on the desk
-    over the southern stretch (see test_seam.py). That is additive too, and costs no height."""
+    Below Z=0 the tub DOES now change — it carries the skin extension that runs just above the
+    desk over the southern stretch (see test_seam.py). That is additive too, and costs no height."""
     for side in ("right", "left"):
         bb = build_top_part(side).bounding_box()
         assert abs(bb.max.Z - CANOPY_RIDGE_TOP_Z) < 0.01, f"{side}: tub ceiling moved"

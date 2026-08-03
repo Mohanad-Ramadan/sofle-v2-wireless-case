@@ -56,15 +56,17 @@ def test_split_parts_are_valid_single_solids(side):
 def test_top_part_z_range(side):
     """TOP is a deep tub whose outer skin runs unbroken to the ground — no mid-wall seam.
 
-    'The ground' is no longer Z=0 over the southern stretch: the skin carries on down and
-    lands on the tent plane there, so the front reads as one piece and the bottom wedge only
-    shows further north. Its deepest point is therefore the desk at TENT_SEAM_Y1. Above Z=0
-    nothing moved — the ceiling is still the fused bay-canopy ridge."""
+    'The ground' is no longer Z=0 over the southern stretch: the skin carries on down to
+    TENT_SKIRT_LIFT above the tent plane there, so the front reads as one piece over a thin
+    reveal and the bottom wedge only shows properly further north. Its deepest point is
+    therefore that lifted run at TENT_SEAM_Y1. Above Z=0 nothing moved — the ceiling is still
+    the fused bay-canopy ridge."""
     from sofle_case import canopy as CAN
     from sofle_case.case import tent_ground_z
+    want = tent_ground_z(C.TENT_SEAM_Y1) + C.TENT_SKIRT_LIFT
     bb = build_top_part(side).bounding_box()
-    assert abs(bb.min.Z - tent_ground_z(C.TENT_SEAM_Y1)) < 0.05, \
-        f"tub floor at {bb.min.Z:.3f}, expected the desk at y1 {tent_ground_z(C.TENT_SEAM_Y1):.3f}"
+    assert abs(bb.min.Z - want) < 0.05, \
+        f"tub floor at {bb.min.Z:.3f}, expected the lifted run at y1 {want:.3f}"
     assert abs(bb.max.Z - CAN.CANOPY_RIDGE_TOP_Z) < 0.01
 
 

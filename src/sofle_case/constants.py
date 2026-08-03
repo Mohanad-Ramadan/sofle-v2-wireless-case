@@ -204,14 +204,14 @@ assert COVER_TOP_Z - FRONT_FACET_DROP >= SEAM_LEDGE_Z + 1.0, "front facet toe in
 #   * the front foot seats are FOOT_DEPTH deep, and at y=22 a zero-min wedge is only 0.77 mm
 #     thick, so a 0.6 mm seat would leave 0.17 mm of floor under the pad;
 #   * the reference keeps a visible band of bottom case at the front too.
-TENT_ANGLE_DEG   = 2.0   # deg; typing angle the wedge stands the case at
+TENT_ANGLE_DEG   = 3.0   # deg; typing angle the wedge stands the case at
 TENT_WEDGE_MIN_H = 1.0   # mm; wedge thickness at the south (the thin end)
 
 # ---- Where the two cases hand over: the visible parting line ----
 # Like the reference, the TOP case does not stop at Z=0 all the way round. Over the southern
-# stretch its skin carries on down and lands on the desk, so the front of the keyboard reads
-# as one unbroken piece and no bottom case shows there at all. Further north the skin stops at
-# Z=0 as before and the bottom wedge is exposed beneath it.
+# stretch its skin carries on down to just above the desk, so the front of the keyboard reads
+# as one piece over a narrow reveal of bottom case (TENT_SKIRT_LIFT, below). Further north the
+# skin stops at Z=0 as before and the whole bottom wedge is exposed beneath it.
 #
 # Seen from the side with the case standing, that gives the reference's profile exactly: flat
 # along the desk at the front, a sweep up, then a long run that rises at the tilt angle. That
@@ -222,17 +222,44 @@ TENT_WEDGE_MIN_H = 1.0   # mm; wedge thickness at the south (the thin end)
 # the tent plane, so the envelope is unchanged.
 #
 # The two joins are swept, not kinked (TENT_SEAM_RAMP_FRAC controls how drawn-out): the profile
-# leaves the desk tangentially and arrives at Z=0 tangentially.
-# TENT_SEAM_SOUTH_FRAC is THE dial for this: 0.0 = the skin touches down only at the very
-# front edge, 1.0 = it would ride the desk the whole way. Both ends of that range are accepted
+# leaves the desk-parallel run tangentially and arrives at Z=0 tangentially.
+# TENT_SEAM_SOUTH_FRAC is THE dial for this: 0.0 = the skin comes down only at the very
+# front edge, 1.0 = it would run the whole way. Both ends of that range are accepted
 # in principle, but the usable ceiling is lower in practice -- the sweep has to finish before
 # the +Y relief bump (see the TENT_SEAM_Y2 guard, which computes the ceiling and reports it).
-TENT_SEAM_SOUTH_FRAC = 0.50   # fraction of depth where the top case rides the desk
-TENT_SEAM_RAMP_FRAC  = 0.10   # fraction of depth the sweep takes to climb back to Z=0
+TENT_SEAM_SOUTH_FRAC = 0.40   # fraction of depth where the top case rides the desk
+TENT_SEAM_RAMP_FRAC  = 0.07   # fraction of depth the sweep takes to climb back to Z=0
+
+# ---- How far the skirt stops SHORT of the desk: the reveal ----
+# TENT_SEAM_SOUTH_FRAC dials the skirt's LENGTH (how far north it reaches). This dials its
+# DEPTH: the whole bottom edge lifts by TENT_SKIRT_LIFT, so instead of landing on the tent
+# plane the skin floats above it and a band of bottom case shows underneath. That band IS
+# this number at the south, widening northward as the sweep climbs away from the plane.
+#
+# It is not only cosmetic. At 0.0 the skirt's underside is COPLANAR with the wedge's ground
+# face, so two separately-printed parts share the desk contact and whichever comes out proud
+# decides how the keyboard sits. Lifting the skirt hands ground contact back to the wedge
+# alone -- the part that ground_face() chamfers and that the foot seats are cut into.
+#
+# Costs no height either way: the skirt only ever fills space between Z=0 and the tent plane.
+#
+# The ceiling is TENT_WEDGE_MIN_H -- lift the skirt that far and its bottom edge reaches Z=0
+# at the south, i.e. there is no skirt left there at all. TENT_SKIRT_LIFT_MAX backs off far
+# enough to keep a real band of skin rather than a feather edge. To show MORE bottom case at
+# the front than that allows, the wedge itself has to get thicker at the south
+# (TENT_WEDGE_MIN_H), and that one does cost height, 1:1.
+TENT_SKIRT_LIFT = 0.5   # mm; bottom case visible below the skin at the front
 
 assert 0.0 <= TENT_SEAM_SOUTH_FRAC <= 1.0, (
     f"TENT_SEAM_SOUTH_FRAC must be a fraction of the depth, 0.0-1.0; got {TENT_SEAM_SOUTH_FRAC}")
 assert TENT_SEAM_RAMP_FRAC > 0.0, "the sweep needs a non-zero run"
+
+TENT_SKIRT_MIN_H = 0.3   # mm; skin that must survive at the south so the skirt is not a feather edge
+TENT_SKIRT_LIFT_MAX = TENT_WEDGE_MIN_H - TENT_SKIRT_MIN_H
+assert 0.0 <= TENT_SKIRT_LIFT <= TENT_SKIRT_LIFT_MAX, (
+    f"TENT_SKIRT_LIFT={TENT_SKIRT_LIFT} leaves {TENT_WEDGE_MIN_H - TENT_SKIRT_LIFT:.2f} mm of skirt "
+    f"at the south; with TENT_WEDGE_MIN_H={TENT_WEDGE_MIN_H} the ceiling is "
+    f"{TENT_SKIRT_LIFT_MAX:.2f} — lower the lift, or thicken the wedge's thin end (which costs height)")
 
 assert 0.0 < TENT_ANGLE_DEG <= 5.0, "TENT_ANGLE_DEG outside the sane 0-5 deg range"
 # The rest of the guards need OUTER_DEPTH and FOOT_DEPTH, both defined further down; they sit
