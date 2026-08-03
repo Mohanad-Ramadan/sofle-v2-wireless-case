@@ -203,31 +203,20 @@ def test_canopy_is_hollow_shell():
     assert build_canopy().volume < build_canopy(hollow=False).volume
 
 
-def test_reset_poke_hole_open():
-    """A vertical poke bore pierces the canopy roof directly above RSW1, the roof stays solid
-    just beside it, and the countersunk funnel widens the mouth at the surface."""
-    c = build_canopy()
-    rx, ry = C.pcb_to_case(*C.SW_RESET_POS)
-    surf_z = CAN._canopy_roof_z(ry, CAN.canopy_ridge_top_z("right"))
-    z_in_roof = surf_z - 0.75                      # inside the roof shell, on the bore axis
-    assert not _solid_at(c, rx, ry, z_in_roof), "reset poke bore is blocked"
-    beside = CAN.RESET_POKE_DIA / 2 + 1.5
-    assert _solid_at(c, rx + beside, ry, z_in_roof), "roof missing beside the poke bore"
-    # Funnel: material is removed out to near the mouth radius just below the surface,
-    # wider than the plain bore would reach.
-    mouth = CAN.RESET_FUNNEL_MOUTH_DIA / 2
-    assert not _solid_at(c, rx + mouth - 0.7, ry, surf_z - 0.2), "funnel mouth not widened"
-
-
 @pytest.mark.parametrize("side", ["right", "left"])
-def test_reset_poke_hole_open_in_fused_top(side):
-    """The poke-hole survives fusion into the TOP part (not backfilled by cover/walls)."""
-    top = build_top_part(side)
+def test_canopy_roof_is_unbroken_over_rsw1(side):
+    """No reset poke-hole — the roof over RSW1 is solid, on both halves and after the fuse.
+
+    Removed deliberately rather than relocated: a bore up through the BOTTOM part would end in
+    the gap under the PCB (at PCB_SEAT_Z, no PCB hole at RSW1), reaching the board and not the
+    button. Reset is by opening the case or the nice!nano's double-tap over USB-C."""
     rx, ry = C.pcb_to_case(*C.SW_RESET_POS)
-    if side == "left":
-        rx = C.OUTER_WIDTH - rx
     surf_z = CAN._canopy_roof_z(ry, CAN.canopy_ridge_top_z(side))
-    assert not _solid_at(top, rx, ry, surf_z - 0.75), f"{side} TOP reset bore blocked"
+    assert _solid_at(build_canopy(side=side), rx, ry, surf_z - 0.75), \
+        f"{side} canopy roof pierced over RSW1"
+    top_rx = C.OUTER_WIDTH - rx if side == "left" else rx
+    assert _solid_at(build_top_part(side), top_rx, ry, surf_z - 0.75), \
+        f"{side} TOP roof pierced over RSW1"
 
 
 @pytest.mark.parametrize("side", ["right", "left"])

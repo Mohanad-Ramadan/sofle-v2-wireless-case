@@ -23,10 +23,10 @@ X width (case Y, south → north):
              ~0.4 mm short of the wall's inner face, see C.USB_JACK_Y_PROTRUDE).
   • East   — plain vertical wall on the switch-column boundary.
 
-  • Reset  — a vertical Ø``RESET_POKE_DIA`` poke-hole is bored straight down through the roof
-             directly above RSW1 (top-mounted, ~16 mm inboard — a side hole can't reach it),
-             with a countersunk funnel mouth so a reset tool self-guides in. It breaks into the
-             open bay under the roof; the tool travels the rest of the way to the button.
+There is deliberately NO reset poke-hole. The roof over RSW1 is unbroken: a bore there could not
+be relocated into the BOTTOM part (it would end at the PCB underside, Z=PCB_SEAT_Z, not at the
+button), so the feature was dropped rather than moved. Reset means opening the case, or the
+nice!nano's double-tap over the USB-C port.
 
 Tangent curves are 2-D profile splines/fillets on the swept cross-section (robust), not
 fragile 3-D solid fillets. The slide finger-bowl (over on the −X wall) is handled in ``tray``
@@ -233,14 +233,6 @@ def canopy_top_chamfer(side: str) -> tuple[float, float]:
     assert v > 0.5, f"USB port leaves no room for the canopy roof chamfer ({side})"
     return v, h
 
-# Reset poke-hole: a vertical bore straight down through the canopy roof directly above RSW1,
-# with a countersunk funnel mouth on the roof surface so a reset tool self-guides in. The bore
-# breaks into the open bay under the roof (RSW1 sits in the plate's open notch, no membrane
-# above it), so the tool reaches the button through the bay.
-RESET_POKE_DIA         = 1.75  # mm; reset-pin bore (bumped from 1.0 for an easier target)
-RESET_FUNNEL_MOUTH_DIA = 2.75  # mm; lead-in mouth scaled to the wider bore (~0.75 mm/side chamfer)
-RESET_FUNNEL_DEPTH     = 1.2   # mm; lead-in depth below the surface (mouth → bore)
-
 
 def _smoothstep(y0: float, z0: float, y1: float, z1: float, n: int) -> list[tuple[float, float]]:
     """Interior points of a cubic smoothstep (3t²−2t³) from (y0,z0) to (y1,z1).
@@ -358,37 +350,6 @@ def _canopy_roof_z(y: float, z_ridge: float) -> float:
         return z_ridge
     t = (y - y0) / (y1 - y0)
     return z0 + (z_ridge - z0) * (3 * t * t - 2 * t ** 3)
-
-
-def _reset_poke_hole(z_ridge: float) -> Part:
-    """Vertical bore + countersunk funnel cutter over RSW1 (subtracted from the fused canopy).
-
-    The bore runs from above the ridge down past the canopy base so it is a clean through-cut
-    of the roof (and, for the solid ``hollow=False`` envelope, of the whole block). The funnel
-    is a cone widening from the bore radius (``RESET_FUNNEL_DEPTH`` below the surface) to the
-    mouth radius at the sloped roof surface, so wherever it crosses the roof it leaves a
-    countersunk mouth; it is capped just above the surface to avoid scalloping the uphill roof.
-
-    RSW1 (case-Y ≈ 70.4) sits ON THE RAMP, not the flat roof, so ``z_ridge`` must be the
-    CALLER's half — the ramp's slope (and therefore the countersink surface) differs between
-    halves now that the ridge is per-half."""
-    rx, ry = C.pcb_to_case(*C.SW_RESET_POS)
-    surf_z = _canopy_roof_z(ry, z_ridge)
-    r_bore = RESET_POKE_DIA / 2
-
-    z_top = z_ridge + 1.0                       # above everything (removes only air up here)
-    z_bot = CANOPY_FUSE_BASE_Z - 1.0            # below the base → through-cut of the roof
-    bore = Solid.make_cylinder(r_bore, z_top - z_bot).translate((rx, ry, z_bot))
-
-    r_mouth = RESET_FUNNEL_MOUTH_DIA / 2
-    grow = (r_mouth - r_bore) / RESET_FUNNEL_DEPTH   # radius growth per mm of depth
-    cone_bot_z = surf_z - RESET_FUNNEL_DEPTH         # bore radius here
-    cone_top_z = surf_z + 1.0                        # r_mouth reached at the surface, opens a touch above
-    cone_h = cone_top_z - cone_bot_z
-    r_cone_top = r_bore + grow * cone_h
-    funnel = Solid.make_cone(r_bore, r_cone_top, cone_h).translate((rx, ry, cone_bot_z))
-
-    return cast(Part, bore + funnel)
 
 
 def _round_nw_corner(part: Part, x_w: float, y_n: float, r: float, z0: float, z1: float) -> Part:
@@ -537,9 +498,6 @@ def build_canopy(hollow: bool = True, side: str = "right") -> Part:
     # Band is per-half — see canopy_usb_z. Cut again post-fuse in build_top_part; see
     # usb_port_cutter for why.
     shell = cast(Part, shell - usb_port_cutter(side))
-
-    # Reset poke-hole: vertical bore + funnel down through the roof over RSW1.
-    shell = cast(Part, shell - _reset_poke_hole(z_ridge))
 
     return cast(Part, shell)
 
