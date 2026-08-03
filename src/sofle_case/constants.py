@@ -227,8 +227,8 @@ TENT_WEDGE_MIN_H = 1.0   # mm; wedge thickness at the south (the thin end)
 # front edge, 1.0 = it would run the whole way. Both ends of that range are accepted
 # in principle, but the usable ceiling is lower in practice -- the sweep has to finish before
 # the +Y relief bump (see the TENT_SEAM_Y2 guard, which computes the ceiling and reports it).
-TENT_SEAM_SOUTH_FRAC = 0.40   # fraction of depth where the top case rides the desk
-TENT_SEAM_RAMP_FRAC  = 0.07   # fraction of depth the sweep takes to climb back to Z=0
+TENT_SEAM_SOUTH_FRAC = 0.50   # fraction of depth where the top case rides the desk
+TENT_SEAM_RAMP_FRAC  = 0.15   # fraction of depth the sweep takes to climb back to Z=0
 
 # ---- How far the skirt stops SHORT of the desk: the reveal ----
 # TENT_SEAM_SOUTH_FRAC dials the skirt's LENGTH (how far north it reaches). This dials its
@@ -260,6 +260,46 @@ assert 0.0 <= TENT_SKIRT_LIFT <= TENT_SKIRT_LIFT_MAX, (
     f"TENT_SKIRT_LIFT={TENT_SKIRT_LIFT} leaves {TENT_WEDGE_MIN_H - TENT_SKIRT_LIFT:.2f} mm of skirt "
     f"at the south; with TENT_WEDGE_MIN_H={TENT_WEDGE_MIN_H} the ceiling is "
     f"{TENT_SKIRT_LIFT_MAX:.2f} — lower the lift, or thicken the wedge's thin end (which costs height)")
+
+# ---- How high the parting line rides NORTH of the sweep: the riser ----
+# North of TENT_SEAM_Y2 the parting line has always sat flat at Z=0, so the visible band of
+# bottom case there is exactly the wedge: 4.1 mm at the sweep, 7.6 mm at the back. This dial
+# lifts that line off Z=0 and up the wall, so more of the bottom case shows at the north.
+#
+# ONLY THE TUB IS CUT BACK. The bottom part's XY is untouched — plate and wedge keep the rim
+# profile they always had, inset SEAM_SKIN + SEAM_FIT_CLEAR (2.2 mm) behind the skin. So the
+# band this exposes is a RECESS, not a flush face: a 2.2 mm deep shadow reveal running the
+# north of the case, getting taller as the dial climbs. Growing the bottom out to meet the skin
+# instead was tried and rejected — it makes the bottom chase the tub's real footprint (the +Y
+# relief bump and its fillet), and it changes the bottom's outline, which is not wanted.
+#
+# Expressed as a FRACTION of the bottom case's own top (SEAM_LEDGE_Z, the plate-rim top),
+# because that is the real travel: at 1.0 the parting line lands exactly on the ledge and there
+# is no tub skin left below it on that stretch. Costs no height — the line moves up an existing
+# wall, it does not make the wall taller.
+#
+#   frac   rise    recess at the sweep   at the back    rabbet lap left (north)
+#   0.00   0.00           4.10 mm          7.60 mm            6.30 mm   (as before)
+#   0.50   3.15           7.25 mm         10.75 mm            3.15 mm
+#   1.00   6.30          10.40 mm         13.90 mm            0.00 mm
+#
+# THE TOP OF THE RANGE GIVES UP THE NORTHERN RABBET, DELIBERATELY. The tub's skin below the
+# ledge is what the plate rim slots into; lift the line to the ledge and that pocket wall is
+# gone everywhere north of the sweep, leaving the lap only over the southern stretch. The joint
+# still locates — the 5 standoff screws set XY registration and the rabbet was never what
+# clamped it — but the lap stops helping there. Chosen with that understood; the range is NOT
+# capped short of it.
+#
+# The SOUTH is untouched by this dial. Over the southern run the skin still descends to
+# TENT_SKIRT_LIFT above the desk and the bottom stays inset behind it — see that block above.
+SEAM_NORTH_RISE_FRAC = 0.5   # 0.0 = flat at Z=0 (the old behaviour), 1.0 = up to the ledge
+SEAM_NORTH_RISE_Z    = SEAM_NORTH_RISE_FRAC * SEAM_LEDGE_Z   # derived; the actual height
+
+assert 0.0 <= SEAM_NORTH_RISE_FRAC <= 1.0, (
+    f"SEAM_NORTH_RISE_FRAC={SEAM_NORTH_RISE_FRAC} is a fraction of SEAM_LEDGE_Z={SEAM_LEDGE_Z}; "
+    f"0.0 leaves the parting line flat at Z=0, 1.0 puts it on the ledge and gives up the rabbet "
+    f"north of the sweep. There is nothing sane above 1.0 — the line would pass the plate rim's "
+    f"own top and the bottom case would have no material left to show")
 
 assert 0.0 < TENT_ANGLE_DEG <= 5.0, "TENT_ANGLE_DEG outside the sane 0-5 deg range"
 # The rest of the guards need OUTER_DEPTH and FOOT_DEPTH, both defined further down; they sit

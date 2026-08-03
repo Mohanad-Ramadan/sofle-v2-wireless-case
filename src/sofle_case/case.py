@@ -226,16 +226,30 @@ def _below_seam_cutter() -> Part:
     the same handover with no per-wall special casing — it is a function of Y alone.
 
     Three stretches, south to north: running parallel to the tent plane; a SPLINE sweeping up
-    off it; then Z=0. The spline is given the tent plane's slope as its start tangent and
-    horizontal as its end tangent, so it leaves the desk and arrives at Z=0 tangentially —
-    swept, not kinked.
+    off it; then flat at ``SEAM_NORTH_RISE_Z``. The spline is given the tent plane's slope as
+    its start tangent and horizontal as its end tangent, so it leaves the desk and arrives at
+    the northern run tangentially — swept, not kinked.
 
     The southern run is offset ``TENT_SKIRT_LIFT`` ABOVE the plane rather than lying on it, so
     the skin floats clear of the desk and a band of bottom case shows beneath it. Offsetting
     the whole profile (spline start included) keeps the tangency: the run is still parallel to
-    the plane, so the sweep still leaves it without a kink."""
+    the plane, so the sweep still leaves it without a kink.
+
+    The NORTHERN run used to be Z=0 flat. It now sits at ``SEAM_NORTH_RISE_Z``, which is 0 only
+    when that dial is. Everything below the profile is the cutter, so raising the northern run
+    carves the tub's skin off the wall up to that height and hands the face to the bottom part.
+    That is safe at any height up to ``SEAM_LEDGE_Z`` and no higher: below the ledge the tub is
+    ONLY its outer skin — ``_plate_pocket`` has already taken the floor and inner wall out from
+    behind it — so the cutter eats skin and nothing else. Above the ledge it would start eating
+    the tub proper, which is what ``SEAM_NORTH_RISE_FRAC``'s ceiling of 1.0 exists to prevent.
+
+    Note the steepening: the sweep climbs from the southern run to the northern one over a run
+    fixed by ``TENT_SEAM_RAMP_FRAC``, so the higher the dial the steeper that climb — 3.14 mm
+    over 8.8 mm at frac 0, 9.44 mm over the same 8.8 mm at frac 1. The joins stay tangent
+    either way, but lengthening the ramp is the lever if the blend starts to read as a corner."""
     y1, y2 = C.TENT_SEAM_Y1, C.TENT_SEAM_Y2
     lift = C.TENT_SKIRT_LIFT
+    rise = C.SEAM_NORTH_RISE_Z
     z1 = tent_ground_z(y1) + lift
     slope = -math.tan(math.radians(C.TENT_ANGLE_DEG))
     y_s, y_n = -20.0, C.OUTER_DEPTH + 60.0
@@ -252,15 +266,22 @@ def _below_seam_cutter() -> Part:
                 Line((y_s - z_s / slope, 0.0), (y1, z1))
             else:
                 Line((y_s, z_s), (y1, z1))
-            Spline((y1, z1), (y2, 0.0), tangents=((1.0, slope), (1.0, 0.0)))
-            Line((y2, 0.0), (y_n, 0.0))
-            Line((y_n, 0.0), (y_n, bot))
+            Spline((y1, z1), (y2, rise), tangents=((1.0, slope), (1.0, 0.0)))
+            Line((y2, rise), (y_n, rise))
+            Line((y_n, rise), (y_n, bot))
             Line((y_n, bot), (y_s, bot))
             Line((y_s, bot), (y_s, min(0.0, z_s)))   # back to wherever the run actually started
         make_face()
-    # Extrude the LOCATED face functionally, along its own +X normal. Doing it via
-    # `add(sketch)` inside a BuildPart instead loses the plane association and extrudes along
-    # global +Z — which yields a zero-thickness cutter that silently deletes everything.
+    return _extrude_across_x(sk)
+
+
+def _extrude_across_x(sk: BuildSketch) -> Part:
+    """Take a Y-Z profile sketch and sweep it across the full width of the case.
+
+    Extrudes the LOCATED face functionally, along its own +X normal. Doing it via
+    `add(sketch)` inside a BuildPart instead loses the plane association and extrudes along
+    global +Z — which yields a zero-thickness solid that silently deletes everything it is
+    subtracted from."""
     face = sk.sketch.faces()[0]  # type: ignore[union-attr]
     solid = extrude(face, amount=C.OUTER_WIDTH + 120.0)
     return cast(Part, solid.translate((-60.0, 0.0, 0.0)))
@@ -308,9 +329,26 @@ def _lead_in_relief(z_bot: float) -> Part:
     It is a square relief rather than a 45° taper: the inner face steps out by ``SEAM_LEAD_IN``
     for the bottom ``SEAM_LEAD_IN`` of the channel. Measured from the SEAM (this is the seam
     cutter shifted up by that much) rather than from a plane, so it tracks the sweep through
-    the blend as well as the flat run."""
+    the blend as well as the flat run.
+
+    The stock's ceiling TRACKS THE MOUTH rather than being a constant. North of the sweep the
+    mouth is not near Z=0 any more — it is up at ``SEAM_NORTH_RISE_Z``, wherever the dial puts
+    it — and a stock capped just above Z=0 would sit entirely below the thing it is supposed to
+    open, leaving the plate rim to find a square 0.2 mm channel unaided over the whole northern
+    half.
+
+    It is capped, though, and not simply run to the ledge. Anywhere ABOVE Z=0 this relief eats
+    POCKET WALL — the face the plate rim seats against — so it is opened only where the mouth
+    genuinely needs it, and then by exactly ``SEAM_LEAD_IN``.
+
+    With the dial at 0 the mouth sits ON Z=0, which is precisely where ``_chamfer_pocket_mouth``
+    puts the tub-side starter, so nothing is owed here and the stock stops at 0.1 as it always
+    did. Lift the mouth off that plane and the chamfer is stranded below it — then, and only
+    then, this has to reach up and open the mouth itself."""
     pocket_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK + C.SEAM_FIT_CLEAR
-    wide = offset_extruded(pocket_outer + C.SEAM_LEAD_IN, z_bot - 1.0, 0.1)
+    stock_top = (0.1 if C.SEAM_NORTH_RISE_Z <= 0.0
+                 else C.SEAM_NORTH_RISE_Z + C.SEAM_LEAD_IN + 0.1)
+    wide = offset_extruded(pocket_outer + C.SEAM_LEAD_IN, z_bot - 1.0, stock_top)
     above_mouth = cast(Part, _below_seam_cutter().translate((0.0, 0.0, C.SEAM_LEAD_IN)))
     return cast(Part, wide & above_mouth)
 
@@ -413,7 +451,6 @@ def build_bottom_part(side: Side) -> Part:
     # inset behind the tub's skin, thin at the south and thick at the north. Added, never cut —
     # see the tent section in constants.py for why cutting would wreck the Z ladder.
     bottom = cast(Part, bottom + tent_wedge())
-
     for hx, hy in C.MOUNTING_HOLES:
         cx, cy = C.pcb_to_case(hx, hy)
         bottom = cast(Part, bottom + stepped_standoff(at=(cx, cy)))
@@ -675,6 +712,22 @@ def build_top_part(side: Side) -> Part:
     # Carry the skin down to the desk over the southern stretch, so the front of the case
     # reads as one piece and the bottom wedge only shows further north. Costs no height.
     top = cast(Part, top + skirt_extension())
+    # ...and north of the sweep, carve the skin back UP the wall to SEAM_NORTH_RISE_Z, handing
+    # that band of face to the bottom part. The skirt only ever trimmed its own band, all of it
+    # below Z=0; the raised northern run cuts into the tub itself, so the same profile has to
+    # come off the whole part and not just the band. Everything fused on after this sits at
+    # COVER_TOP_Z or above, well clear of the cut.
+    top = cast(Part, top - _below_seam_cutter())
+    # The mouth of the rabbet pocket rides up with the parting line, so its lead-in has to come
+    # off the tub itself here — north of the sweep there is no skirt band left for
+    # skirt_extension to have taken it out of.
+    #
+    # Gated, because this one is not a no-op when the dial is off: skirt_extension only ever
+    # subtracts the relief from its own band, all of it below Z=0, and taking it off the whole
+    # tub would additionally shave the 0.1 mm of pocket wall the stock reaches above Z=0. Small
+    # (~7 mm³) and harmless, but it would mean frac 0 no longer reproduces the un-dialled case.
+    if C.SEAM_NORTH_RISE_Z > 0.0:
+        top = cast(Part, top - _lead_in_relief(wedge_deep_z() - 1.0))
     top = cast(Part, top + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     top = cast(Part, top + _encoder_shell())
     top = cast(Part, top + build_canopy(side=side))

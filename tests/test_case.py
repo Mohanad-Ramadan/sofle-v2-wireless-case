@@ -87,8 +87,12 @@ def test_pocket_mouth_has_starter_chamfer():
         b = Solid.make_box(s, 3.0, s).translate((probe_x - s / 2, y - 1.5, z - s / 2))
         return (top & b).volume > 1e-6
 
-    assert solid_at(0.7), "seated skirt is missing skin — probe off the wall"
-    assert not solid_at(0.1), "pocket mouth is not chamfered — no tub-side starter"
+    # Measured from the MOUTH, not from Z=0. This probe sits north of the sweep, where the mouth
+    # rides at SEAM_NORTH_RISE_Z — a fixed 0.7/0.1 pair would be probing the empty space below
+    # the parting line entirely. At frac 0 the mouth is back at Z=0 and these are the old numbers.
+    mouth_z = C.SEAM_NORTH_RISE_Z
+    assert solid_at(mouth_z + C.SEAM_LEAD_IN + 0.3), "seated skirt is missing skin — probe off the wall"
+    assert not solid_at(mouth_z + 0.1), "pocket mouth is not chamfered — no tub-side starter"
 
 
 @pytest.mark.parametrize("side", ["right", "left"])
@@ -165,7 +169,8 @@ def test_split_conserves_volume(side):
     from sofle_case.battery import battery_pocket
     from sofle_case.top_cover import build_top_cover
     from sofle_case.case import (_encoder_shell, _slide_scoop, _slide_actuator_cavity,
-                                 _foot_recesses, tent_wedge, skirt_extension)
+                                 _foot_recesses, tent_wedge, skirt_extension,
+                                 _plate_pocket, _below_seam_cutter)
     from sofle_case.canopy import build_canopy
 
     ref = build_tray(rim_z=C.COVER_TOP_Z, bottom_chamfer=False)
@@ -184,8 +189,16 @@ def test_split_conserves_volume(side):
     ref = cast(Part, ref - battery_pocket())
     ref = cast(Part, ref - _foot_recesses())   # anti-slip feet are cut from the bottom plate
 
+    # The RECESS is a void by design, not a seam gap: north of the sweep the parting line rides
+    # up to SEAM_NORTH_RISE_Z and the tub's skin below it is carved away, with nothing put back
+    # (the bottom stays inset — see the constants block). The un-split solid still has that
+    # material, so it has to be named here or it reads as the seam having eaten 1.7% of the case.
+    # Measured, not asserted: exactly what the parting profile takes off the tub.
+    tub = cast(Part, build_tray(rim_z=C.COVER_TOP_Z, bottom_chamfer=False) - _plate_pocket())
+    recess = tub.volume - cast(Part, tub - _below_seam_cutter()).volume
+
     combined = build_top_part(side).volume + build_bottom_part(side).volume
-    lost = ref.volume - combined
+    lost = ref.volume - combined - recess
     assert lost > 0, "seam added material (double-count) — must only remove clearance"
     assert lost / ref.volume < 0.012, f"seam gap {lost:.1f} exceeds the rabbet clearance"
 

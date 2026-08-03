@@ -77,12 +77,17 @@ def test_the_lift_leaves_a_real_skirt_at_the_south():
 
 
 def test_skin_is_gone_north_of_the_sweep():
-    """North of y2 the skin stops at Z=0 again and the wedge takes over as the visible band."""
+    """North of y2 the skin stops at the parting line and the bottom case takes over below it.
+
+    That line used to be Z=0 flat; SEAM_NORTH_RISE_FRAC now dials it up the wall, so this reads
+    the dial rather than the old constant. At frac 0 it is still Z=0 and this is the same test
+    it always was."""
     top = build_top_part("right")
     for y in (C.TENT_SEAM_Y2 + 4.0, 110.0, 120.0):
         got = _lowest_at(top, y)
         assert got is not None, f"no material at y={y}"
-        assert abs(got) < 0.02, f"y={y}: skin still hangs to {got:.3f}, expected Z=0"
+        assert abs(got - C.SEAM_NORTH_RISE_Z) < 0.02, \
+            f"y={y}: skin hangs to {got:.3f}, expected the parting line at {C.SEAM_NORTH_RISE_Z:.3f}"
 
 
 def test_the_sweep_climbs_monotonically_between_the_two():
@@ -96,7 +101,7 @@ def test_the_sweep_climbs_monotonically_between_the_two():
     for (ya, za), (yb, zb) in zip(zip(ys, zs), zip(ys[1:], zs[1:])):
         assert zb >= za - 0.02, f"edge dips between y={ya:.1f} and y={yb:.1f} ({za:.3f} -> {zb:.3f})"
     assert abs(zs[0] - _seam_z(C.TENT_SEAM_Y1)) < 0.06, "sweep does not start where the run ends"
-    assert abs(zs[-1]) < 0.06, "sweep does not finish at Z=0"
+    assert abs(zs[-1] - C.SEAM_NORTH_RISE_Z) < 0.06, "sweep does not finish on the northern run"
 
 
 def test_the_handover_costs_no_height():
@@ -140,8 +145,17 @@ def test_skirt_extension_alone_is_a_clean_solid():
     assert len(sk.solids()) == 1
     bb = sk.bounding_box()
     assert abs(bb.max.Z) < 1e-6, f"skirt should top out at Z=0, got {bb.max.Z:.4f}"
-    assert abs(bb.max.Y - C.TENT_SEAM_Y2) < 0.5, \
-        f"skirt reaches y={bb.max.Y:.2f}, expected it to die at y2={C.TENT_SEAM_Y2:.2f}"
+    # The band is the skin BELOW Z=0, so it dies where the parting line reaches Z=0 — at y2 when
+    # the northern run is flat there, and progressively further south as SEAM_NORTH_RISE_FRAC
+    # lifts that run and the sweep therefore crosses zero earlier.
+    assert bb.max.Y <= C.TENT_SEAM_Y2 + 0.5, \
+        f"skirt reaches y={bb.max.Y:.2f}, past the end of the sweep at y2={C.TENT_SEAM_Y2:.2f}"
+    if C.SEAM_NORTH_RISE_Z <= 0.0:
+        assert bb.max.Y >= C.TENT_SEAM_Y2 - 0.5, \
+            f"skirt dies at y={bb.max.Y:.2f} with a flat northern run, expected y2"
+    else:
+        assert C.TENT_SEAM_Y1 < bb.max.Y < C.TENT_SEAM_Y2, \
+            f"skirt dies at y={bb.max.Y:.2f}, expected inside the sweep where the line crosses Z=0"
     assert abs(bb.min.Z - _seam_z(C.TENT_SEAM_Y1)) < 0.05, \
         f"skirt bottoms out at {bb.min.Z:.4f}, expected {_seam_z(C.TENT_SEAM_Y1):.4f}"
 
@@ -204,8 +218,12 @@ def test_the_channel_mouth_has_a_lead_in_all_the_way_round():
     y = ys[-1]
     g = _seam_z(y)
     assert abs(east(y, g + C.SEAM_LEAD_IN + 0.2) - east(y, seated_z(g))) < 0.02, "relief never closes"
-    # and the opening clears the wedge it has to accept
-    assert east(y, g + 0.1) > bottom.bounding_box().max.X, \
+    # and the opening clears the wedge it has to accept — measured in the SAME Y slice, not
+    # against the bottom's global extent. North of the sweep the bottom now comes out flush with
+    # the tub, so its widest point is out at the skin and would fail this trivially while saying
+    # nothing about the channel down here.
+    local = bottom & Solid.make_box(400.0, 0.4, 200.0).translate((-100.0, y - 0.2, -80.0))
+    assert east(y, g + 0.1) > local.bounding_box().max.X, \
         "mouth is narrower than the wedge it accepts"
 
 
@@ -219,10 +237,20 @@ def test_the_lead_in_tracks_the_sweep_not_a_flat_plane():
         sl = top & Solid.make_box(40.0, s, s).translate((130.0, y - s / 2, z - s / 2))
         return sl.bounding_box().min.X if sl.volume > 1e-12 else None
 
+    def seam_at(y, s=0.1):
+        """The seam at THIS y, on the same slice thickness the relief probes use.
+
+        _lowest_at samples a 0.4 mm slab and reports its minimum, which is the seam 0.2 mm
+        SOUTH of y — fine on the flat run, misleading in the blend, and increasingly so as
+        SEAM_NORTH_RISE_FRAC steepens the climb (0.24 mm of Z per mm of Y at frac 0, 0.65 at
+        0.5). Probing 0.08 above a seam read that low lands in air."""
+        sl = top & Solid.make_box(400.0, s, 160.0).translate((-100.0, y - s / 2, -60.0))
+        return sl.bounding_box().min.Z if sl.volume > 1e-9 else None
+
     checked = 0
     ramp = C.TENT_SEAM_Y2 - C.TENT_SEAM_Y1
     for y in (C.TENT_SEAM_Y1 + 0.2 * ramp, C.TENT_SEAM_Y1 + 0.35 * ramp):
-        seam = _lowest_at(top, y)
+        seam = seam_at(y)
         # The seated reference sits 0.85 above the seam; it must clear the relief (which ends
         # SEAM_LEAD_IN up) and stay below the pocket mouth chamfer, or it measures the chamfer.
         if seam is None or seam + 0.85 > -C.SEAM_POCKET_LEAD_IN - 0.05:
@@ -257,4 +285,5 @@ def test_the_handover_actually_sits_where_the_dial_says():
     north = _lowest_at(top, C.TENT_SEAM_Y2 + 8.0)
     assert abs(south - _seam_z(C.TENT_SEAM_Y1 - 8.0)) < 0.06, \
         "skin is not on its lifted run south of the handover"
-    assert abs(north) < 0.02, "skin still hangs below Z=0 north of the sweep"
+    assert abs(north - C.SEAM_NORTH_RISE_Z) < 0.02, \
+        "skin is not on its northern run past the sweep"

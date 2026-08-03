@@ -128,7 +128,11 @@ def test_wedge_is_inset_behind_the_tub_skin():
 
     That inset is what keeps this cheap. A flush wedge would have to chase the tub's REAL
     footprint — the +Y relief bump squares the NW corner off proud of the nominal offset and
-    carries a fillet — which meant sampling a whole built tray inside every bottom part."""
+    carries a fillet — which meant sampling a whole built tray inside every bottom part.
+
+    SEAM_NORTH_RISE_FRAC does not touch this. It cuts the TUB back and nothing else, so lifting
+    the parting line deepens the recess rather than filling it: the bottom's outline is the same
+    at every setting of the dial."""
     top, bottom = build_top_part("right"), build_bottom_part("right")
     tb, bb = top.bounding_box(), bottom.bounding_box()
     inset = C.SEAM_SKIN + C.SEAM_FIT_CLEAR

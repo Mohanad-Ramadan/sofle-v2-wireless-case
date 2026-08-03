@@ -171,5 +171,10 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # elephant-foot chamfer cut on its tilted ground rim. The wedge rides the PLATE's rim
     # profile (inset behind the tub skin), not the tub footprint. The test's point is
     # unchanged — the slide cavity is a TOP feature and must not show up in this number.
+    # Rebased for the tent going 2 deg -> 3 deg, which was never carried into this number: the
+    # wedge grew with the angle and the baseline stayed at its 2 deg value, so this assertion was
+    # already failing (137697.065 measured against 120795.947) before SEAM_NORTH_RISE_FRAC
+    # existed. That dial cuts the TUB back and leaves the bottom's geometry alone, so it does
+    # not appear here at all — as with the slide cavity, which is the point of the test.
     # 2e-2 abs tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 120795.946631) < 2e-2
+    assert abs(build_bottom_part(side).volume - 137697.065039) < 2e-2
