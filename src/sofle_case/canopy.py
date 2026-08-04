@@ -102,6 +102,11 @@ CANOPY_RAMP_TOP_Y   = C.pcb_to_case(*C.J_OLED_POS)[1] - CANOPY_RAMP_TOP_OLED_GAP
 # chamfer here re-introduces a hidden tie between ramp smoothness and wall style.
 CANOPY_RAMP_SAMPLES = 25
 CANOPY_NORTH_ROUND_R = 1.0
+# The north-top facet's DROP is that same number, and the equality is structural rather than tidy:
+# CANOPY_NORTH_ROUND_R is what ``canopy_ridge_top_z`` budgets for the top edge eating into the north
+# wall above the USB overmold pocket, so the treatment that actually eats it must not exceed it.
+# (The name is historical — that edge was a round before it was a drafted facet.)
+CANOPY_NORTH_FACET_DROP = CANOPY_NORTH_ROUND_R
 # Lead-in of the west top shoulder's drafted facet: the cutter's vertical leg fades to 0 at the
 # ramp foot, where the west wall is only (COVER_TOP_Z − MAIN_RIM_Z) = 1 mm tall, so the facet
 # can never bite into the fuse overlap. Full depth is reached ~7 mm up the ramp (case-Y ≈ 65.7
@@ -253,23 +258,40 @@ def canopy_puzzle_north_x1() -> float:
     return CANOPY_EAST_X + CANOPY_PUZZLE_EAST_BREAK
 
 
+def canopy_north_chamfer(side: str) -> tuple[float, float]:
+    """(run, drop) of the north-top drafted facet — the same 2:1 style as the case rim and as the
+    west shoulder facet, but SMALLER, and the size is derived rather than chosen.
+
+    DROP is the binding leg, because it is what eats the north wall's top: the wall's outer face
+    starts ``drop`` below the ridge, and the USB overmold pocket's top has to stay under that with
+    CANOPY_USB_OM_ROOF_MIN to spare. ``canopy_ridge_top_z`` already budgets exactly
+    CANOPY_NORTH_ROUND_R of top-edge eat when it sizes the roof against that pocket — so the facet's
+    drop IS that budget. Spending more is not free: a 2.4 mm drop (matching the west facet leg for
+    leg) puts the wall's top face 0.9 mm BELOW the pocket, i.e. the port mouth opens into the facet,
+    and buying that back costs 1.40 mm of ridge height on both halves.
+
+    RUN then follows from the case's own facet proportion, so the two bands differ in size but not
+    in angle — which is the match that was actually available. The assert is the point: it is why
+    the drop is derived from the pocket rather than written as a bare 1.0.
+
+    Before this was derived, the north chamfer measured 2.4 run / 1.2 drop — the reciprocal of the
+    west facet — because ``_yz_prism`` let OCC pick the leg order. See ``occ-chamfer-leg-order``."""
+    drop = CANOPY_NORTH_FACET_DROP
+    head = canopy_ridge_top_z(side) - drop - canopy_usb_om_z(side)[1]
+    assert head >= CANOPY_USB_OM_ROOF_MIN - 1e-9, (
+        f"{side}: a {drop} mm north facet leaves {head:.2f} mm over the USB pocket, "
+        f"under the {CANOPY_USB_OM_ROOF_MIN} mm minimum"
+    )
+    return drop * C.RIM_FACET_RUN / C.RIM_FACET_DROP, drop
+
+
 def canopy_north_chamfer_run(side: str) -> float:
-    """The north-top chamfer's PLAN run — how far inboard of the north wall its top line sits.
+    """How far inboard of the north wall the flat roof stops — i.e. the facet's top line.
 
-    Returns the chamfer's VERTICAL leg, which looks wrong and is not: MEASURED on the built part, the
-    north chamfer runs 2.4 mm inboard and drops 1.2 mm, i.e. its legs are the INVERSE of the west
-    shoulder facet's (1.2 in, 2.4 down) and of the case rim style both are supposed to share.
-
-    ``_yz_prism`` hands OCC ``(chamfer_v, chamfer_h)`` and its fallback loop accepts the first
-    ordering that does not throw — so the assignment was never chosen, only survived. Scan of the
-    bare right half at x=22: flat roof to y=118.9, then 0.04 / 0.19 / 0.34 / 0.49 / 0.64 mm of drop
-    at 119.2 / 119.5 / 119.8 / 120.1 / 120.4 — a 1:2 slope starting at 119.1, where the west facet
-    measures 2:1 starting at 11.7.
-
-    This function exists so exactly one place depends on that, and so fixing the leg order is a
-    one-word change here rather than a hunt. See ``canopy_puzzle_strokes``, which stops a stroke on
-    this line."""
-    return canopy_top_chamfer(side)[0]
+    One place for consumers to ask, because this is not ``canopy_top_chamfer``'s leg: the north
+    facet and the west facet share an angle, not a size. ``canopy_puzzle_strokes`` stops a stroke
+    on this line."""
+    return canopy_north_chamfer(side)[0]
 
 
 def canopy_puzzle_north_exit_window() -> tuple[float, float]:
@@ -373,11 +395,17 @@ def usb_port_cutter(side: str) -> Part:
     return box
 
 
-# Canopy roof-edge chamfer: the same drafted-facet STYLE as the case rim (slope run/drop),
-# scaled down so the north face's chamfer toe stays clear of the USB-C port mouth below it.
-# Derived per half now (each half has its own ridge and its own port band).
+# The WEST shoulder facet's legs: the same drafted-facet STYLE as the case rim (slope run/drop).
+# Derived per half, because each half has its own ridge.
 def canopy_top_chamfer(side: str) -> tuple[float, float]:
-    """(V, H) legs of the north-top drafted chamfer for a half."""
+    """(V, H) legs of the WEST top shoulder facet for a half.
+
+    This used to size the north-top chamfer as well, which is why the clamp below is written against
+    the USB port — a leg on the NORTH wall had to stop above the port mouth. The north edge has its
+    own, smaller facet now (``canopy_north_chamfer``, sized against the overmold pocket), and the
+    west wall has no port in it, so the clamp is not binding here today: it yields 2.4 on both halves
+    against a limit of 2.52. It is kept because it is still a true statement about how much wall
+    there is to cut, and dropping it would let a future ridge change eat this facet silently."""
     v = min(2.4, canopy_ridge_top_z(side) - canopy_usb_z(side)[1] - 0.2)   # vertical leg
     h = v * C.RIM_FACET_RUN / C.RIM_FACET_DROP                            # horizontal leg
     assert v > 0.5, f"USB port leaves no room for the canopy roof chamfer ({side})"
@@ -408,18 +436,29 @@ def _dedup(pts: list[tuple[float, float]], tol: float = 1e-4) -> list[tuple[floa
 def _yz_prism(top_pts: list[tuple[float, float]], z_base: float, x_lo: float, x_width: float,
               fillets_2d: list[tuple[float, float, float]] | None = None,
               spline_range: tuple[float, float] | None = None,
-              chamfers_2d: list[tuple[float, float, float, float]] | None = None) -> Part:
+              north_chamfer: tuple[float, float] | None = None) -> Part:
     """Extrude a Y–Z profile (flat base at ``z_base`` closed by the ``top_pts`` edge, ordered
     by ascending Y) along +X by ``x_width``, positioned so its −X face sits at ``x_lo``.
 
-    ``fillets_2d`` rounds the profile vertex at each ``(y, z, r)`` in 2-D. ``chamfers_2d``
-    CHAMFERS the vertex at each ``(y, z, len1, len2)`` instead (drafted-facet style; tried
-    asymmetric both ways, then symmetric, then a fillet as last resort — never aborts).
+    ``fillets_2d`` rounds the profile vertex at each ``(y, z, r)`` in 2-D.
+
+    ``north_chamfer`` ``(run, drop)`` DRAWS the north-top drafted facet into the profile: the roof
+    stops ``run`` short of the wall and a straight segment falls to ``drop`` below the ridge on the
+    wall face. Drawn, not cut with ``chamfer()``, and that is the whole point — the previous version
+    passed ``(v, h)`` to OCC and tried the other order, then the symmetric leg, then a fillet,
+    accepting whichever did not throw. It never threw, and it never applied the legs as intended
+    either: the shipped north chamfer measured 2.4 mm of run against 1.2 mm of drop, the reciprocal
+    of the west shoulder facet it is supposed to match. A wrong-but-successful chamfer is invisible;
+    two explicit points cannot be misread. See ``occ-chamfer-leg-order``.
+
     ``spline_range`` ``(y0, y1)`` draws the ramp between those Y as a real **Spline** (a smooth
     curved edge, so the swept surface has no facet steps) with a horizontal tangent at ``y1``
     (eases into the flat roof); the rest of the profile stays straight ``Line`` segments."""
     top = _dedup(top_pts)
     y_lo, y_hi = top[0][0], top[-1][0]
+    z_top = top[-1][1]
+    assert north_chamfer is None or spline_range is not None, \
+        "the north facet is only drawn on the splined (roofline) profile"
     with BuildPart() as bp:
         with BuildSketch(_YZ) as sk:
             with BuildLine():
@@ -436,9 +475,17 @@ def _yz_prism(top_pts: list[tuple[float, float]], z_base: float, x_lo: float, x_
                     # Horizontal tangents at BOTH ends: the ramp merges into the cover at the
                     # foot and into the flat roof at the top with no crease at either.
                     Spline(*ramp, tangents=((1.0, 0.0), (1.0, 0.0)))
-                    if len(after) >= 2:
-                        Polyline(*after)                          # flat roof
-                    Line(after[-1], (y_hi, z_base))               # north wall
+                    if north_chamfer is None:
+                        if len(after) >= 2:
+                            Polyline(*after)                      # flat roof
+                        Line(after[-1], (y_hi, z_base))           # north wall
+                    else:
+                        run, drop = north_chamfer
+                        assert len(after) >= 2 and after[-2][0] < y_hi - run, \
+                            f"a {run} mm north facet run swallows the flat roof"
+                        Polyline(*after[:-1], (y_hi - run, z_top))            # flat roof, cut short
+                        Line((y_hi - run, z_top), (y_hi, z_top - drop))       # the facet itself
+                        Line((y_hi, z_top - drop), (y_hi, z_base))            # north wall
                     Line((y_hi, z_base), (y_lo, z_base))          # base
             make_face()
             for fy, fz, r in (fillets_2d or []):
@@ -449,22 +496,15 @@ def _yz_prism(top_pts: list[tuple[float, float]], z_base: float, x_lo: float, x_
                         fillet(verts, radius=r)
                     except (ValueError, Standard_Failure):
                         pass
-            for cy_, cz_, l1, l2 in (chamfers_2d or []):
-                verts = [v for v in sk.vertices()
-                         if abs(v.X - cy_) < 0.05 and abs(v.Y - cz_) < 0.05]
-                if not verts:
-                    continue
-                for args in ((l1, l2), (l2, l1), ((l1 + l2) / 2, None)):
-                    try:
-                        chamfer(verts, length=args[0], length2=args[1])
-                        break
-                    except (ValueError, Standard_Failure, TypeError):
-                        continue
-                else:
-                    try:
-                        fillet(verts, radius=min(l1, l2))
-                    except (ValueError, Standard_Failure):
-                        pass
+            if north_chamfer is not None:
+                # Cheap proof that the facet is the shape asked for. It is drawn, so this can only
+                # fail if make_face/fillet moved it — but the shipped bug was a chamfer silently
+                # applying the reciprocal slope, so the shape gets measured either way.
+                run, drop = north_chamfer
+                for want in ((y_hi - run, z_top), (y_hi, z_top - drop)):
+                    assert any(abs(v.X - want[0]) < 1e-6 and abs(v.Y - want[1]) < 1e-6
+                               for v in sk.vertices()), \
+                        f"north facet vertex {want} missing — run/drop are not {run}/{drop}"
         extrude(amount=x_width)
     assert bp.part is not None
     return cast(Part, Pos(x_lo, 0, 0) * bp.part)
@@ -699,7 +739,7 @@ def build_canopy(hollow: bool = True, side: str = "right", puzzle: bool = True) 
     ramp_span = (CANOPY_RAMP_FOOT_Y, CANOPY_RAMP_TOP_Y)
     roof = _roofline(z_ridge)
     body = _yz_prism(roof, z_base=z_base, x_lo=x_w, x_width=x_e - x_w,
-                     chamfers_2d=[(y_n, z_ridge, chamfer_v, chamfer_h)],
+                     north_chamfer=canopy_north_chamfer(side),
                      spline_range=ramp_span)
     body = _round_nw_corner(body, x_w, y_n, CANOPY_CORNER_R, z_base - 0.1, z_ridge + 0.1)
     # Facet the tall west top shoulder (east left sharp) on the solid, before hollowing.

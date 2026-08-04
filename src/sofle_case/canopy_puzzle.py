@@ -80,9 +80,9 @@ PUZZLE_SKETCH_RESIDUAL = 0.1663                  # mm; worst distance from a ske
 # What it costs is placement fidelity — 3.3 mm is ~20x PUZZLE_SKETCH_RESIDUAL, so line A no longer
 # lands where the drawing puts it. That is the trade, stated in one number that can be zeroed.
 #
-# The value is bounded on BOTH sides, and neither bound is taste. Measured against the as-built
-# north chamfer top line (y = 119.1 — see canopy.canopy_north_chamfer_run, it is NOT what the
-# constants imply):
+# The value is bounded on BOTH sides, and neither bound is taste. Measured against the north facet's
+# top line (y = 121.0 — canopy.canopy_north_chamfer_run; the north facet is smaller than the west
+# one, for reasons that belong to the USB pocket):
 #   ≥ 2.47   the whole groove width must exit through the STRAIGHT north edge — the corner arc is
 #            tangent to the north top line at x = CANOPY_WEST_OUTER_X + CANOPY_CORNER_R. Below this
 #            ``canopy`` refuses the north break outright and the stroke stops inboard instead.
