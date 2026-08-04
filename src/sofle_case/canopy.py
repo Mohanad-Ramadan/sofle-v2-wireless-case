@@ -253,6 +253,44 @@ def canopy_puzzle_north_x1() -> float:
     return CANOPY_EAST_X + CANOPY_PUZZLE_EAST_BREAK
 
 
+def canopy_north_chamfer_run(side: str) -> float:
+    """The north-top chamfer's PLAN run — how far inboard of the north wall its top line sits.
+
+    Returns the chamfer's VERTICAL leg, which looks wrong and is not: MEASURED on the built part, the
+    north chamfer runs 2.4 mm inboard and drops 1.2 mm, i.e. its legs are the INVERSE of the west
+    shoulder facet's (1.2 in, 2.4 down) and of the case rim style both are supposed to share.
+
+    ``_yz_prism`` hands OCC ``(chamfer_v, chamfer_h)`` and its fallback loop accepts the first
+    ordering that does not throw — so the assignment was never chosen, only survived. Scan of the
+    bare right half at x=22: flat roof to y=118.9, then 0.04 / 0.19 / 0.34 / 0.49 / 0.64 mm of drop
+    at 119.2 / 119.5 / 119.8 / 120.1 / 120.4 — a 1:2 slope starting at 119.1, where the west facet
+    measures 2:1 starting at 11.7.
+
+    This function exists so exactly one place depends on that, and so fixing the leg order is a
+    one-word change here rather than a hunt. See ``canopy_puzzle_strokes``, which stops a stroke on
+    this line."""
+    return canopy_top_chamfer(side)[0]
+
+
+def canopy_puzzle_north_exit_window() -> tuple[float, float]:
+    """(x_min, x_max) on the north chamfer's top line where a stroke may leave the roof.
+
+    WEST bound — the NW corner. The corner round is tangent to the north wall at
+    ``CANOPY_WEST_OUTER_X + CANOPY_CORNER_R``, and the chamfer top lines are inset from both walls by
+    the same horizontal leg, so the flat roof's north edge is STRAIGHT only east of that same X. A
+    stroke leaving west of it exits over the corner's curve, into the one place on the part where the
+    west facet, the north chamfer and the corner round already meet. The whole groove width has to
+    clear it, not just the centreline.
+
+    EAST bound — the USB overmold pocket, whose roof budget is CANOPY_USB_OM_ROOF_MIN (0.5 mm).
+
+    This is the window ``PUZZLE_LINE_NUDGE`` was solved against; it is stated here, in the module
+    that owns the keep-outs, so the nudge can be re-derived rather than re-guessed."""
+    return (CANOPY_WEST_OUTER_X + CANOPY_CORNER_R + CANOPY_PUZZLE_W / 2,
+            C.pcb_to_case(*C.MCU_POS)[0] - CANOPY_USB_OM_W / 2
+            - CANOPY_PUZZLE_W / 2 - CANOPY_PUZZLE_POCKET_GAP)
+
+
 def canopy_puzzle_strokes(side: str) -> list[tuple[tuple[float, float], tuple[float, float]]]:
     """This half's two stroke segments, in its own un-mirrored canopy coords.
 
@@ -260,28 +298,29 @@ def canopy_puzzle_strokes(side: str) -> list[tuple[tuple[float, float], tuple[fl
     top line, bordering it.
 
     The NORTH bound is CONDITIONAL, and that is the interesting part: letting a stroke up to the
-    north chamfer puts its terminal inside the band the north keep-out exists to protect — the USB
-    overmold pocket's roof, which has CANOPY_USB_OM_ROOF_MIN (0.5 mm) of budget, exactly what a
-    groove spends. At the fitted layout the stroke lands well west of the pocket, so it is allowed.
-    At a different separation it need not, and then the stroke keeps the plain north keep-out instead
-    of being pushed over the pocket. Checked, not assumed: the layout is a fitted input and this is
-    the one keep-out whose violation would be invisible until a plug went in."""
-    facet_h = canopy_top_chamfer(side)[1]
+    north chamfer puts its terminal inside the band the north keep-out exists to protect. It is
+    allowed only where the exit lands in ``canopy_puzzle_north_exit_window`` — east of the NW
+    corner's curve and west of the USB overmold pocket. Outside that window the stroke keeps the
+    plain north keep-out and stops inboard, which is worse-looking but never wrong.
+
+    Checked, not assumed. The layout is a fitted input, ``PUZZLE_LINE_NUDGE`` is a hand-set number,
+    and this is the one keep-out whose violation would stay invisible until a plug went in."""
     region = canopy_puzzle_region(side)
     common = dict(x1_north=canopy_puzzle_north_x1(),
                   x0_break=CANOPY_WEST_OUTER_X - CANOPY_PUZZLE_WEST_BREAK)
-    segs = PZ.strokes(side, *region, **common, y1_break=CANOPY_NORTH_OUTER_Y - facet_h)
-    if not _puzzle_clears_pocket(segs):
+    segs = PZ.strokes(side, *region, **common,
+                      y1_break=CANOPY_NORTH_OUTER_Y - canopy_north_chamfer_run(side))
+    if not _puzzle_north_exit_ok(segs):
         segs = PZ.strokes(side, *region, **common)
-        assert _puzzle_clears_pocket(segs), \
-            f"{side}: a stroke crowds the USB pocket even inside the north keep-out"
+        assert _puzzle_north_exit_ok(segs), \
+            f"{side}: a stroke reaches the north keep-out band even without the north break"
     return segs
 
 
-def _puzzle_clears_pocket(segs: list[tuple[tuple[float, float], tuple[float, float]]]) -> bool:
-    """Does every terminal in the USB pocket's Y band stay CANOPY_PUZZLE_POCKET_GAP west of it?"""
-    pocket_w = C.pcb_to_case(*C.MCU_POS)[0] - CANOPY_USB_OM_W / 2
-    return all(x + CANOPY_PUZZLE_W / 2 + CANOPY_PUZZLE_POCKET_GAP <= pocket_w
+def _puzzle_north_exit_ok(segs: list[tuple[tuple[float, float], tuple[float, float]]]) -> bool:
+    """Does every terminal inside the north keep-out's band leave through the safe window?"""
+    x_lo, x_hi = canopy_puzzle_north_exit_window()
+    return all(x_lo <= x <= x_hi
                for seg in segs for x, y in seg
                if y > CANOPY_NORTH_OUTER_Y - CANOPY_USB_OM_DEPTH)
 

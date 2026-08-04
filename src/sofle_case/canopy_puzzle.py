@@ -27,6 +27,11 @@ disagreement in and the puzzle would only *nearly* close. One fitted splay plus 
 makes collinearity exact by construction, and the sketch's own inconsistency shows up honestly as
 that 0.166 mm residual instead of hiding as a permanent misalignment.
 
+ONE VALUE IS NOT FROM THE SKETCH — ``PUZZLE_LINE_NUDGE``, which translates line A 3.3 mm to clear the
+NW corner. It is kept as a separate term rather than folded into the fitted offset precisely so this
+sentence stays true of everything else. A translation changes no angle and no relationship between
+the halves, so collinearity survives it exactly.
+
 Every stroke runs out to the roof's edge on the GAP side, so the continuation reads as one line
 rather than as two marks pointing at each other; each half's UPPER stroke additionally breaks
 THROUGH the east arris, the switch-column side, which is the one edge actually notched. All of those
@@ -60,6 +65,38 @@ PUZZLE_LINES = ((-36.124941, 157.132546),        # line A — 53.9° from horizo
 PUZZLE_SKETCH_RESIDUAL = 0.1663                  # mm; worst distance from a sketched stroke to its
 #                                                  fitted line. Recorded so a future edit can tell
 #                                                  whether it improved or degraded the fit.
+
+# ---------------------------------------------------------------------------
+# The ONE deliberate departure from the fit. Kept separate from PUZZLE_LINES on purpose: everything
+# above reproduces the drawing, this does not, and the two must not be confused by a later reader.
+# ---------------------------------------------------------------------------
+# Line A is TRANSLATED 3.3 mm perpendicular to itself. As fitted it left the right roof 1.3 mm from
+# the NW corner, where the west shoulder facet, the north-top chamfer and the corner round already
+# meet — four features converging inside ~2 mm, which read as damage rather than as a mark. Moved
+# east, the stroke leaves cleanly through the straight part of the north edge instead.
+#
+# It is a TRANSLATION, so the angle, the splay and the exact collinearity are all untouched (spread
+# stays ~1e-14 mm): both halves' segments move together because they are still segments of one line.
+# What it costs is placement fidelity — 3.3 mm is ~20x PUZZLE_SKETCH_RESIDUAL, so line A no longer
+# lands where the drawing puts it. That is the trade, stated in one number that can be zeroed.
+#
+# The value is bounded on BOTH sides, and neither bound is taste. Measured against the as-built
+# north chamfer top line (y = 119.1 — see canopy.canopy_north_chamfer_run, it is NOT what the
+# constants imply):
+#   ≥ 2.47   the whole groove width must exit through the STRAIGHT north edge — the corner arc is
+#            tangent to the north top line at x = CANOPY_WEST_OUTER_X + CANOPY_CORNER_R. Below this
+#            ``canopy`` refuses the north break outright and the stroke stops inboard instead.
+#   ≤ 3.8    past this the LEFT half's line 0 runs into the north keep-out before it reaches the
+#            east wall and quietly stops breaking the east arris — on the half nobody is looking at
+#            while tuning the right one.
+#   ≤ 4.0    past this the right half's exit comes within CANOPY_PUZZLE_POCKET_GAP of the USB pocket.
+# At 3.3 the margins are: corner 0.86, left-half east break 0.55, pocket 1.38 mm.
+PUZZLE_LINE_NUDGE = (3.3, 0.0)                   # mm, added to each line's fitted offset
+
+
+def line_offset(index: int) -> float:
+    """Line ``index``'s offset AS BUILT — the fitted value plus its nudge, if any."""
+    return PUZZLE_LINES[index][1] + PUZZLE_LINE_NUDGE[index]
 
 # How much of its own chord across the roof each stroke covers — i.e. where it STOPS, which the
 # line fit above says nothing about. Measured from the same sketch by the same kind of method: the
@@ -104,8 +141,9 @@ def line_in_canopy(side: str, index: int) -> tuple[float, float, float]:
 
     This is the whole "equation": one assembled-frame line, expressed in each half's own frame. The
     two halves' strokes are then segments of the same line by construction, which is what makes the
-    puzzle close exactly instead of approximately."""
-    ang, off = PUZZLE_LINES[index]
+    puzzle close exactly instead of approximately. It reads the AS-BUILT offset (``line_offset``), so
+    a nudge lands on both halves through the same equation and cannot desynchronise them."""
+    ang, off = PUZZLE_LINES[index][0], line_offset(index)
     th = math.radians(ang)
     n = (math.cos(th), -math.sin(th))
     b = math.radians(PUZZLE_SPLAY_HALF_DEG)
