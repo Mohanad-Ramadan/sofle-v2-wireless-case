@@ -32,14 +32,16 @@ Tangent curves are 2-D profile splines/fillets on the swept cross-section (robus
 fragile 3-D solid fillets. The slide finger-bowl (over on the −X wall) is handled in ``tray``
 and split cleanly into the TOP part by ``case``'s local seam step-down."""
 from __future__ import annotations
+import math
 from typing import cast
 
 from build123d import (
-    Part, Face, Pos, Line, Polyline, Spline, make_face, extrude, fillet, chamfer, loft, Solid,
+    Part, Face, Pos, Rot, Line, Polyline, Spline, make_face, extrude, fillet, chamfer, loft, Solid,
     Plane, BuildPart, BuildSketch, BuildLine,
 )
 from OCP.Standard import Standard_Failure
 from . import constants as C
+from . import canopy_puzzle as PZ
 
 # A sketch plane whose local axes map cleanly onto global (Y, Z) with the extrude normal along
 # +X: local-x = +Y, local-y = +Z. Built-in ``Plane.YZ`` negates/swaps these, so define it here.
@@ -173,6 +175,115 @@ CANOPY_USB_W        = C.USB_C_W + C.USB_PORT_W_CLEAR               # 11.0; port 
 # Clamped below half the port's short side (5.5 / 2) so the fillet can always be built; at the
 # clamp the mouth degenerates to a stadium, which is still valid.
 CANOPY_USB_R        = 1.5
+# ---------------------------------------------------------------------------
+# Roof PUZZLE strokes — two straight lines drawn across the ASSEMBLED pair, each crossing both
+# canopies. The plan geometry (which line, at what angle, in whose frame) belongs to
+# ``canopy_puzzle``, which fitted it from the design sketch; this half of the job is cutting the
+# resulting segments into a surface that is flat for 40 mm and then tips over to 35.9°.
+#
+# A stroke CROSSES THE RAMP (left line 1; the right half's line 0 did too until it was trimmed to
+# its sketched half-chord), so depth cannot be measured vertically. The cutter is a
+# footprint prism clipped against a NORMAL-offset copy of the roofline, which holds the depth
+# perpendicular to the surface on the flat roof and on the slope alike — the same construction that
+# built valid solids on both halves first time during the pattern trials.
+#
+# DEPTH is the load-bearing number: the roof shell is CANOPY_ROOF_WALL (1.5) over a cavity that
+# follows the roofline, so a groove eats that wall and nothing else. 0.5 leaves 1.0 mm, five layers
+# at 0.2. The assert is the point — it is why the depth is derived against CANOPY_ROOF_WALL rather
+# than written as a bare 0.5.
+CANOPY_PUZZLE_W        = 1.6      # groove width, as on the diagonal reveal this grew out of
+CANOPY_PUZZLE_DEPTH    = 0.5
+CANOPY_PUZZLE_MIN_ROOF = 1.0      # solid roof that must survive under a groove
+assert CANOPY_PUZZLE_DEPTH <= CANOPY_ROOF_WALL - CANOPY_PUZZLE_MIN_ROOF + 1e-9, (
+    f"a {CANOPY_PUZZLE_DEPTH} mm groove leaves "
+    f"{CANOPY_ROOF_WALL - CANOPY_PUZZLE_DEPTH} mm of a {CANOPY_ROOF_WALL} mm roof"
+)
+# Safe region. The strokes are defined for the assembled keyboard and simply STOP here, which is how
+# the continuation stays literal (one line) while the terminals stay inset.
+# WEST measures from the roof edge the shoulder facet leaves, not the raw wall, so re-proportioning
+# that facet pushes the strokes back instead of letting them cut into it. NORTH is structural: only
+# CANOPY_NORTH_ROUND_R + CANOPY_USB_OM_ROOF_MIN of solid sits above the USB overmold pocket. SOUTH
+# stops short of the ramp foot so no groove spills onto the cover surface.
+CANOPY_PUZZLE_LAND     = 2.4
+CANOPY_PUZZLE_NORTH_KO = CANOPY_NORTH_ROUND_R + 0.5 + 1.5      # 3.0; the 0.5 is USB_OM_ROOF_MIN
+CANOPY_PUZZLE_SOUTH_KO = 1.5
+# EAST is the one exception, and it is the design's: each half's UPPER stroke runs OUT through the
+# east wall — the wall bordering the switch columns — so it lands against something instead of
+# stopping 2.4 mm short in open roof. The east arris IS broken there, once per half, on purpose.
+#
+# The endpoint is put a clear margin PAST the wall rather than on it: the cutter is a square-ended
+# box prism, so an endpoint sitting exactly on x = CANOPY_EAST_X would leave the break at the mercy
+# of boolean tolerance — a groove that ends flush with the face it is supposed to open into. One
+# groove width past is unambiguous and costs nothing, since everything beyond the wall is air.
+CANOPY_PUZZLE_EAST_BREAK = CANOPY_PUZZLE_W                     # 1.6 past CANOPY_EAST_X
+assert CANOPY_PUZZLE_EAST_BREAK > CANOPY_PUZZLE_W / 2, \
+    "the upper stroke would not clearly clear the east wall"
+# WEST is the gap-facing side — the one the assembled pair's strokes cross between the halves — so
+# every stroke is aimed OUT through it, past the wall line. What that actually produces is a groove
+# that runs over the west shoulder's top arris and stops there: the facet falls away from the swept
+# roofline at 2:1, so the cutter stops biting ~0.25 mm past the arris. The mark reaches the roof's
+# west edge and disappears over the shoulder, which is the read we want at the gap.
+CANOPY_PUZZLE_WEST_BREAK = CANOPY_PUZZLE_W
+# NORTH is the exception, and it is deliberate. One stroke (today the right half's line 0) is aimed
+# too far north to reach the west wall — heading gap-ward it climbs — so it leaves at the NW corner
+# instead. It is stopped ON the north chamfer's TOP LINE (CANOPY_NORTH_OUTER_Y − h): it borders the
+# chamfer, it does not cross it and it does not run through the corner. Sent past that line it drags
+# the mark across the NW corner round and up to the USB overmold pocket, whose roof budget is
+# CANOPY_USB_OM_ROOF_MIN (0.5 mm) — exactly what a groove spends.
+#
+# ``canopy_puzzle_strokes`` still checks the pocket clearance, because this bound is what keeps that
+# stroke off it: at another separation the same line lands further east, over the pocket.
+CANOPY_PUZZLE_POCKET_GAP = 1.0     # min mm between a stroke's edge and the USB pocket's side
+
+
+def canopy_puzzle_region(side: str) -> tuple[float, float, float, float]:
+    """(x0, x1, y0, y1) of the strokeable patch on the roof + ramp, margins applied.
+
+    The EAST bound here is the inset one, which the LOWER stroke keeps; the upper stroke overrides it
+    with ``canopy_puzzle_north_x1`` and breaks out through the wall."""
+    facet_h = canopy_top_chamfer(side)[1]
+    return (CANOPY_WEST_OUTER_X + facet_h + CANOPY_PUZZLE_LAND,
+            CANOPY_EAST_X - CANOPY_PUZZLE_LAND,
+            CANOPY_RAMP_FOOT_Y + CANOPY_PUZZLE_SOUTH_KO,
+            CANOPY_NORTH_OUTER_Y - CANOPY_PUZZLE_NORTH_KO)
+
+
+def canopy_puzzle_north_x1() -> float:
+    """East bound for the UPPER stroke — past the east wall, so that stroke terminates in it."""
+    return CANOPY_EAST_X + CANOPY_PUZZLE_EAST_BREAK
+
+
+def canopy_puzzle_strokes(side: str) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    """This half's two stroke segments, in its own un-mirrored canopy coords.
+
+    West is aimed past the wall (the groove runs off the shoulder there); north stops ON the chamfer
+    top line, bordering it.
+
+    The NORTH bound is CONDITIONAL, and that is the interesting part: letting a stroke up to the
+    north chamfer puts its terminal inside the band the north keep-out exists to protect — the USB
+    overmold pocket's roof, which has CANOPY_USB_OM_ROOF_MIN (0.5 mm) of budget, exactly what a
+    groove spends. At the fitted layout the stroke lands well west of the pocket, so it is allowed.
+    At a different separation it need not, and then the stroke keeps the plain north keep-out instead
+    of being pushed over the pocket. Checked, not assumed: the layout is a fitted input and this is
+    the one keep-out whose violation would be invisible until a plug went in."""
+    facet_h = canopy_top_chamfer(side)[1]
+    region = canopy_puzzle_region(side)
+    common = dict(x1_north=canopy_puzzle_north_x1(),
+                  x0_break=CANOPY_WEST_OUTER_X - CANOPY_PUZZLE_WEST_BREAK)
+    segs = PZ.strokes(side, *region, **common, y1_break=CANOPY_NORTH_OUTER_Y - facet_h)
+    if not _puzzle_clears_pocket(segs):
+        segs = PZ.strokes(side, *region, **common)
+        assert _puzzle_clears_pocket(segs), \
+            f"{side}: a stroke crowds the USB pocket even inside the north keep-out"
+    return segs
+
+
+def _puzzle_clears_pocket(segs: list[tuple[tuple[float, float], tuple[float, float]]]) -> bool:
+    """Does every terminal in the USB pocket's Y band stay CANOPY_PUZZLE_POCKET_GAP west of it?"""
+    pocket_w = C.pcb_to_case(*C.MCU_POS)[0] - CANOPY_USB_OM_W / 2
+    return all(x + CANOPY_PUZZLE_W / 2 + CANOPY_PUZZLE_POCKET_GAP <= pocket_w
+               for seg in segs for x, y in seg
+               if y > CANOPY_NORTH_OUTER_Y - CANOPY_USB_OM_DEPTH)
 
 
 def canopy_usb_z(side: str) -> tuple[float, float]:
@@ -449,7 +560,83 @@ def _chamfer_west_top(part: Part, x_w: float, z_ridge: float,
     return out
 
 
-def build_canopy(hollow: bool = True, side: str = "right") -> Part:
+def _roofline_slope(y: float, z_ridge: float) -> float:
+    """dz/dy of the swept roofline at case-Y ``y`` — the ANALYTIC derivative of ``_smoothstep``.
+
+    Zero outside the ramp, and zero AT both ramp ends, which is the S-curve's whole point.
+
+    Analytic, not a finite difference across ``_roofline``'s sample points, and that is
+    load-bearing: a one-sided difference at the foot reads the ramp's first 0.06 mm of rise as a real
+    slope, which pushes the offset endpoint north of ``CANOPY_RAMP_FOOT_Y``; ``_yz_prism``'s span
+    filter then drops the profile's south face and the sketch will not close."""
+    y0, y1 = CANOPY_RAMP_FOOT_Y, CANOPY_RAMP_TOP_Y
+    if y <= y0 or y >= y1:
+        return 0.0
+    t = (y - y0) / (y1 - y0)
+    return (z_ridge - CANOPY_FOOT_Z) * 6 * t * (1 - t) / (y1 - y0)
+
+
+def _offset_roofline(roof: list[tuple[float, float]], d: float,
+                     z_ridge: float) -> list[tuple[float, float]]:
+    """The roofline pushed ``d`` INTO the material along its own NORMAL — ``(m, −1)/√(1+m²)``.
+
+    Not straight down in Z: a Z-drop measures depth vertically, so a 0.5 mm groove would thin to
+    0.5·cos 35.9° = 0.40 mm on the right half's steepest run — it would pass any "did it cut?" check
+    while going shallow exactly where the surface is most visible. Both ramp ends have zero slope, so
+    the offset polyline spans the same Y range as the original and ``_yz_prism`` still accepts it."""
+    out: list[tuple[float, float]] = []
+    for y, z in roof:
+        m = _roofline_slope(y, z_ridge)
+        k = (1 + m * m) ** 0.5
+        out.append((y + d * m / k, z - d / k))
+    assert all(b[0] > a[0] for a, b in zip(out, out[1:])), \
+        "normal-offset roofline folded over in Y — the ramp's curvature is too tight for this depth"
+    return out
+
+
+def _slot_prism(seg: tuple[tuple[float, float], tuple[float, float]], w: float,
+                z0: float, z1: float) -> Part:
+    """Vertical prism over a SQUARE-ended slot along ``seg``, ``w`` wide, spanning ``z0``→``z1``.
+
+    Square, not stadium: a stroke ends as if a knife lifted off it — a straight edge square across
+    the groove — which is how the strokes are drawn. A rounded cap reads as a blob at the end of a
+    thin line, and it is most obvious exactly where it matters, on the terminals that stop in open
+    roof rather than running out to an edge.
+
+    Built at an arbitrary plan angle, because the puzzle's lines meet each canopy at whatever angle
+    the assembled layout gives them."""
+    (x0, y0), (x1, y1) = seg
+    length = math.hypot(x1 - x0, y1 - y0)
+    ang = math.degrees(math.atan2(y1 - y0, x1 - x0))
+    box = cast(Part, Solid.make_box(length, w, z1 - z0).translate((-length / 2, -w / 2, 0)))
+    return cast(Part, Pos((x0 + x1) / 2, (y0 + y1) / 2, z0) * (Rot(0, 0, ang) * box))
+
+
+def _puzzle_cutter(side: str, z_ridge: float) -> Part:
+    """Cutter for this half's two puzzle strokes, at constant depth NORMAL to the swept surface.
+
+    ``footprint prism − solid under the normal-offset roofline``. Everything of the prism above the
+    offset surface survives; the part above the REAL surface is air and costs nothing. What is left
+    biting the part is a groove of the footprint's shape, ``CANOPY_PUZZLE_DEPTH`` deep measured
+    perpendicular to the surface — on the flat roof and on the 35.9° ramp alike, with one boolean and
+    no per-stroke fitting. That matters here because two of the four strokes cross the ramp.
+
+    This works because the roof/ramp is a translational sweep of one Y–Z profile along X, i.e. a
+    DEVELOPABLE surface, so a flat plan footprint lands on it by clipping alone."""
+    inner = _offset_roofline(_roofline(z_ridge), CANOPY_PUZZLE_DEPTH, z_ridge)
+    under = _yz_prism(inner, z_base=CANOPY_FUSE_BASE_Z - 5.0,
+                      x_lo=CANOPY_WEST_OUTER_X - 1.0,
+                      x_width=(CANOPY_EAST_X + 1.0) - (CANOPY_WEST_OUTER_X - 1.0),
+                      spline_range=(CANOPY_RAMP_FOOT_Y, CANOPY_RAMP_TOP_Y))
+    prism: Part | None = None
+    for seg in canopy_puzzle_strokes(side):
+        one = _slot_prism(seg, CANOPY_PUZZLE_W, CANOPY_FUSE_BASE_Z, z_ridge + 2.0)
+        prism = one if prism is None else cast(Part, prism + one)
+    assert prism is not None
+    return cast(Part, prism - under)
+
+
+def build_canopy(hollow: bool = True, side: str = "right", puzzle: bool = True) -> Part:
     """The fastback canopy that FUSES into the TOP cover over the bay.
 
     The ramp foot merges tangentially into the cover surface (``CANOPY_FOOT_Z``) — no tongue;
@@ -493,6 +680,17 @@ def build_canopy(hollow: bool = True, side: str = "right") -> Part:
                         x_lo=x_w + w_side, x_width=(x_e - w_roof) - (x_w + w_side),
                         spline_range=ramp_span)
         shell = cast(Part, shell - cav)
+
+    # Roof puzzle strokes — this half's segments of the two lines drawn across the assembled pair.
+    # After hollowing and after the shoulder facet / corner round, and clear of both by
+    # CANOPY_PUZZLE_LAND, so this step cannot perturb the fragile booleans.
+    if puzzle:
+        cut = cast(Part, shell - _puzzle_cutter(side, z_ridge))
+        # Never let the strokes vanish SILENTLY — the failure mode _chamfer_west_top was rewritten
+        # to escape. Two grooves ~20-50 mm long at 0.5 deep remove tens of mm³.
+        assert shell.volume - cut.volume > 10.0, \
+            f"{side}: roof puzzle strokes removed no material (z_ridge={z_ridge})"
+        shell = cut
 
     # USB-C port through the north (+Y) wall, centred on the MCU X column (required for fit).
     # Band is per-half — see canopy_usb_z. Cut again post-fuse in build_top_part; see

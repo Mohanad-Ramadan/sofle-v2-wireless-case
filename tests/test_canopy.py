@@ -94,7 +94,12 @@ def test_canopy_west_top_facet_runs_the_whole_shoulder(side):
     the sample count to damp the ramp's ringing silently deleted the facet. ``_chamfer_west_top``
     is a swept boolean instead, so it is independent of sample count — probe the run at several
     stations, not just one, because a partial cut is the plausible failure now."""
-    c = build_canopy(side=side)
+    # puzzle=False: the subject here is the shoulder facet and the SHARP east arris. The roof's
+    # puzzle strokes end in rounded caps, and the east-most cap's face centre lands inside this
+    # test's 2.0 mm window on the arris — so a groove terminal sitting 2.4 mm inboard would be read
+    # as a rounded east edge. That the strokes never actually touch the arris is asserted by
+    # test_canopy_puzzle.py::test_the_east_arris_is_not_broken.
+    c = build_canopy(side=side, puzzle=False)
     xw, xe = CAN.CANOPY_WEST_OUTER_X, CAN.CANOPY_EAST_X
     z_ridge = CAN.canopy_ridge_top_z(side)
     # Stations spanning the ramp's upper half and the flat roof (the foot is excluded on
