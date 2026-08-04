@@ -15,8 +15,8 @@ from pathlib import Path
 import pytest
 from build123d import Solid
 from sofle_case import constants as C
-from sofle_case.case import (build_bottom_part, build_top_part, tent_ground_z,
-                             _below_seam_cutter)
+from sofle_case.case import tent_ground_z, _below_seam_cutter
+from tests.shared_builds import build_bottom_part, build_top_part
 
 INSET = C.SEAM_SKIN + C.SEAM_FIT_CLEAR          # 2.2; how far the bottom hides behind the skin
 ABOVE_LINE = C.SEAM_LEDGE_Z + 2.0               # a Z where only the tub exists, on any dial
@@ -55,7 +55,8 @@ def _x_span_at(part, y: float, z: float):
 def test_the_north_run_rides_at_the_rise():
     """North of the sweep the top case's bottom edge is the dial, flat, and nothing else."""
     top = _top()
-    for y in (70.0, 100.0, 120.0):
+    # All stations must be north of the Y1→Y2 sweep; y=70 was inside that blend.
+    for y in (C.TENT_SEAM_Y2 + 2.0, C.TENT_SEAM_Y2 + 20.0, C.OUTER_DEPTH - 6.0):
         got = _lowest_at(top, y)
         assert got is not None, f"no material at y={y}"
         assert abs(got - C.SEAM_NORTH_RISE_Z) < 0.06, (

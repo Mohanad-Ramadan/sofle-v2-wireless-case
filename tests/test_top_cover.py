@@ -1,7 +1,7 @@
 """Top cover (sandwich lid) tests."""
 from build123d import Part, Solid
 from sofle_case import constants as C
-from sofle_case.top_cover import build_top_cover
+from tests.shared_builds import build_top_cover
 
 
 def test_returns_single_solid():
@@ -43,8 +43,11 @@ def test_puller_notches_open_two_faces_per_switch(monkeypatch):
     the notch geometry is always validated."""
     from build123d import BuildPart, Box, Locations, Location
     from sofle_case.top_cover import _load_switch_positions
+    # Fresh, UNCACHED build: the monkeypatched constant must take effect here, and the
+    # shared cache (populated with the shipped default) must not be polluted by it.
+    from sofle_case.top_cover import build_top_cover as build_fresh_top_cover
     monkeypatch.setattr(C, "COVER_PULLER_NOTCH", True)
-    cv = build_top_cover()
+    cv = build_fresh_top_cover()
     z = C.MAIN_RIM_Z + C.COVER_THICKNESS / 2
     blocked = 0
     for sw in _load_switch_positions():

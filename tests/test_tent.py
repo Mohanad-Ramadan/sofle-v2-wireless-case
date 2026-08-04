@@ -13,8 +13,9 @@ import math
 from build123d import Solid
 from sofle_case import constants as C
 from sofle_case.canopy import CANOPY_RIDGE_TOP_Z, canopy_ridge_top_z
-from sofle_case.case import (build_bottom_part, build_top_part, ground_face, tent_ground_z,
-                             tent_plane, tent_wedge, wedge_deep_z)
+from sofle_case.case import (ground_face, tent_ground_z, tent_plane, tent_wedge,
+                             wedge_deep_z)
+from tests.shared_builds import build_bottom_part, build_top_part
 from sofle_case.tray import offset_extruded
 
 OUTER = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE

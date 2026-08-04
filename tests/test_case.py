@@ -1,7 +1,7 @@
 import pytest
 from build123d import Part
 from sofle_case import constants as C
-from sofle_case.case import build_case_half, build_top_part, build_bottom_part
+from tests.shared_builds import build_bottom_part, build_case_half, build_top_part
 
 
 def test_left_returns_part():
@@ -78,7 +78,8 @@ def test_pocket_mouth_has_starter_chamfer():
     elephant-foot-pinch. Probed on a plain −X wall span."""
     from build123d import Solid
     top = build_top_part("right")
-    y = C.OUTER_DEPTH / 2
+    # This probe must be on the northern flat run, not at TENT_SEAM_Y1 where the sweep starts.
+    y = C.TENT_SEAM_Y2 + 5.0
     # −X wall: outer face, then SEAM_SKIN inward = seated skirt-inner face.
     skin_inner = C.pcb_to_case(0, 0)[0] - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE + C.SEAM_SKIN
     probe_x = skin_inner - 0.15   # 0.15 inside the skin from the seated inner face
@@ -164,14 +165,14 @@ def test_split_conserves_volume(side):
     positive (material only removed at the seam, never added or double-counted) and
     small — bounded by the thin clearance gap around the plate rim (~0.9%)."""
     from typing import cast
-    from sofle_case.tray import build_tray
+    from tests.shared_builds import build_tray
     from sofle_case.standoffs import stepped_standoff
     from sofle_case.battery import battery_pocket
-    from sofle_case.top_cover import build_top_cover
+    from tests.shared_builds import build_top_cover
     from sofle_case.case import (_encoder_shell, _slide_scoop, _slide_actuator_cavity,
                                  _foot_recesses, tent_wedge, skirt_extension,
                                  _plate_pocket, _below_seam_cutter)
-    from sofle_case.canopy import build_canopy
+    from tests.shared_builds import build_canopy
 
     ref = build_tray(rim_z=C.COVER_TOP_Z, bottom_chamfer=False)
     # Both parts now carry material below Z=0 that exists in no other build: the BOTTOM's tent
@@ -266,7 +267,7 @@ def test_encoder_window_is_exact_cutout():
     margin): material remains just past the cutout edge where the enlarged MX
     window would have removed it."""
     from build123d import Solid
-    from sofle_case.top_cover import build_top_cover
+    from tests.shared_builds import build_top_cover
     from sofle_case.case import _encoder_bbox
     enc_cx, enc_cy, bw, _ = _encoder_bbox()
     cover = build_top_cover()

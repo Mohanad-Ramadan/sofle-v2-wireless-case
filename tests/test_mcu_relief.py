@@ -3,7 +3,7 @@ wall is pushed out to the index-column line. ONLY the +Y wall moves — the −X
 wall is left exactly as-is."""
 from build123d import Solid
 from sofle_case import constants as C
-from sofle_case.tray import build_tray
+from tests.shared_builds import build_tray
 
 
 def _z_mid() -> float:

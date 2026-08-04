@@ -1,5 +1,5 @@
 """Each half must fit a 250×210mm FDM bed."""
-from sofle_case.case import build_case_half
+from tests.shared_builds import build_case_half
 
 BED_X = 250.0
 BED_Y = 210.0

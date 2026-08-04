@@ -67,7 +67,7 @@ def test_slide_actuator_cavity_is_a_solid():
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_top_part_single_valid_solid_with_cavity(side):
     """The extra drop-in cut must leave the TOP part one valid manifold solid."""
-    from sofle_case.case import build_top_part
+    from tests.shared_builds import build_top_part
     top = build_top_part(side)
     assert top.is_valid, f"TOP part invalid after actuator cavity cut ({side})"
     assert len(top.solids()) == 1, f"TOP part is not a single solid ({side})"
@@ -76,7 +76,7 @@ def test_top_part_single_valid_solid_with_cavity(side):
 def test_slide_switch_clears_top_solid():
     """The physical switch (can + nub) has ZERO overlap with the TOP solid — the
     drop-in pocket gives ≥0.5 mm clearance all round (the nub previously collided)."""
-    from sofle_case.case import build_top_part
+    from tests.shared_builds import build_top_part
     top = build_top_part("right")
     body_hit = cast(Part, _switch_body() & top).volume
     nub_hit = cast(Part, _switch_nub() & top).volume
@@ -89,7 +89,7 @@ def test_slide_actuator_pad_gap_is_real():
     overlap with the TOP solid — proving the clearance gap is genuine, not coincident.
     Checked over the pocket's OWN Z extent (floor → SLIDE_ACTUATOR_TOP_Z cap); the can's
     clearance up to its full 12.2 top is covered separately by test_slide_switch_clears_top_solid."""
-    from sofle_case.case import build_top_part
+    from tests.shared_builds import build_top_part
     top = build_top_part("right")
     x0, x1, y0, y1 = _footprint_bbox()
     g = 0.4
@@ -112,7 +112,7 @@ def test_slide_drop_in_channel_is_clear():
     tub now owns the full outer skin to the ground, so the −X wall is legitimately
     solid BELOW the switch (Z < 7.9) where part of the footprint bbox overlaps the wall
     band — that material never touches the switch, which sits entirely above PCB top."""
-    from sofle_case.case import build_top_part
+    from tests.shared_builds import build_top_part
     top = build_top_part("right")
     x0, x1, y0, y1 = _footprint_bbox()
 
@@ -137,7 +137,8 @@ def test_slide_cavity_does_not_perforate_lid():
     (The slide switch sits in the open MCU/OLED/slide bay notch and behind the
     top-open finger scoop, so there is no continuous membrane directly over it; the
     invariant that matters is that THIS feature removes nothing above the cap.)"""
-    from sofle_case.case import build_top_part, _slide_actuator_cavity
+    from sofle_case.case import _slide_actuator_cavity
+    from tests.shared_builds import build_top_part
     x0, x1, y0, y1 = _footprint_bbox()
 
     # Slab from the cover underside up through the lid, over the whole padded footprint.
@@ -161,7 +162,7 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     """The slide cavity is a TOP-only feature; the BOTTOM is a separate inset plate
     below the rabbet ledge, so its volume is independent of the slide cavity. Baseline
     is the inset floor plate + standoffs − battery pocket (identical both sides)."""
-    from sofle_case.case import build_bottom_part
+    from tests.shared_builds import build_bottom_part
     # Baseline reflects FLOOR_THICKNESS=6.3 (deep-battery redesign): the inset plate spans
     # floor→SEAM_LEDGE_Z, which rose with the floor, so the plate is taller than before.
     # Rebased for SEAM_FIT_CLEAR 0.3→0.2: the derived rim (SEAM_RIM_THK 2.45→2.55) adds

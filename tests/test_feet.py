@@ -6,7 +6,8 @@ taken relative to the local ground height rather than at a fixed Z."""
 import math
 from build123d import Solid
 from sofle_case import constants as C
-from sofle_case.case import build_bottom_part, tent_ground_z
+from sofle_case.case import tent_ground_z
+from tests.shared_builds import build_bottom_part
 
 
 def _solid_at(part, x, y, z, s=0.3):

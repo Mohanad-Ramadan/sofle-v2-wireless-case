@@ -1,7 +1,7 @@
 """Slide-switch bowl fit and flat-wall (no-hill) guarantees."""
 from build123d import Axis, Solid
 from sofle_case import constants as C
-from sofle_case.tray import build_tray
+from tests.shared_builds import build_tray
 
 
 def test_slide_scoop_opens_at_switch():
@@ -12,7 +12,7 @@ def test_slide_scoop_opens_at_switch():
     Probes the real wall centre (polygon PCB X=0 edge, case X ≈ 10.5) — not the PCB_X_MIN
     line (case X 0), which is air in front of the wall and passes even when the scoop is
     mislocated and removes nothing (the bug this guards against)."""
-    from sofle_case.case import build_top_part
+    from tests.shared_builds import build_top_part
     top = build_top_part("right")
     _, cy = C.pcb_to_case(*C.SW_SLIDE_POS)
     wall_cx = C.pcb_to_case(0, 0)[0] - (C.WALL_THICKNESS + C.PCB_XY_CLEARANCE) / 2

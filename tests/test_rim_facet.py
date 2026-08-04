@@ -6,7 +6,7 @@ from collections import defaultdict
 
 from build123d import Solid
 from sofle_case import constants as C
-from sofle_case.tray import build_tray
+from tests.shared_builds import build_tray
 
 # Nominal |normal.Z| of each drafted plane: run / hypot(run, drop).
 NZ_PERIM = C.RIM_FACET_RUN / math.hypot(C.RIM_FACET_RUN, C.RIM_FACET_DROP)

@@ -15,8 +15,8 @@ from OCP.BRepCheck import BRepCheck_Analyzer
 
 from sofle_case import constants as C
 from sofle_case import canopy as CAN
-from sofle_case.canopy import build_canopy
-from sofle_case.case import build_top_part
+from tests.shared_builds import build_canopy
+from tests.shared_builds import build_top_part
 from sofle_case.pcb_phantom import build_pcb_phantom
 
 

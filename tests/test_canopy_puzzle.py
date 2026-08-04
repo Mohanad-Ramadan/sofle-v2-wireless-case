@@ -33,8 +33,8 @@ from OCP.BRepCheck import BRepCheck_Analyzer
 from sofle_case import constants as C
 from sofle_case import canopy as CAN
 from sofle_case import canopy_puzzle as PZ
-from sofle_case.canopy import build_canopy
-from sofle_case.case import build_top_part
+from tests.shared_builds import build_canopy
+from tests.shared_builds import build_top_part
 
 SIDES = ["right", "left"]
 
@@ -168,9 +168,14 @@ def test_the_halves_are_not_alike(segs):
 def test_canopy_line_and_assembled_line_agree(segs):
     """``line_in_canopy`` and ``to_assembled`` are two views of one line; a point satisfying the
     canopy-frame equation must land on the assembled-frame line. If these ever disagree the strokes
-    would still be drawn, just not where the design says."""
+    would still be drawn, just not where the design says.
+
+    Uses ``line_offset``, the AS-BUILT offset, not the raw fitted one — a nudge that reached one
+    view of the line but not the other would desynchronise the halves, and reading the fitted value
+    here would hide exactly that."""
     for side in SIDES:
-        for i, (ang, off) in enumerate(PZ.PUZZLE_LINES):
+        for i in range(len(PZ.PUZZLE_LINES)):
+            ang, off = PZ.PUZZLE_LINES[i][0], PZ.line_offset(i)
             a, b, c = PZ.line_in_canopy(side, i)
             th = math.radians(ang)
             n = (math.cos(th), -math.sin(th))
@@ -201,12 +206,16 @@ def test_a_stroke_still_crosses_the_ramp(segs):
 # placement and safety
 # --------------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("side", SIDES)
 def _top_lines(side):
-    """(west, north) chamfer top lines — the flat roof's own edge, one horizontal chamfer leg
-    inboard of each wall. A stroke may run out TO these and no further."""
-    h = CAN.canopy_top_chamfer(side)[1]
-    return CAN.CANOPY_WEST_OUTER_X + h, CAN.CANOPY_NORTH_OUTER_Y - h
+    """(west, north) chamfer top lines — the flat roof's own edge, i.e. each chamfer's PLAN run
+    inboard of its wall. A stroke may run out TO these and no further.
+
+    The two runs are not the same number, which is the whole reason ``canopy_north_chamfer_run``
+    exists: the west facet runs 1.2 mm in and drops 2.4, the north chamfer does the opposite. Read
+    them from ``canopy`` rather than recomputing, or this helper becomes a second opinion about the
+    part's geometry."""
+    return (CAN.CANOPY_WEST_OUTER_X + CAN.canopy_top_chamfer(side)[1],
+            CAN.CANOPY_NORTH_OUTER_Y - CAN.canopy_north_chamfer_run(side))
 
 
 @pytest.mark.parametrize("side", SIDES)
@@ -249,16 +258,24 @@ def test_every_stroke_runs_out_at_the_gap_side(side, segs):
 
 
 @pytest.mark.parametrize("side", SIDES)
-def test_no_stroke_crosses_the_north_chamfer_top_line(side, segs):
-    """NORTH only, and the asymmetry is the point. West is aimed past the wall: the shoulder facet
-    falls away from the swept roofline at 2:1, so the groove simply runs off the arris and stops
-    ~0.25 mm later — nothing to protect there. North is different: past that line the mark crosses
-    the NW corner round and heads for the USB pocket's 0.5 mm roof budget, so the stroke is stopped
-    ON the line and borders the chamfer."""
+def test_at_most_one_stroke_reaches_north_and_it_is_aimed_past_the_wall(side, segs):
+    """A stroke that reaches the north facet must be aimed PAST the wall, not stopped on the facet's
+    top line. Not because it cuts that far — it does not; the cutter's floor is flat, so the groove
+    fades out ~0.25 mm past the arris exactly as the west ends do — but because a stroke that stops
+    ON the line ends in a square wall a hair short of the edge, and reads as a groove that gave up.
+    Aimed past, the edge is what ends it.
+
+    Pinned on the segment rather than on the built solid because that is where the distinction lives:
+    both versions cut nearly the same material, and only the aim says which was intended."""
     y_n = _top_lines(side)[1]
-    for i, seg in enumerate(segs[side]):
-        for _x, y in seg:
-            assert y <= y_n + 1e-9, f"{side} line {i}: y={y:.2f} is past the north top line {y_n}"
+    reach = [i for i, seg in enumerate(segs[side]) if max(p[1] for p in seg) > y_n]
+    assert len(reach) <= 1, f"{side}: {len(reach)} strokes reach the north facet, expected at most 1"
+    for i in reach:
+        assert max(p[1] for p in segs[side][i]) > CAN.CANOPY_NORTH_OUTER_Y, (
+            f"{side} line {i} stops on the facet at y={max(p[1] for p in segs[side][i]):.2f} — it "
+            f"must run past the wall at {CAN.CANOPY_NORTH_OUTER_Y} to break the edge"
+        )
+        assert len(CAN.puzzle_north_crossings([segs[side][i]])) == 1
 
 
 @pytest.mark.parametrize("side", SIDES)
@@ -274,18 +291,68 @@ def test_only_the_upper_stroke_leaves_through_the_east_wall(side, segs):
         f"{side}: the upper stroke's cap is not clear of the wall"
 
 
+def test_the_north_exit_clears_the_corner_and_the_nudge_is_the_reason(segs):
+    """``PUZZLE_LINE_NUDGE`` exists to move line A's exit out of the NW corner, and it is a hand-set
+    number in a module where everything else is fitted — so pin what it buys, at both ends.
+
+    As set, it must put the exit inside the safe window. Zeroed, the line must aim into the corner —
+    otherwise the departure from the sketch is buying nothing and should be dropped. The window is
+    derived in `canopy` from the corner radius and the pocket, so this test restates neither.
+
+    Note what the zeroed case actually produces: the guard REFUSES the north break (the exit would
+    be in the corner), so the stroke keeps the plain keep-out and never reaches the edge at all.
+    That is the failure the nudge exists to avoid, and it is why the check below reads the line's
+    own geometry rather than the finished terminals — the fallback would otherwise hide it."""
+    x_lo, x_hi = CAN.canopy_puzzle_north_exit_window()
+    crossings = [x for s in SIDES for x in CAN.puzzle_north_crossings(segs[s])]
+    assert len(crossings) == 1, f"expected one stroke through the north wall, found {crossings}"
+    x = crossings[0]
+    assert x_lo <= x <= x_hi, f"the north exit at x={x:.2f} is outside the window {x_lo}..{x_hi}"
+
+    def raw_exit(side, i):
+        """Where line ``i`` crosses the north WALL, ignoring every keep-out."""
+        a, b, c = PZ.line_in_canopy(side, i)
+        return (c - b * CAN.CANOPY_NORTH_OUTER_Y) / a
+
+    side, i = "right", 0
+    assert abs(raw_exit(side, i) - x) < 1e-6, "the pinned exit is not line 0's on the right half"
+    saved = PZ.PUZZLE_LINE_NUDGE
+    try:
+        PZ.PUZZLE_LINE_NUDGE = (0.0,) * len(saved)
+        bare_x = raw_exit(side, i)
+        fell_back = [x for s in SIDES for x in CAN.puzzle_north_crossings(CAN.canopy_puzzle_strokes(s))]
+    finally:
+        PZ.PUZZLE_LINE_NUDGE = saved
+    assert bare_x < x_lo, (
+        f"without the nudge the line already exits at x={bare_x:.2f}, clear of the corner "
+        f"({x_lo:.2f}) — the {saved[0]} mm departure from the sketch is buying nothing"
+    )
+    assert not fell_back, \
+        "the un-nudged line was let out north anyway — the exit-window guard is not doing its job"
+
+
+@pytest.mark.parametrize("side", SIDES)
+def test_the_nudge_did_not_cost_the_east_break(side, segs):
+    """The other end of the nudge's window, and the one that is easy to miss: line A is shared, so
+    pushing its right-half exit east slides the LEFT half's stroke north, towards the keep-out at its
+    east end. Past ~3.8 mm that stroke stops reaching the east wall and quietly loses its break —
+    the mark still looks fine on the right half, which is where anyone would be looking."""
+    n = PZ.upper_index(side, *CAN.canopy_puzzle_region(side))
+    assert max(p[0] for p in segs[side][n]) > CAN.CANOPY_EAST_X, \
+        f"{side}: the upper stroke no longer breaks the east arris"
+
+
 def test_the_stroke_that_reaches_the_north_chamfer_keeps_off_the_usb_pocket(segs):
     """One stroke borders the north chamfer, which puts its terminal inside the Y band the north
     keep-out exists to protect: the USB overmold pocket's roof has only CANOPY_USB_OM_ROOF_MIN
     (0.5 mm) of budget, i.e. exactly what a groove would spend. It is safe only because it lands
     WEST of the pocket — so pin that, rather than the fact that it currently happens to."""
     pocket_w = C.pcb_to_case(*C.MCU_POS)[0] - CAN.CANOPY_USB_OM_W / 2
-    near = [(s, i, p) for s in SIDES for i, seg in enumerate(segs[s]) for p in seg
-            if p[1] > CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_USB_OM_DEPTH]
-    assert near, "no stroke reaches the north chamfer any more — drop the y1_break plumbing"
-    for s, i, (x, _y) in near:
+    near = [(s, x) for s in SIDES for x in CAN.puzzle_north_crossings(segs[s])]
+    assert near, "no stroke reaches the north wall any more — drop the y1_break plumbing"
+    for s, x in near:
         assert x + CAN.CANOPY_PUZZLE_W / 2 + CAN.CANOPY_PUZZLE_POCKET_GAP <= pocket_w, \
-            f"{s} line {i}: the terminal at x={x:.2f} crowds the pocket (starts {pocket_w:.2f})"
+            f"{s}: the north crossing at x={x:.2f} crowds the pocket (starts {pocket_w:.2f})"
 
 
 @pytest.mark.parametrize("side", SIDES)
@@ -403,23 +470,36 @@ def test_no_terminal_is_rounded(side, bare, cut, segs):
 
 @pytest.mark.parametrize("side", SIDES)
 def test_strokes_keep_off_the_facet_corner_and_usb_pocket(side, bare, cut, segs):
-    """The strokes stop ON the west chamfer's top line, so the facet SURFACE below it must be
-    untouched. Probed along each stroke's own line — where it actually approaches the facet — not at
-    fixed Y stations that a re-fit could slide the strokes away from."""
+    """The strokes leave the west edge cleanly and fade onto the drafted facet.
+
+    The cutter deliberately runs past the facet's top line: it keeps a square-free terminal at the
+    edge, then loses depth as the facet drops away below the normal-offset groove floor. Probe the
+    flat shoulder for unwanted cuts and the facet separately for that intentional partial cut.
+    """
     xw = CAN.CANOPY_WEST_OUTER_X
     x_top = _top_lines(side)[0]
     for i, ((ax, ay), (bx, by)) in enumerate(segs[side]):
         if min(ax, bx) > x_top + 0.05:
             continue                       # this stroke never gets to the facet
-        for x in (xw + 0.2, xw + 0.6, x_top - 0.15):
+        for x in (xw + 0.2, xw + 0.6):
             y = ay + (by - ay) * (x - ax) / (bx - ax)
             a, b = _roof_top(bare[side], x, y), _roof_top(cut[side], x, y)
             assert (a is None) == (b is None)
             if a is not None:
                 assert abs(a - b) < 1e-6, (
-                    f"{side} line {i}: crossed onto the west shoulder facet at "
+                    f"{side} line {i}: cut before reaching the west facet at "
                     f"({x:.2f}, {y:.1f}) — {a:.3f} → {b:.3f}"
                 )
+        x = x_top - 0.15
+        y = ay + (by - ay) * (x - ax) / (bx - ax)
+        a, b = _roof_top(bare[side], x, y), _roof_top(cut[side], x, y)
+        assert (a is None) == (b is None)
+        if a is not None:
+            fade = a - b
+            assert 0.0 < fade < CAN.CANOPY_PUZZLE_DEPTH + 0.03, (
+                f"{side} line {i}: facet terminal did not fade correctly at "
+                f"({x:.2f}, {y:.1f}) — {fade:.3f} mm"
+            )
     r = CAN.CANOPY_CORNER_R
     corner = [f for f in cut[side].faces()
               if f.center().X < xw + r and f.center().Y > CAN.CANOPY_NORTH_OUTER_Y - r]

@@ -10,6 +10,7 @@ pytest suite covering geometry correctness, dimensional fit, manifold integrity,
 
 | File | Description |
 |------|-------------|
+| `shared_builds.py` | Session-cached wrappers for the expensive OCC builders — tests import `build_*` from here, never from `sofle_case.*` |
 | `test_constants.py` | Sanity-check: envelope ≥ PCB + walls, Z-stack is monotonically increasing |
 | `test_tray.py` | Tray shell: outer bbox matches constants (flat walls at `MAIN_RIM_Z`), single solid (no floating-relief regression) |
 | `test_case.py` | Full case half: bounding box, single solid, volume sanity |
@@ -31,14 +32,16 @@ pytest suite covering geometry correctness, dimensional fit, manifold integrity,
 ## For AI Agents
 
 ### Working In This Directory
-- Run with `pytest tests/ -x -q` (fail-fast, quiet). Full suite takes ~15 seconds.
+- Run with `pytest tests/ -x -q` (fail-fast, quiet). Full suite takes ~55 seconds; `pytest tests/ -n 2 --dist loadfile` finishes in ~40 (xdist workers each load the OCP kernel, so total RAM roughly doubles per worker — keep the count low on memory-tight machines).
+- **Import builders from `tests/shared_builds.py`, never directly from `sofle_case.*`.** The module caches each expensive OCC build once per process; peak memory no longer grows with test count. Parts are shared read-only — probes must keep using boolean ops that return new objects (no `-=`/`+=` on a built part).
+- **Exception:** a test that monkeypatches a constant (e.g. `COVER_PULLER_NOTCH`) must build FRESH from the real `sofle_case.*` builder inside that test — the cache would otherwise serve geometry built with the shipped default, and a cached build must never be polluted by patched state.
 - **Never skip or mock geometry calls** in tests — the geometry must actually build. Tests are the regression guard for the OCC kernel.
 - When adding a new constant or feature, add a corresponding test. Minimum: bbox check + single-solid check.
 - `test_tray.py::test_tray_is_single_solid` is the most important regression guard — it catches the "floating slab" failure mode where the +Y relief bump detaches from the shell.
 
 ### Common Patterns
 - Tolerance on float comparisons: `< 0.01` mm (OCC kernel precision).
-- Geometry tests call the real build functions (`build_tray()`, `stepped_standoff()`, etc.) — no mocking.
+- Geometry tests call the real build functions via `tests/shared_builds` (`build_tray()`, `build_top_part()`, etc.) — no mocking.
 - Phantom tests only check that `.build()` or `build_*_phantom()` runs without exception; they don't assert geometry.
 
 ## Dependencies
@@ -48,6 +51,7 @@ pytest suite covering geometry correctness, dimensional fit, manifold integrity,
 
 ### External
 - `pytest ≥ 8.0`
+- `pytest-xdist ≥ 3.5` (optional parallelism — see run note above)
 - `build123d` (geometry kernel — used directly in tests)
 
 <!-- MANUAL: -->

@@ -1,4 +1,4 @@
-from sofle_case.case import build_case_half
+from tests.shared_builds import build_case_half
 
 
 def test_left_is_valid():

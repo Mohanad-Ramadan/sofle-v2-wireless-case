@@ -1,7 +1,7 @@
 """Tray (shell + cavity) tests."""
 from build123d import Part
 from sofle_case import constants as C
-from sofle_case.tray import build_tray
+from tests.shared_builds import build_tray
 
 
 def test_returns_part():
