@@ -229,6 +229,15 @@ assert CANOPY_PUZZLE_EAST_BREAK > CANOPY_PUZZLE_W / 2, \
 # roofline at 2:1, so the cutter stops biting ~0.25 mm past the arris. The mark reaches the roof's
 # west edge and disappears over the shoulder, which is the read we want at the gap.
 CANOPY_PUZZLE_WEST_BREAK = CANOPY_PUZZLE_W
+# NORTH is aimed past the wall for the same reason as west, and produces the same terminal: the
+# groove holds full depth to the facet's top line and fades out over the next 0.25 mm as the facet
+# drops from under the cutter. Measured, both edges on the right half: 0.5 / 0.35 / 0.15 / 0.0 at the
+# top line and 0.1 / 0.2 / 0.3 mm past it. They match because both facets are 2:1.
+#
+# What the overshoot buys is the absence of a square end ON the roof: a stroke stopped at the facet's
+# top line ends in a flat wall a hair short of the edge, and reads as a groove that gave up. Aim it
+# past, and the edge is what ends it.
+CANOPY_PUZZLE_NORTH_BREAK = CANOPY_PUZZLE_W
 # NORTH is the exception, and it is deliberate. One stroke (today the right half's line 0) is aimed
 # too far north to reach the west wall — heading gap-ward it climbs — so it leaves at the NW corner
 # instead. It is stopped ON the north chamfer's TOP LINE (CANOPY_NORTH_OUTER_Y − h): it borders the
@@ -331,7 +340,7 @@ def canopy_puzzle_strokes(side: str) -> list[tuple[tuple[float, float], tuple[fl
     common = dict(x1_north=canopy_puzzle_north_x1(),
                   x0_break=CANOPY_WEST_OUTER_X - CANOPY_PUZZLE_WEST_BREAK)
     segs = PZ.strokes(side, *region, **common,
-                      y1_break=CANOPY_NORTH_OUTER_Y - canopy_north_chamfer_run(side))
+                      y1_break=CANOPY_NORTH_OUTER_Y + CANOPY_PUZZLE_NORTH_BREAK)
     if not _puzzle_north_exit_ok(segs):
         segs = PZ.strokes(side, *region, **common)
         assert _puzzle_north_exit_ok(segs), \
@@ -339,12 +348,28 @@ def canopy_puzzle_strokes(side: str) -> list[tuple[tuple[float, float], tuple[fl
     return segs
 
 
+def puzzle_north_crossings(segs: list[tuple[tuple[float, float], tuple[float, float]]]
+                           ) -> list[float]:
+    """X where each stroke crosses the north WALL — not where its segment happens to end.
+
+    The endpoint sits a break's-worth past the wall, so measuring the terminal would read a position
+    the groove never occupies on the part: the stroke is tilted, so the overshoot also slides it west,
+    by 0.2 mm per mm here. Every judgement about where the mark leaves the part — corner clearance,
+    pocket clearance — has to be made at the wall."""
+    out = []
+    for (x0, y0), (x1, y1) in segs:
+        if max(y0, y1) >= CANOPY_NORTH_OUTER_Y > min(y0, y1):
+            out.append(x0 + (x1 - x0) * (CANOPY_NORTH_OUTER_Y - y0) / (y1 - y0))
+    return out
+
+
 def _puzzle_north_exit_ok(segs: list[tuple[tuple[float, float], tuple[float, float]]]) -> bool:
-    """Does every terminal inside the north keep-out's band leave through the safe window?"""
+    """Does every stroke that leaves through the north wall do it inside the safe window?"""
     x_lo, x_hi = canopy_puzzle_north_exit_window()
-    return all(x_lo <= x <= x_hi
-               for seg in segs for x, y in seg
-               if y > CANOPY_NORTH_OUTER_Y - CANOPY_USB_OM_DEPTH)
+    if any(y > CANOPY_NORTH_OUTER_Y - CANOPY_USB_OM_DEPTH and y < CANOPY_NORTH_OUTER_Y
+           for seg in segs for _x, y in seg):
+        return False              # a terminal loitering INSIDE the pocket band, not crossing it
+    return all(x_lo <= x <= x_hi for x in puzzle_north_crossings(segs))
 
 
 def canopy_usb_z(side: str) -> tuple[float, float]:
@@ -662,7 +687,20 @@ def _offset_roofline(roof: list[tuple[float, float]], d: float,
     Not straight down in Z: a Z-drop measures depth vertically, so a 0.5 mm groove would thin to
     0.5·cos 35.9° = 0.40 mm on the right half's steepest run — it would pass any "did it cut?" check
     while going shallow exactly where the surface is most visible. Both ramp ends have zero slope, so
-    the offset polyline spans the same Y range as the original and ``_yz_prism`` still accepts it."""
+    the offset polyline spans the same Y range as the original and ``_yz_prism`` still accepts it.
+
+    THE OFFSET STOPS AT THE ROOF. It is deliberately NOT carried down either top facet, so a stroke
+    aimed off the edge behaves the same on both: the cutter's floor stays flat while the facet dives
+    away (2:1 on the west, 2:1 on the north), and the groove fades out ~0.25 mm past the arris. That
+    fade IS the terminal — the mark runs off the edge instead of ending in a wall.
+
+    Carrying the offset across the north facet was built and reverted. It worked — 0.5 mm normal all
+    the way through the facet, notching the wall — but it reads as the groove being dragged down the
+    slope at full depth, where the west ends run off cleanly. Two edges treated alike beats one edge
+    treated thoroughly. (It also cost an over-cut: mitring two offset half-planes at that convex
+    junction deepened the groove 0.500 → 1.118 mm over the 0.31 mm before the facet, because the true
+    erosion there is an arc, which runs backwards in Y and cannot be expressed in a Y-ordered
+    profile.)"""
     out: list[tuple[float, float]] = []
     for y, z in roof:
         m = _roofline_slope(y, z_ridge)
@@ -701,7 +739,11 @@ def _puzzle_cutter(side: str, z_ridge: float) -> Part:
     no per-stroke fitting. That matters here because two of the four strokes cross the ramp.
 
     This works because the roof/ramp is a translational sweep of one Y–Z profile along X, i.e. a
-    DEVELOPABLE surface, so a flat plan footprint lands on it by clipping alone."""
+    DEVELOPABLE surface, so a flat plan footprint lands on it by clipping alone.
+
+    The offset covers the ROOF only — see ``_offset_roofline``. Every stroke that leaves the roof
+    therefore terminates the same way, west and north alike: full depth to the arris, then a fade as
+    the facet drops out from under the cutter."""
     inner = _offset_roofline(_roofline(z_ridge), CANOPY_PUZZLE_DEPTH, z_ridge)
     under = _yz_prism(inner, z_base=CANOPY_FUSE_BASE_Z - 5.0,
                       x_lo=CANOPY_WEST_OUTER_X - 1.0,

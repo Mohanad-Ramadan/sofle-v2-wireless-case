@@ -80,17 +80,18 @@ PUZZLE_SKETCH_RESIDUAL = 0.1663                  # mm; worst distance from a ske
 # What it costs is placement fidelity — 3.3 mm is ~20x PUZZLE_SKETCH_RESIDUAL, so line A no longer
 # lands where the drawing puts it. That is the trade, stated in one number that can be zeroed.
 #
-# The value is bounded on BOTH sides, and neither bound is taste. Measured against the north facet's
-# top line (y = 121.0 — canopy.canopy_north_chamfer_run; the north facet is smaller than the west
-# one, for reasons that belong to the USB pocket):
-#   ≥ 2.47   the whole groove width must exit through the STRAIGHT north edge — the corner arc is
-#            tangent to the north top line at x = CANOPY_WEST_OUTER_X + CANOPY_CORNER_R. Below this
-#            ``canopy`` refuses the north break outright and the stroke stops inboard instead.
-#   ≤ 3.8    past this the LEFT half's line 0 runs into the north keep-out before it reaches the
-#            east wall and quietly stops breaking the east arris — on the half nobody is looking at
-#            while tuning the right one.
-#   ≤ 4.0    past this the right half's exit comes within CANOPY_PUZZLE_POCKET_GAP of the USB pocket.
-# At 3.3 the margins are: corner 0.86, left-half east break 0.55, pocket 1.38 mm.
+# The value is bounded on BOTH sides, and neither bound is taste. Measured where the stroke crosses
+# the north WALL (canopy.puzzle_north_crossings) — not at its endpoint, which sits a break's-worth
+# beyond and, because the stroke is tilted, 0.2 mm west per mm of that overshoot:
+#   ≥ 2.94   the whole groove width must leave through the STRAIGHT north edge — the corner arc is
+#            tangent to the wall at x = CANOPY_WEST_OUTER_X + CANOPY_CORNER_R. Below this ``canopy``
+#            refuses the north break outright and the stroke stops inboard instead, which is visible
+#            and safe rather than silent.
+#   ≤ 4.16   past this the crossing comes within CANOPY_PUZZLE_POCKET_GAP of the USB pocket.
+#   (≈ 4.6)  and past THAT the LEFT half's line 0 hits the north keep-out early enough to stop
+#            breaking the east arris — on the half nobody is looking at while tuning the right one.
+# At 3.3 the margins are: corner 0.35, pocket 1.87 mm. The window's own middle is 3.55 (0.61 / 1.61),
+# so there is room to re-centre if the corner ever wants more air.
 PUZZLE_LINE_NUDGE = (3.3, 0.0)                   # mm, added to each line's fitted offset
 
 
