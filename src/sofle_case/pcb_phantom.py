@@ -143,16 +143,23 @@ def _slide_switch_body() -> Part:
     return bp.part
 
 
-def build_pcb_phantom(side: str = "right") -> Part:
-    """PCB plate + MCU daughter board + USB-C jack stub + slide-switch body + pin holes.
+def build_pcb_phantom(side: str = "right", include_encoder: bool = True) -> Part:
+    """PCB plate + MCU daughter board + USB-C jack stub + slide-switch body + pin holes + EC11 & knob.
 
-    ``side`` picks the MCU orientation, which sets where the jack stub sits in Z."""
-    return Part(children=[
-        _pcb_plate(), _mcu_block(), _usb_c_stub(side),
-        _slide_switch_body(), _slide_switch_pin_holes(),
-    ])
+    ``side`` picks the MCU orientation, which sets where the jack stub sits in Z.
+
+    The EC11 is included by default because it IS board hardware, and until now it was the one
+    component with no phantom anywhere: ``switch_phantom`` skips SW25 on purpose (it is not an MX
+    switch) and this module never picked it up, so the encoder was invisible in every fit-check.
+    Pass ``include_encoder=False`` if something else in the scene already draws it."""
+    children = [_pcb_plate(), _mcu_block(), _usb_c_stub(side),
+                _slide_switch_body(), _slide_switch_pin_holes()]
+    if include_encoder:
+        from .encoder_phantom import build_encoder_phantom
+        children.append(build_encoder_phantom())      # EC11 + its knob
+    return Part(children=children)
 
 
 if __name__ == "__main__":
     from ocp_vscode import show
-    show(build_pcb_phantom(), name="pcb_phantom")
+    show(build_pcb_phantom(), names=["pcb_phantom"])

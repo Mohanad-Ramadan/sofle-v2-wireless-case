@@ -39,8 +39,11 @@ def _export(part: Part, stem: Path) -> None:
               help="Screenshot the model to a PNG via OCP CAD Viewer (viewer must be running).")
 @click.option("--legacy", "build_legacy", is_flag=True, default=False,
               help="Also export the legacy single-piece tray (build_case_half).")
+@click.option("--phantoms", "show_phantoms", is_flag=True, default=False,
+              help="Also show the hardware phantoms (PCB, plate, switches, EC11, knob) in the "
+                   "viewer. Phantoms are never exported and never fused — view only.")
 def main(side: str, out_dir: Path, show_viewer: bool, export_png: bool,
-         build_legacy: bool) -> None:
+         build_legacy: bool, show_phantoms: bool) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     s = cast(Side, side)
 
@@ -61,6 +64,33 @@ def main(side: str, out_dir: Path, show_viewer: bool, export_png: bool,
         _export(legacy, out_dir / f"sofle_case_{side}")
         parts.append(legacy)
         names.append(f"{side}_legacy")
+
+    if show_phantoms:
+        # View-only hardware. Built here rather than inside the case builders so nothing can
+        # accidentally fuse a phantom into a printed part.
+        from sofle_case.pcb_phantom import build_pcb_phantom
+        from sofle_case.plate_phantom import build_plate_phantom
+        from sofle_case.switch_phantom import build_switch_phantom
+        from sofle_case import knob as K
+        click.echo("building phantoms (view only)...")
+        click.echo(f"  {K.knob_seating_report()}")
+        def _side(part):
+            """Every phantom is authored in RIGHT-hand coords, like the case itself; the left half
+            is the mirror of the right, so phantoms get mirrored with it or they land on the wrong
+            half. (The EC11 rides inside the PCB phantom and is mirrored along with it.)"""
+            if side != "left":
+                return part
+            from build123d import Plane, Pos, mirror
+            from sofle_case import constants as C
+            return Pos(C.OUTER_WIDTH / 2, 0, 0) * mirror(
+                Pos(-C.OUTER_WIDTH / 2, 0, 0) * part, about=Plane.YZ)
+
+        for name, part in (("pcb+encoder+knob", _side(build_pcb_phantom(s))),
+                           ("plate", _side(build_plate_phantom())),
+                           ("switches", _side(build_switch_phantom())),
+                           ("knob_on_untrimmed_shaft", _side(K.place_knob(bottomed=True)))):
+            parts.append(part)
+            names.append(f"{side}_{name}")
 
     if show_viewer or export_png:
         from ocp_vscode import show

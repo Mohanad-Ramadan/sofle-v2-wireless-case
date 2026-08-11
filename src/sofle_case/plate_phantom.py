@@ -85,4 +85,4 @@ def build_plate_phantom() -> Part:
 
 if __name__ == "__main__":
     from ocp_vscode import show
-    show(build_plate_phantom(), name="plate_phantom")
+    show(build_plate_phantom(), names=["plate_phantom"])

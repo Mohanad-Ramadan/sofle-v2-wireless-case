@@ -174,4 +174,4 @@ def build_top_cover(fuse_margin: float = 0.0) -> Part:
 # %%
 if __name__ == "__main__":
     from ocp_vscode import show
-    show(build_top_cover(), name="top_cover")
+    show(build_top_cover(), names=["top_cover"])

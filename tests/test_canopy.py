@@ -18,6 +18,7 @@ from sofle_case import canopy as CAN
 from tests.shared_builds import build_canopy
 from tests.shared_builds import build_top_part
 from sofle_case.pcb_phantom import build_pcb_phantom
+from sofle_case.encoder_phantom import build_encoder_phantom
 
 
 def _mcu_cx() -> float:
@@ -389,14 +390,44 @@ def test_fused_top_clears_all_bay_components(side):
     """The fused TOP (cover + canopy) must not touch any component above the cover.
 
     Probed against the SIDE-MATCHED phantom: the jack stub moves with the MCU orientation,
-    so the right half must clear a jack at 20.40–23.56 and the left one at 17.64–20.80."""
+    so the right half must clear a jack at 20.40–23.56 and the left one at 17.64–20.80.
+
+    The encoder is excluded deliberately. This test is about the components the canopy VAULTS
+    OVER, and it is parameterized on the jack orientation for exactly that reason; the EC11 is the
+    one component the cover is meant to touch — it passes THROUGH the membrane — so it answers a
+    different question and gets its own test below."""
     top = build_top_part(side)
     if side == "left":
         top = _mirror_back(top)
     above = Solid.make_box(200, 200, 60).translate((-20, -20, C.COVER_TOP_Z + 0.1))
     # build123d raises on `empty & shape` rather than returning empty, and an empty first
     # intersection is the PASSING case here — so short-circuit instead of chaining blindly.
-    touching = top & build_pcb_phantom(side)
+    touching = top & build_pcb_phantom(side, include_encoder=False)
     clash = (touching & above) if touching else None
     vol = 0.0 if clash is None else sum(s.volume for s in clash.solids())
     assert vol < 1e-2, f"{side} canopy clashes bay components by {vol:.2f} mm^3"
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN: the ogee plateau clips the EC11 body's corners. _encoder_shell fillets EVERY vertical "
+    "edge at r=3.0, and that includes the CAVITY's four inner corners — which pulls them in to "
+    "r 8.28 while the 12.4 mm square body's corners sit at r 8.77. The cover-side redesign fixes "
+    "it by rounding the cavity deliberately (small plan radius) instead of inheriting the outer "
+    "wall's. Remove this marker when that lands."))
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_cover_clears_the_encoder_body(side):
+    """The cover must not occupy the space the EC11's own body stands in.
+
+    This check could not exist before the encoder had a phantom: switch_phantom skips SW25 (it is
+    not an MX switch) and pcb_phantom did not draw it, so the tallest object on the keyboard was
+    being fit-checked against nothing at all. With it drawn, the plateau turns out to interfere by
+    ~0.92 mm^3 in four equal lumps — one per body corner, Z 16.10–17.00 — which is a real
+    collision with a brass-and-plastic part that will not yield."""
+    top = build_top_part(side)
+    if side == "left":
+        top = _mirror_back(top)
+    above = Solid.make_box(200, 200, 60).translate((-20, -20, C.COVER_TOP_Z + 0.1))
+    touching = top & build_encoder_phantom()
+    clash = (touching & above) if touching else None
+    vol = 0.0 if clash is None else sum(s.volume for s in clash.solids())
+    assert vol < 1e-2, f"{side} cover clashes the encoder by {vol:.2f} mm^3"

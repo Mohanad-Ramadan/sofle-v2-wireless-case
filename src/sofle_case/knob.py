@@ -59,7 +59,17 @@ KNOB_HEM_CLEAR = 0.5      # mm; design gap between the knob's hem and the cover 
 
 
 def cover_feature_top_z() -> float:
-    from .case import encoder_feature_top_z
+    """Case Z of the tallest COVER feature at the encoder — the other candidate for the hem's floor.
+
+    Deferred to ``case`` when it publishes a figure, because what the cover does at the encoder is
+    that module's call, not this one's. Until it publishes one, the cover there IS the ogee plateau
+    and its top is the feature top. The import stays function-local AND guarded so this module keeps
+    answering while a cover-side redesign is out of tree — without the guard, importing the knob
+    (and therefore the PCB phantom, and therefore most of the suite) fails outright."""
+    try:
+        from .case import encoder_feature_top_z
+    except ImportError:
+        return C.ENCODER_SHELL_TOP_Z
     return encoder_feature_top_z()
 
 
