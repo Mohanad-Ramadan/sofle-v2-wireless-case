@@ -18,6 +18,15 @@ _UPPER_H  =  6.6   # upper housing height above plate
 _STEM_DIA =  4.5   # stem cylinder diameter
 _STEM_H   =  3.5   # stem cylinder height above upper housing
 
+# Keycap — APPROXIMATE, and only ever used to answer "how tall does this thing read next to the
+# keys". A Cherry/OEM-profile cap swallows most of the stem: its underside sits ~1.0 mm above the
+# upper housing and the cap body is ~9.4 mm tall, sloping from an 18 mm base to a ~14 mm top. That
+# puts the crown ~17 mm above the plate. Not a fit-check part — nothing may depend on it.
+_CAP_BASE_W   = 18.0
+_CAP_TOP_W    = 14.0
+_CAP_H        =  9.4
+_CAP_GAP      =  1.0   # cap underside above the upper housing
+
 
 def _load_switch_positions() -> list[dict]:
     """Return top-layer MX switch entries from components.json (excludes encoder SW25)."""
@@ -27,6 +36,23 @@ def _load_switch_positions() -> list[dict]:
         for k, v in raw.items()
         if k.startswith("SW") and v.get("layer") == "top" and k != "SW25"
     ]
+
+
+def _keycap_solid(cx: float, cy: float) -> Part:
+    """One approximate keycap: a truncated pyramid on top of the switch. See the _CAP_* note.
+
+    No ``rot``, unlike the switch below: the cap is square about its own axis, so rotating it is a
+    no-op — and taking the argument would imply the caps are oriented when they are not."""
+    base_z = C.PLATE_TOP_Z + _UPPER_H + _CAP_GAP
+    # taper by lofting base → top square
+    from build123d import loft, BuildSketch, Rectangle, Location
+    with BuildSketch() as lo:
+        Rectangle(_CAP_BASE_W, _CAP_BASE_W)
+    with BuildSketch() as hi:
+        Rectangle(_CAP_TOP_W, _CAP_TOP_W)
+    f_lo = lo.sketch.faces()[0].moved(Location((cx, cy, base_z)))
+    f_hi = hi.sketch.faces()[0].moved(Location((cx, cy, base_z + _CAP_H)))
+    return loft([f_lo, f_hi])
 
 
 def _mx_switch_solid(cx: float, cy: float, rot: float) -> Part:
@@ -47,15 +73,26 @@ def _mx_switch_solid(cx: float, cy: float, rot: float) -> Part:
     return bp.part
 
 
-def build_switch_phantom() -> Part:
-    """All 29 MX switches as a single Part compound."""
+def build_switch_phantom(with_keycaps: bool = False) -> Part:
+    """All 29 MX switches as a single Part compound.
+
+    ``with_keycaps`` adds approximate caps — the only honest way to judge whether something like
+    the encoder knob reads tall, since the switches alone stop 5 mm below the surface your fingers
+    actually touch."""
     children: list[Part] = []
     for sw in _load_switch_positions():
         cx, cy = C.pcb_to_case(sw["x"], sw["y"])
         children.append(_mx_switch_solid(cx, cy, sw["rot"]))
+        if with_keycaps:
+            children.append(_keycap_solid(cx, cy))
     return Part(children=children)
+
+
+def keycap_top_z() -> float:
+    """Approximate Z of a keycap crown — the datum the knob's height should be judged against."""
+    return C.PLATE_TOP_Z + _UPPER_H + _CAP_GAP + _CAP_H
 
 
 if __name__ == "__main__":
     from ocp_vscode import show
-    show(build_switch_phantom(), name="switch_phantom")
+    show(build_switch_phantom(), names=["switch_phantom"])

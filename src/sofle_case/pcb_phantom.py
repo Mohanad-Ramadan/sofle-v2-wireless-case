@@ -1,8 +1,5 @@
 """PCB phantom for visual fit-check in the OCP viewer. Gate with SHOW_PCB_PHANTOM."""
 from __future__ import annotations
-import json
-import math
-from pathlib import Path
 from typing import cast
 from build123d import (
     Part, Wire, Pos, Polyline, make_face, extrude,
@@ -10,13 +7,14 @@ from build123d import (
     Box, Cylinder, Mode,
 )
 from . import constants as C
-from .pcb_geometry import polygon_in_case_coords
+from .pcb_geometry import polygon_in_case_coords, rotate_2d, slide_switch_placement
 
-_DATA = Path(__file__).resolve().parents[2] / "data"
+# Backward-compat alias: the shared rotation helper now lives in pcb_geometry.
+_rotate_2d = rotate_2d
 
 # Phantom-only body dimensions (not structural — not in constants.py)
 _MCU_W         = 18.0  # nice!nano width along case X
-_USB_C_STUB_Y  =  7.0  # depth of USB-C jack stub extending from MCU +Y face
+# USB-C jack stub depth is NOT local: it is the measured C.USB_JACK_Y_PROTRUDE (1.0 mm).
 
 # SK12D07VG3 slide switch geometry (local frame: pins along local X)
 # Pin span from drill data: local X = -2.1 .. +6.1 → center at +2.0
@@ -77,39 +75,44 @@ def _pcb_plate() -> Part:
 
 
 def _mcu_block() -> Part:
-    """nice!nano + header legs block above the main PCB plate."""
-    cx, cy = C.pcb_to_case(*C.MCU_POS)
-    block_h  = C.MCU_HILL_Z - C.PCB_TOP_Z   # 11.0 mm: full MCU + header legs
+    """nice!nano + socket stack block above the main PCB plate, up to the board top."""
+    cx, _ = C.pcb_to_case(*C.MCU_POS)
+    block_h  = C.MCU_PCB_TOP_Z - C.PCB_TOP_Z   # 11.0 mm: sockets + nano board
     center_z = C.PCB_TOP_Z + block_h / 2
+    # Anchored at the pin array (MCU_BODY_N_Y), not centred on MCU_POS — the board's extra
+    # length over a Pro Micro is at the SOUTH end. See constants.MCU_BODY_N_Y.
+    center_y = (C.MCU_BODY_N_Y + C.MCU_BODY_S_Y) / 2
 
     with BuildPart() as bp:
-        with Locations((cx, cy, center_z)):
+        with Locations((cx, center_y, center_z)):
             Box(_MCU_W, C.MCU_BODY_L, block_h)
 
     assert bp.part is not None
     return bp.part
 
 
-def _usb_c_stub() -> Part:
-    """USB-C jack body stub at the +Y face of the MCU block."""
-    cx, cy = C.pcb_to_case(*C.MCU_POS)
-    mcu_y_face = cy + C.MCU_BODY_L / 2    # +Y face of MCU block (≈ 118.59 case-Y)
-    stub_center_y = mcu_y_face + _USB_C_STUB_Y / 2
-    stub_h = C.USB_C_BODY_TOP_Z - C.MCU_PCB_TOP_Z
-    center_z = C.MCU_PCB_TOP_Z + stub_h / 2
+def _usb_c_stub(side: str = "right") -> Part:
+    """USB-C jack body stub at the +Y face of the MCU block, at this half's measured band.
+
+    The stub protrudes ``C.USB_JACK_Y_PROTRUDE`` (1.0 mm, measured) past the board's +Y
+    edge — the real jack stops ~0.4 mm short of the canopy north wall's inner face, so
+    the viewer shows that air gap (only the plug bridges the wall). It was a 7.0 mm
+    tongue that poked ~1.6 mm PAST the wall's outer face — a visual lie. On the FLIPPED
+    half the jack hangs under the nano board: its Z band (17.64→20.80) falls inside
+    ``_mcu_block``'s Z span, so only the 1.0 mm tongue shows there — expected."""
+    cx, _ = C.pcb_to_case(*C.MCU_POS)
+    mcu_y_face = C.MCU_BODY_N_Y           # +Y (USB-end) face of the board = 116.09 case-Y
+    stub_center_y = mcu_y_face + C.USB_JACK_Y_PROTRUDE / 2
+    jack_lo, jack_hi = C.usb_jack_z(side)
+    stub_h = jack_hi - jack_lo
+    center_z = jack_lo + stub_h / 2
 
     with BuildPart() as bp:
         with Locations((cx, stub_center_y, center_z)):
-            Box(C.USB_C_W, _USB_C_STUB_Y, stub_h)
+            Box(C.USB_C_W, C.USB_JACK_Y_PROTRUDE, stub_h)
 
     assert bp.part is not None
     return bp.part
-
-
-def _rotate_2d(lx: float, ly: float, deg: float) -> tuple[float, float]:
-    """Rotate a local (x, y) offset by *deg* degrees CCW."""
-    r = math.radians(deg)
-    return lx * math.cos(r) - ly * math.sin(r), lx * math.sin(r) + ly * math.cos(r)
 
 
 def _slide_switch_body() -> Part:
@@ -118,16 +121,13 @@ def _slide_switch_body() -> Part:
     Local frame: pins along local X, body centered over pin span.
     Actuator nub extends in local -Y (toward -X wall after 270° rotation).
     """
-    raw = json.loads((_DATA / "components.json").read_text())
-    sw = raw["SW31"]
-    cx, cy = C.pcb_to_case(sw["x"], sw["y"])
-    rot = sw["rotation"]
+    cx, cy, rot = slide_switch_placement()
 
     body_z = C.PCB_TOP_Z + _SK12_BODY_H / 2
     nub_z = C.PCB_TOP_Z + 1.5 + _SK12_NUB_H / 2
 
-    bdx, bdy = _rotate_2d(_SK12_PIN_CENTER_X, 0.0, rot)
-    ndx, ndy = _rotate_2d(
+    bdx, bdy = rotate_2d(_SK12_PIN_CENTER_X, 0.0, rot)
+    ndx, ndy = rotate_2d(
         _SK12_PIN_CENTER_X,
         -(_SK12_BODY_W / 2 + _SK12_NUB_D / 2),
         rot,
@@ -143,14 +143,23 @@ def _slide_switch_body() -> Part:
     return bp.part
 
 
-def build_pcb_phantom() -> Part:
-    """PCB plate + MCU daughter board + USB-C jack stub + slide-switch body + pin holes."""
-    return Part(children=[
-        _pcb_plate(), _mcu_block(), _usb_c_stub(),
-        _slide_switch_body(), _slide_switch_pin_holes(),
-    ])
+def build_pcb_phantom(side: str = "right", include_encoder: bool = True) -> Part:
+    """PCB plate + MCU daughter board + USB-C jack stub + slide-switch body + pin holes + EC11 & knob.
+
+    ``side`` picks the MCU orientation, which sets where the jack stub sits in Z.
+
+    The EC11 is included by default because it IS board hardware, and until now it was the one
+    component with no phantom anywhere: ``switch_phantom`` skips SW25 on purpose (it is not an MX
+    switch) and this module never picked it up, so the encoder was invisible in every fit-check.
+    Pass ``include_encoder=False`` if something else in the scene already draws it."""
+    children = [_pcb_plate(), _mcu_block(), _usb_c_stub(side),
+                _slide_switch_body(), _slide_switch_pin_holes()]
+    if include_encoder:
+        from .encoder_phantom import build_encoder_phantom
+        children.append(build_encoder_phantom())      # EC11 + its knob
+    return Part(children=children)
 
 
 if __name__ == "__main__":
     from ocp_vscode import show
-    show(build_pcb_phantom(), name="pcb_phantom")
+    show(build_pcb_phantom(), names=["pcb_phantom"])

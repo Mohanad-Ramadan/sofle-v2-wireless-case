@@ -3,12 +3,12 @@ wall is pushed out to the index-column line. ONLY the +Y wall moves — the −X
 wall is left exactly as-is."""
 from build123d import Solid
 from sofle_case import constants as C
-from sofle_case.tray import build_tray
+from tests.shared_builds import build_tray
 
 
 def _z_mid() -> float:
-    """Comfortably inside the relief's floor-to-MCU_HILL_Z span."""
-    return (C.FLOOR_THICKNESS + C.MCU_HILL_Z) / 2
+    """Comfortably inside the relief's floor-to-MAIN_RIM_Z span."""
+    return (C.FLOOR_THICKNESS + C.MAIN_RIM_Z) / 2
 
 
 def test_tray_still_single_solid():
@@ -37,14 +37,17 @@ def test_plus_y_cavity_widened():
     assert (t & probe).volume == 0, "old +Y wall zone still solid — cavity was not widened"
 
 
-def test_relief_reaches_mcu_hill_z():
-    """Relief must reach up through MCU_HILL_Z (covers the USB-C jack height),
-    not stop short at PCB level."""
+def test_relief_reaches_rim():
+    """Relief must reach up through the full wall height; above the rim there is no
+    wall, so the B+/B- pads clear into open air. Probe just below the outer-top
+    chamfer drop, where the pushed-out wall is at full thickness (the chamfer
+    cosmetically bevels the outer-top edge but does not reduce inner clearance)."""
     t = build_tray()
     x_mid = C.pcb_to_case(C.MCU_POS[0], 0)[0]
     target_y = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
-    probe = Solid.make_box(2.0, 1.0, 1.0).translate((x_mid, target_y - 1.0, C.MCU_HILL_Z - 1.0))
-    assert (t & probe).volume > 0, "relief does not reach MCU_HILL_Z"
+    z_full = C.MAIN_RIM_Z - C.OUTER_TOP_CHAMFER - 0.5   # below the 45° chamfer, full thickness
+    probe = Solid.make_box(2.0, 1.0, 1.0).translate((x_mid, target_y - 1.0, z_full))
+    assert (t & probe).volume > 0, "relief does not reach the top of the wall"
 
 
 def test_minus_x_wall_untouched():
