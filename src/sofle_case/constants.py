@@ -211,16 +211,16 @@ assert COVER_TOP_Z - FRONT_FACET_DROP >= SEAM_LEDGE_Z + 1.0, "front facet toe in
 #   * the front foot seats are FOOT_DEPTH deep, and at y=22 a zero-min wedge is only 0.77 mm
 #     thick, so a 0.6 mm seat would leave 0.17 mm of floor under the pad;
 #   * the reference keeps a visible band of bottom case at the front too.
-# 7 deg is the market average across premium boards, and it is what this is set to. The cost is
-# stated above and it is real: TENT_RISE goes 6.60 -> 15.47, so the back of the assembly stands
-# 43.45 mm tall instead of 34.58. Nothing above Z=0 moved to pay for it -- the wedge grew
+# 6 deg, inside the premium-board band and one degree back from the 7 that was tried first. The
+# cost is stated above and it is real: TENT_RISE goes 6.60 -> 13.24, so the back of the assembly
+# stands 40.94 mm tall instead of 34.58. Nothing above Z=0 moved to pay for it -- the wedge grew
 # downward and the internals rode it, exactly as the "add, never cut" rule intends.
 #
-# It also roughly doubles the band of bottom case visible at the north, 7.6 -> 16.5 mm. THAT IS
+# It also roughly doubles the band of bottom case visible at the north, 7.6 -> 14.2 mm. THAT IS
 # INTENDED: it reads as a tapered plinth under the north half. Do NOT "fix" it by lifting
 # SEAM_NORTH_RISE_FRAC -- that dial is held at 0.0 for a reason of its own (see its block), and
 # at this angle it would make the north look worse, not better.
-TENT_ANGLE_DEG   = 7.0   # deg; typing angle the wedge stands the case at
+TENT_ANGLE_DEG   = 6.0   # deg; typing angle the wedge stands the case at
 TENT_WEDGE_MIN_H = 1.0   # mm; wedge thickness at the south (the thin end)
 
 # ---- Where the two cases hand over: the visible parting line ----

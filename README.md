@@ -30,8 +30,8 @@ pytest
 Last verified: 2026-08-14
 
 - Tests: 248 passed, 0 failed
-- Typing angle: **7°**, produced by the bottom case being a wedge (1.0 mm thick at the front,
-  16.47 mm at the back). Total assembly height 43.12 mm at the back, 26.98 mm at the front.
+- Typing angle: **6°**, produced by the bottom case being a wedge (1.0 mm thick at the front,
+  14.24 mm at the back). Total assembly height 40.94 mm at the back, 26.98 mm at the front.
 - The two parts are a sandwich: deep TOP tub + inset BOTTOM plate, joined by a rabbet and
   five screws through the standoffs. Print the matching TOP for each half — they differ in
   height by 2.76 mm because the USB jack sits at a different Z on each.
