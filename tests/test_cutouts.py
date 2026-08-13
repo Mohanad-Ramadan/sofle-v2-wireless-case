@@ -177,5 +177,11 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # already failing (137697.065 measured against 120795.947) before SEAM_NORTH_RISE_FRAC
     # existed. That dial cuts the TUB back and leaves the bottom's geometry alone, so it does
     # not appear here at all — as with the slide cavity, which is the point of the test.
+    # Rebased for the tent going 3 deg -> 7 deg (the market-average typing angle). The wedge is
+    # part of the bottom part and grew with the angle: +68021.07 mm3, measured against the wedge's
+    # OWN growth of +68048 mm3 before the number was accepted. The 27 mm3 that do not match are
+    # the elephant-foot counter-chamfer on the ground rim, which cuts more as the rim tilts more
+    # (BOTTOM_CHAMFER * tan(angle) deeper). So the bottom moved by the wedge and by nothing else,
+    # which is exactly what this assertion exists to prove — as with the slide cavity.
     # 2e-2 abs tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 137697.065039) < 2e-2
+    assert abs(build_bottom_part(side).volume - 205718.137182) < 2e-2

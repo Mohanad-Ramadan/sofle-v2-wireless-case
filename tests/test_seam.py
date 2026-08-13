@@ -14,10 +14,12 @@ between Z=0 and the tent plane), and the skin never touches the desk — ground 
 to the wedge alone, so two separately-printed parts are never fighting over how the case sits."""
 import math
 
+import pytest
 from build123d import Solid
 from sofle_case import constants as C
 from sofle_case.canopy import CANOPY_RIDGE_TOP_Z
-from sofle_case.case import skirt_extension, tent_ground_z, tent_plane, wedge_deep_z
+from sofle_case.case import (_below_seam_cutter, seam_profile_min_z, skirt_extension,
+                             tent_ground_z, tent_plane, wedge_deep_z)
 from tests.shared_builds import build_bottom_part, build_top_part
 
 OUTER = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
@@ -116,8 +118,8 @@ def test_the_handover_costs_no_height():
     assert abs(hi - CANOPY_RIDGE_TOP_Z) < 0.01
     # and the deepest the SKIN itself reaches is the lifted run at y1, well above the wedge's floor
     assert tb.min.Z > wedge_deep_z(), "the skin reaches deeper than the wedge — impossible"
-    assert abs(tb.min.Z - _seam_z(C.TENT_SEAM_Y1)) < 0.05, \
-        f"skin bottoms out at {tb.min.Z:.3f}, expected {_seam_z(C.TENT_SEAM_Y1):.3f} at y1"
+    assert abs(tb.min.Z - seam_profile_min_z()) < 0.005, \
+        f"skin bottoms out at {tb.min.Z:.4f}, expected the profile minimum {seam_profile_min_z():.4f}"
 
 
 def test_skin_stays_outboard_of_the_wedge():
@@ -156,8 +158,8 @@ def test_skirt_extension_alone_is_a_clean_solid():
     else:
         assert C.TENT_SEAM_Y1 < bb.max.Y < C.TENT_SEAM_Y2, \
             f"skirt dies at y={bb.max.Y:.2f}, expected inside the sweep where the line crosses Z=0"
-    assert abs(bb.min.Z - _seam_z(C.TENT_SEAM_Y1)) < 0.05, \
-        f"skirt bottoms out at {bb.min.Z:.4f}, expected {_seam_z(C.TENT_SEAM_Y1):.4f}"
+    assert abs(bb.min.Z - seam_profile_min_z()) < 0.005, \
+        f"skirt bottoms out at {bb.min.Z:.4f}, expected the profile minimum {seam_profile_min_z():.4f}"
 
 
 def test_the_channel_mouth_has_a_lead_in_all_the_way_round():
@@ -287,3 +289,63 @@ def test_the_handover_actually_sits_where_the_dial_says():
         "skin is not on its lifted run south of the handover"
     assert abs(north - C.SEAM_NORTH_RISE_Z) < 0.02, \
         "skin is not on its northern run past the sweep"
+
+
+@pytest.mark.parametrize("angle", [1.0, 3.0, 7.0, 10.0])
+def test_the_seam_cutter_never_reaches_above_z0(monkeypatch, angle):
+    """The cutter's southern guard branch, which only becomes REACHABLE at a steep angle.
+
+    ``_below_seam_cutter`` starts its profile 20 mm south of the case, and the southern run is
+    the tent plane lifted by ``TENT_SKIRT_LIFT``. That lifted plane rises going south, so far
+    enough out it crosses Z=0 — at 3 deg it has not yet done so by y=-20 (z_s = -0.45), at 7 deg
+    it has (z_s = +1.96). Past the crossing the profile is HELD at Z=0 rather than followed,
+    because everything below the profile is the cutter and a cutter reaching above Z=0 eats the
+    tub proper instead of its skirt.
+
+    The hold is safe at every angle, and not by luck: the crossing sits at y = -20 + z_s/tan,
+    and substituting z_s = -TENT_WEDGE_MIN_H + 20*tan + TENT_SKIRT_LIFT collapses the whole
+    thing to (TENT_SKIRT_LIFT - TENT_WEDGE_MIN_H)/tan, which is negative for any angle so long
+    as the lift stays under the wedge's thin end — which ``TENT_SKIRT_LIFT_MAX`` already
+    guarantees. So the crossing is always SOUTH of the case and the tub is never touched.
+
+    Swept across the band rather than tested at one angle, because the branch that fires
+    depends on the angle and both branches must land in the same place."""
+    monkeypatch.setattr(C, "TENT_ANGLE_DEG", angle)
+    cutter = _below_seam_cutter()
+    inside = cutter & Solid.make_box(400.0, C.OUTER_DEPTH, 200.0).translate((-100.0, 0.0, -100.0))
+    assert inside.volume > 1e-9, f"{angle} deg: the cutter missed the case entirely"
+    assert inside.bounding_box().max.Z <= C.SEAM_NORTH_RISE_Z + 1e-6, (
+        f"{angle} deg: the seam cutter reaches Z={inside.bounding_box().max.Z:.4f} inside the "
+        f"case, above the parting line at {C.SEAM_NORTH_RISE_Z:.4f} — it is eating the tub, "
+        f"not the skirt")
+
+
+@pytest.mark.parametrize("angle", [3.0, 7.0, 10.0])
+def test_the_sweep_dips_below_the_run_and_costs_no_clearance(monkeypatch, angle):
+    """The sweep leaves the southern run along the PLANE'S slope, so it keeps descending for a
+    few mm before it curves up — the profile's minimum is south of the ramp's midpoint and below
+    the run's end at y1, not equal to it.
+
+    That is tangency working as intended, not a defect, and the reason it needs its own test is
+    that it hid for a long time: at 3 deg the dip is 0.024 mm and four separate assertions
+    compared the tub's floor against z1 with a 0.05 tolerance, so it fitted underneath. At 7 deg
+    it is 0.074 and all four failed at once. They were wrong the whole time; the angle only made
+    it visible. They now compare against seam_profile_min_z() and can afford a 0.005 tolerance.
+
+    THE INVARIANT THAT ACTUALLY MATTERS IS UNAFFECTED, which is the other half of this test. The
+    dip is measured against z1 — one number — while the desk is a tilted plane that drops
+    northward FASTER than the spline does. So dipping below z1 moves the skin AWAY from the desk,
+    not toward it, and the ground clearance stays the full TENT_SKIRT_LIFT."""
+    monkeypatch.setattr(C, "TENT_ANGLE_DEG", angle)
+    z1 = tent_ground_z(C.TENT_SEAM_Y1) + C.TENT_SKIRT_LIFT
+    lo = seam_profile_min_z()
+    dip = z1 - lo
+    assert dip > 0.0, "the sweep no longer leaves the run tangentially — someone kinked the seam"
+    assert dip < 0.2, f"{angle} deg: sweep dips {dip:.4f} mm, far more than tangency explains"
+    # and the clearance to the DESK is untouched by it — measured perpendicular to the plane
+    o, n = tent_plane()
+    y_dip = C.TENT_SEAM_Y1 + 1.2                      # ~where the minimum sits, all angles
+    gap = (y_dip - o[1]) * n[1] + (lo - o[2]) * n[2]
+    assert gap > C.TENT_SKIRT_LIFT * 0.9, (
+        f"{angle} deg: the dip pulled the skin to {gap:.4f} mm off the desk, eating into the "
+        f"{C.TENT_SKIRT_LIFT} mm lift — it must not, the desk falls faster than the spline")

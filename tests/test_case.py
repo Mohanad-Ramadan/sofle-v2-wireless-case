@@ -63,11 +63,14 @@ def test_top_part_z_range(side):
     the fused bay-canopy ridge, now THIS half's own (the ridge is derived per half, so left tops
     out 2.76 mm lower than right)."""
     from sofle_case import canopy as CAN
-    from sofle_case.case import tent_ground_z
-    want = tent_ground_z(C.TENT_SEAM_Y1) + C.TENT_SKIRT_LIFT
+    from sofle_case.case import seam_profile_min_z
+    # NOT tent_ground_z(y1) + lift. That is where the southern RUN ends; the sweep leaves it
+    # tangentially and so keeps descending a little further before it climbs. seam_profile_min_z
+    # is the profile's real minimum and the tolerance can be tight because of it.
+    want = seam_profile_min_z()
     bb = build_top_part(side).bounding_box()
-    assert abs(bb.min.Z - want) < 0.05, \
-        f"tub floor at {bb.min.Z:.3f}, expected the lifted run at y1 {want:.3f}"
+    assert abs(bb.min.Z - want) < 0.005, \
+        f"tub floor at {bb.min.Z:.4f}, expected the seam profile's minimum {want:.4f}"
     assert abs(bb.max.Z - CAN.canopy_ridge_top_z(side)) < 0.01
 
 
@@ -387,12 +390,18 @@ def test_split_bottom_left_equals_right():
     # 1e-5 rel tolerates OCC mirror/heal float noise; a real asymmetry is far larger.
     assert abs(left.volume - right.volume) / left.volume < 1e-5
     lbb, rbb = left.bounding_box(), right.bounding_box()
+    # 1e-5 on the box, raised from 1e-6 when the tent went 3 deg -> 7 deg. The deeper wedge gives
+    # OCC's mirror/heal more geometry to accumulate noise over and the X pair went to 2.9e-6.
+    # Verified as noise and not asymmetry before the number was touched: minX and maxX shift by
+    # the SAME 2.9e-6 (a rigid translation of the mirrored copy, not a change of size), the
+    # volumes agree to 5e-8 relative, and Y and Z are bit-identical. A real asymmetry moves one
+    # edge and not the other, and shows in the volume first.
     for a, b in (
         (lbb.min.X, rbb.min.X), (lbb.max.X, rbb.max.X),
         (lbb.min.Y, rbb.min.Y), (lbb.max.Y, rbb.max.Y),
         (lbb.min.Z, rbb.min.Z), (lbb.max.Z, rbb.max.Z),
     ):
-        assert abs(a - b) < 1e-6
+        assert abs(a - b) < 1e-5
 
 
 def test_split_top_same_footprint_different_height_and_window():

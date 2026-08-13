@@ -219,6 +219,54 @@ def wedge_deep_z() -> float:
     return tent_ground_z(y_max)
 
 
+def _seam_sweep_params():
+    """The sweep's two endpoints and its tangents — one definition, two consumers.
+
+    ``_below_seam_cutter`` draws the spline and ``seam_profile_min_z`` measures it, and they
+    must be measuring the SAME curve. Kept here rather than duplicated so the two cannot drift
+    apart when a dial moves."""
+    y1, y2 = C.TENT_SEAM_Y1, C.TENT_SEAM_Y2
+    z1 = tent_ground_z(y1) + C.TENT_SKIRT_LIFT
+    slope = -math.tan(math.radians(C.TENT_ANGLE_DEG))
+    return (y1, z1), (y2, C.SEAM_NORTH_RISE_Z), ((1.0, slope), (1.0, 0.0))
+
+
+def seam_profile_min_z() -> float:
+    """The LOWEST Z the parting line actually reaches — which is NOT the southern run's end.
+
+    The southern run descends northward (it is parallel to the tent plane), so its lowest point
+    is its northern end at ``TENT_SEAM_Y1``. The sweep then leaves that point along the plane's
+    own slope, because tangency is the whole design intent — a horizontal departure would put a
+    visible kink in the parting line. Leaving tangentially means the spline keeps DESCENDING
+    for a few mm before it curves up, so the profile's true minimum sits a little south of the
+    ramp's midpoint and a little BELOW z1:
+
+        angle    dip below z1     where
+         3 deg      0.024 mm      y = 63.9
+         7 deg      0.074 mm      y = 64.2
+        10 deg      0.123 mm      y = 64.3
+
+    THE DIP COSTS NO GROUND CLEARANCE, and that is the point worth keeping. It is measured
+    against z1, a single number; the DESK is a tilted plane that keeps dropping northward and
+    drops faster than the spline does. Perpendicular to the desk the skin's closest approach is
+    0.4963 mm at 7 deg, i.e. essentially the full ``TENT_SKIRT_LIFT`` — the dip never eats into
+    it. ``test_the_skin_never_touches_the_desk`` measures that invariant directly and is the one
+    to trust for clearance.
+
+    It exists so tests can state the tub's floor EXACTLY instead of asserting z1 with enough
+    slack to hide the difference. At 3 deg the dip was 0.024 and every such assertion carried a
+    0.05 tolerance, so it fitted underneath and nobody had to know; at 7 deg it is 0.074 and
+    four assertions failed at once. They were never quite right — the angle only made it
+    visible."""
+    start, end, tangents = _seam_sweep_params()
+    with BuildLine() as bl:
+        Spline(start, end, tangents=tangents)
+    edge = bl.line.edges()[0]
+    # Sketch-local (u, v) here maps to (case Y, case Z), so .Y on the sampled point is the Z.
+    lo = min((edge @ (i / 400.0)).Y for i in range(401))
+    return min(lo, start[1])
+
+
 def _below_seam_cutter() -> Part:
     """Everything BELOW the top case's bottom edge, as a solid swept across the full width.
 
@@ -247,10 +295,8 @@ def _below_seam_cutter() -> Part:
     fixed by ``TENT_SEAM_RAMP_FRAC``, so the higher the dial the steeper that climb — 3.14 mm
     over 8.8 mm at frac 0, 9.44 mm over the same 8.8 mm at frac 1. The joins stay tangent
     either way, but lengthening the ramp is the lever if the blend starts to read as a corner."""
-    y1, y2 = C.TENT_SEAM_Y1, C.TENT_SEAM_Y2
+    (y1, z1), (y2, rise), sweep_tangents = _seam_sweep_params()
     lift = C.TENT_SKIRT_LIFT
-    rise = C.SEAM_NORTH_RISE_Z
-    z1 = tent_ground_z(y1) + lift
     slope = -math.tan(math.radians(C.TENT_ANGLE_DEG))
     y_s, y_n = -20.0, C.OUTER_DEPTH + 60.0
     z_s = tent_ground_z(y_s) + lift
@@ -266,7 +312,7 @@ def _below_seam_cutter() -> Part:
                 Line((y_s - z_s / slope, 0.0), (y1, z1))
             else:
                 Line((y_s, z_s), (y1, z1))
-            Spline((y1, z1), (y2, rise), tangents=((1.0, slope), (1.0, 0.0)))
+            Spline((y1, z1), (y2, rise), tangents=sweep_tangents)
             Line((y2, rise), (y_n, rise))
             Line((y_n, rise), (y_n, bot))
             Line((y_n, bot), (y_s, bot))

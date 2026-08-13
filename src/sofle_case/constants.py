@@ -211,7 +211,16 @@ assert COVER_TOP_Z - FRONT_FACET_DROP >= SEAM_LEDGE_Z + 1.0, "front facet toe in
 #   * the front foot seats are FOOT_DEPTH deep, and at y=22 a zero-min wedge is only 0.77 mm
 #     thick, so a 0.6 mm seat would leave 0.17 mm of floor under the pad;
 #   * the reference keeps a visible band of bottom case at the front too.
-TENT_ANGLE_DEG   = 3.0   # deg; typing angle the wedge stands the case at
+# 7 deg is the market average across premium boards, and it is what this is set to. The cost is
+# stated above and it is real: TENT_RISE goes 6.60 -> 15.47, so the back of the assembly stands
+# 43.45 mm tall instead of 34.58. Nothing above Z=0 moved to pay for it -- the wedge grew
+# downward and the internals rode it, exactly as the "add, never cut" rule intends.
+#
+# It also roughly doubles the band of bottom case visible at the north, 7.6 -> 16.5 mm. THAT IS
+# INTENDED: it reads as a tapered plinth under the north half. Do NOT "fix" it by lifting
+# SEAM_NORTH_RISE_FRAC -- that dial is held at 0.0 for a reason of its own (see its block), and
+# at this angle it would make the north look worse, not better.
+TENT_ANGLE_DEG   = 7.0   # deg; typing angle the wedge stands the case at
 TENT_WEDGE_MIN_H = 1.0   # mm; wedge thickness at the south (the thin end)
 
 # ---- Where the two cases hand over: the visible parting line ----
@@ -313,7 +322,21 @@ assert 0.0 <= SEAM_NORTH_RISE_FRAC <= 1.0, (
     f"north of the sweep. There is nothing sane above 1.0 — the line would pass the plate rim's "
     f"own top and the bottom case would have no material left to show")
 
-assert 0.0 < TENT_ANGLE_DEG <= 5.0, "TENT_ANGLE_DEG outside the sane 0-5 deg range"
+# The ceiling here is a PRACTICAL band, not a derived limit, and it is worth saying so rather
+# than implying a calculation that does not exist. The geometry has no hard stop: every part of
+# the wedge path scales with tan(angle) and stays valid -- the tent plane never reaches Z=0
+# inside the footprint (it starts at -TENT_WEDGE_MIN_H), and the seam cutter's southern guard
+# branch is satisfied at every angle (it reduces to -TENT_SKIRT_LIFT < 0, which is why
+# test_the_seam_cutter_never_reaches_above_z0 passes rather than merely happening to).
+#
+# What does bind is use, not maths. Rise is OUTER_DEPTH * tan, so each extra degree costs about
+# 2.2 mm of back height at this depth: 7 deg puts the back at 43.45 mm, 10 deg at 51.2 mm, and
+# past that the front lip and the north plinth stop being a keyboard and start being a doorstop.
+# 10.0 is where that judgement lands. Raising it further is allowed but should come with a
+# reason, the way this one does.
+assert 0.0 < TENT_ANGLE_DEG <= 10.0, (
+    f"TENT_ANGLE_DEG={TENT_ANGLE_DEG} is outside the practical 0-10 deg band; rise is "
+    f"OUTER_DEPTH*tan(angle), so the back height grows ~2.2 mm per degree")
 # The rest of the guards need OUTER_DEPTH and FOOT_DEPTH, both defined further down; they sit
 # with the envelope. Search for TENT_RISE.
 
