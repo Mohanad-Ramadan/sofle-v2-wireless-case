@@ -408,21 +408,26 @@ def test_fused_top_clears_all_bay_components(side):
     assert vol < 1e-2, f"{side} canopy clashes bay components by {vol:.2f} mm^3"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN: the ogee plateau clips the EC11 body's corners. _encoder_shell fillets EVERY vertical "
-    "edge at r=3.0, and that includes the CAVITY's four inner corners — which pulls them in to "
-    "r 8.28 while the 12.4 mm square body's corners sit at r 8.77. The cover-side redesign fixes "
-    "it by rounding the cavity deliberately (small plan radius) instead of inheriting the outer "
-    "wall's. Remove this marker when that lands."))
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_cover_clears_the_encoder_body(side):
     """The cover must not occupy the space the EC11's own body stands in.
 
     This check could not exist before the encoder had a phantom: switch_phantom skips SW25 (it is
     not an MX switch) and pcb_phantom did not draw it, so the tallest object on the keyboard was
-    being fit-checked against nothing at all. With it drawn, the plateau turns out to interfere by
-    ~0.92 mm^3 in four equal lumps — one per body corner, Z 16.10–17.00 — which is a real
-    collision with a brass-and-plastic part that will not yield."""
+    being fit-checked against nothing at all. With it drawn, the plateau turned out to interfere by
+    ~0.92 mm^3 in four equal lumps — one per body corner, Z 16.10–17.00 — a real collision with a
+    brass-and-plastic part that will not yield. This carried an ``xfail(strict=True)`` while that
+    stood.
+
+    FIXED, and the print proved why it mattered: ``_encoder_shell`` selected its R3.0 plan
+    round-over by edge LENGTH, so the cavity's four vertical corners (4.2 mm) were filleted along
+    with the outer wall's, refilling them to r 8.32 against the body corners' 8.77. The fix filters
+    that selection RADIALLY, leaving the cavity square — a square cavity is what clears a square
+    body best, so the planned "round the cavity deliberately at a small radius" is not needed.
+
+    This test only ever looked ABOVE ``COVER_TOP_Z``, so it saw 0.92 of the 2.03 mm^3;
+    ``test_case.test_encoder_plateau_clears_the_ec11_body`` covers the body's full proud height
+    and so also catches the membrane-window half of the pinch."""
     top = build_top_part(side)
     if side == "left":
         top = _mirror_back(top)

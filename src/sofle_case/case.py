@@ -542,9 +542,29 @@ def _encoder_shell() -> Part:
 
     top_z = C.ENCODER_SHELL_TOP_Z
 
-    # Round the vertical corners into arcs (rounded-rectangle plan).
+    # Round the vertical corners into arcs (rounded-rectangle plan) — the OUTER wall's
+    # four corners ONLY.
+    #
+    # Selecting by edge length alone did not do that, and the plateau bottomed out on the
+    # encoder because of it. The CAVITY's four vertical corners are cav_z1 − cav_z0 = 4.2 mm
+    # tall, comfortably past the 2.0 mm cut-off, so they were filleted too — and rounding a
+    # concave corner puts material back INTO the cavity. An R3.0 arc on the 13.5 mm square
+    # cavity reaches only 8.32 mm diagonally from the encoder centre, while the EC11's
+    # 12.4 mm square body has its corners at 8.77: a 0.45 mm bite out of each of the four
+    # corners of the box this plateau exists to clear, over the box's whole proud height
+    # (Z 15.0 → 17.0). Measured 2.03 mm³ of interference on the built TOP. The plateau
+    # landed on the encoder and held the entire TOP part off the switch plate — with the
+    # keyboard installed the shell would seat at the north OR the south and rock about
+    # the encoder, while the empty shells mated perfectly.
+    #
+    # Filter radially, not by length: cavity corners sit at Chebyshev radius cav_w/2 from
+    # the encoder centre, outer corners at outer_w/2, so the midpoint separates them and
+    # tracks any future wall thickness.
+    corner_r_min = (cav_w / 2 + outer_w / 2) / 2
     vert = [e for e in shell.edges()
-            if abs(e.tangent_at(0.5).Z) > 0.9 and e.length > 2.0]
+            if abs(e.tangent_at(0.5).Z) > 0.9 and e.length > 2.0
+            and max(abs(e.center().X - enc_cx),
+                    abs(e.center().Y - enc_cy)) > corner_r_min]
     if vert:
         try:
             shell = cast(Part, fillet(vert, radius=3.0))

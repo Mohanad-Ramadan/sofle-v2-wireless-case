@@ -93,8 +93,13 @@ def _window_solid(case_pts: list[tuple[float, float]], margin: float) -> Part:
     switch box's square corner protruding into the cover, so the window is kept square
     to match the switch footprint (real MX housings have rounded corners, so a square
     window clears them with room to spare).
-    The encoder window uses ``margin=0`` — its exact plate cutout — because the EC11
-    body already passes through that opening and the bezel shell caps it from above."""
+
+    The encoder window uses ``ENCODER_SHELL_CAVITY_CLEAR`` so it lands on exactly the
+    same line as the plateau's internal cavity — the two are one aperture. It used to be
+    the exact plate cutout (``margin=0``), on the grounds that the EC11 body already
+    passes through that opening in the FR4. It does; a PRINTED copy of it does not — the
+    cutout is only 0.07 mm/side clear of the 12.4 mm body on its −Y face and holes print
+    undersize. The window is hidden under the 16.5 mm plateau either way."""
     pts = case_pts[:-1] if case_pts[0] == case_pts[-1] else case_pts
     with BuildLine() as bl:
         Polyline(*pts, close=True)
@@ -159,7 +164,8 @@ def build_top_cover(fuse_margin: float = 0.0) -> Part:
         case_pts = [C.pcb_to_case(x, y) for x, y in cutout_pcb]
         if len(case_pts) < 3:
             continue
-        margin = 0.0 if _is_encoder_cutout(case_pts) else C.COVER_WINDOW_OFFSET
+        margin = (C.ENCODER_SHELL_CAVITY_CLEAR if _is_encoder_cutout(case_pts)
+                  else C.COVER_WINDOW_OFFSET)
         cover = cast(Part, cover - _window_solid(case_pts, margin))
 
     if C.COVER_PULLER_NOTCH:

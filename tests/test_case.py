@@ -262,21 +262,83 @@ def test_encoder_bezel_base_is_plateau_not_box():
     assert (top & wall).volume < 1e-4, "straight wall as wide as the foot — no ogee flare"
 
 
-def test_encoder_window_is_exact_cutout():
-    """The encoder cover window follows the exact plate cutout (no MX housing
-    margin): material remains just past the cutout edge where the enlarged MX
-    window would have removed it."""
+def test_encoder_window_matches_the_plateau_cavity():
+    """The encoder window is the plate cutout grown by ``ENCODER_SHELL_CAVITY_CLEAR``, so
+    the membrane window and the plateau's internal cavity are ONE aperture — no step, and
+    no MX-housing margin either (it is not an MX switch).
+
+    It used to be the EXACT cutout, on the grounds that the EC11 body already passes
+    through that opening. It does in FR4; a printed copy of it does not — the cutout is
+    only 0.07 mm/side clear of the 12.4 mm body on its −Y face, and printed holes come out
+    undersize. The window sits entirely under the 16.5 mm plateau, so the old value bought
+    invisibility that was already free and paid for it in a pinch."""
     from build123d import Solid
     from tests.shared_builds import build_top_cover
-    from sofle_case.case import _encoder_bbox
-    enc_cx, enc_cy, bw, _ = _encoder_bbox()
+    from sofle_case.top_cover import _load_plate_cutouts, _is_encoder_cutout
+    clr = C.ENCODER_SHELL_CAVITY_CLEAR
+    edge_x = cy = None
+    for cut in _load_plate_cutouts():
+        pts = [C.pcb_to_case(x, y) for x, y in cut]
+        if len(pts) >= 3 and _is_encoder_cutout(pts):
+            edge_x = max(q[0] for q in pts)
+            cy = sum(q[1] for q in pts) / len(pts)
+            break
+    assert edge_x is not None, "encoder cutout not found"
     cover = build_top_cover()
-    # 0.5 mm past the exact cutout edge — inside the old +COVER_WINDOW_OFFSET window.
-    probe = Solid.make_box(0.6, 0.6, 0.4).translate(
-        (enc_cx + bw / 2 + 0.5, enc_cy, C.MAIN_RIM_Z + 0.3))
-    assert (cover & probe).volume > 1e-3, (
-        "encoder window is enlarged — should be the exact plate cutout"
-    )
+
+    def probe(x: float) -> float:
+        b = Solid.make_box(0.2, 0.2, 0.4).translate(
+            (x - 0.1, cy - 0.1, C.MAIN_RIM_Z + C.COVER_THICKNESS / 2 - 0.2))
+        return (cover & b).volume
+
+    assert probe(edge_x + clr - 0.2) < 1e-4, (
+        "encoder window is narrower than the plateau cavity — it will pinch the EC11 body")
+    assert probe(edge_x + clr + 0.3) > 1e-4, (
+        "encoder window is wider than the plateau cavity — the plateau wall loses its seat")
+
+
+def test_encoder_plateau_clears_the_ec11_body():
+    """The plateau must pass DOWN over the EC11's proud 12.4 mm box, not land on it.
+
+    Regression, and it is the defect that made the printed case unassemblable with the
+    keyboard inside. ``_encoder_shell`` picked the R3.0 plan round-over by edge length
+    alone, which also caught the CAVITY's four vertical corners (4.2 mm tall). Rounding a
+    concave corner refills it: the cavity corners came back to 8.32 mm from the encoder
+    centre against the body's 8.77 mm — 0.45 mm of interference on each of the four
+    corners, over the box's whole proud height (Z 15.0 → 17.0), 2.03 mm³ measured on the
+    built TOP. The plateau sat on the encoder and held the entire TOP off the switch
+    plate, so the shell seated at the north OR the south and rocked about it while the
+    empty shells mated perfectly.
+
+    Nothing caught it: every other encoder test probes the roof, the shaft hole or the
+    ogee foot — none of them the box the plateau exists to clear."""
+    from build123d import Solid
+    from sofle_case.encoder_phantom import BODY_W, BODY_H
+    top = build_top_part("right")
+    ex, ey = C.pcb_to_case(*C.SW_ENCODER_POS)
+    body = Solid.make_box(BODY_W, BODY_W, BODY_H).translate(
+        (ex - BODY_W / 2, ey - BODY_W / 2, C.PCB_TOP_Z))
+    assert (top & body).volume < 1e-3, (
+        "encoder plateau intersects the EC11 body — the TOP cannot seat on the plate")
+
+
+def test_encoder_plateau_outer_corners_stay_rounded():
+    """The radial filter that spared the CAVITY corners must not have spared the OUTER
+    ones — the rounded-rectangle plan is the plateau's whole style, and a filter that
+    caught nothing would pass the clearance test above for the wrong reason."""
+    from build123d import Solid
+    from sofle_case.case import _encoder_bbox
+    top = build_top_part("right")
+    ex, ey, bw, bh = _encoder_bbox()
+    half_x = bw / 2 + C.ENCODER_SHELL_CAVITY_CLEAR + C.ENCODER_SHELL_WALL
+    half_y = bh / 2 + C.ENCODER_SHELL_CAVITY_CLEAR + C.ENCODER_SHELL_WALL
+    # Straight-wall band: clear of the ogee foot below and the top round-over above.
+    z = C.COVER_TOP_Z + C.ENCODER_BEZEL_FOOT_R + 0.5
+    assert z < C.ENCODER_SHELL_TOP_Z - C.ENCODER_BEZEL_TOP_R, "probe Z is inside a blend"
+    corner = Solid.make_box(0.4, 0.4, 0.3).translate(
+        (ex + half_x - 0.5, ey + half_y - 0.5, z))
+    assert (top & corner).volume < 1e-4, (
+        "outer plateau corner is square — the plan round-over was lost")
 
 
 def test_top_windows_clear_switch_housings():
