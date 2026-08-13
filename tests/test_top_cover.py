@@ -34,6 +34,36 @@ def test_windows_clear_all_switch_housings():
     assert (cv & housings).volume < 1e-3, "cover overlaps a switch housing — window too small"
 
 
+def test_windows_carry_a_real_assembly_clearance():
+    """Clearing the NOMINAL collar is not the claim that matters; surviving the tolerance
+    stack is. This is the regression on ``COVER_WINDOW_OFFSET = 0.85``.
+
+    That value gave a 15.70 mm window over a 15.60 mm collar — 0.05 mm/side — and it
+    passed the nominal test above while the printed cover could not be fitted over the
+    keyboard at all. The membrane has to swallow all 29 collars at once in the last
+    millimetre of travel, and each collar can present ±0.2 mm off nominal before any FDM
+    error: the plate floats ±0.1 mm on Ø3.9 pins in its Ø4.1 holes, and each switch floats
+    ±0.1 mm in its own 14.0 mm plate cutout with a 13.8 mm lower housing. Printed windows
+    also come out undersize. At 0.85, every one of the 29 windows bound on a collar
+    oversized by only 0.10 mm."""
+    from build123d import Axis, Solid
+    from sofle_case.switch_phantom import _load_switch_positions
+    stack = 0.2   # mm/side of assembly float, before any print error
+    w = C.MX_TOP_HOUSING_W + 2 * stack
+    cv = build_top_cover()
+    switches = _load_switch_positions()
+    binding = []
+    for sw in switches:
+        cx, cy = C.pcb_to_case(sw["x"], sw["y"])
+        collar = Solid.make_box(w, w, C.COVER_THICKNESS).translate((-w / 2, -w / 2, 0.0))
+        collar = collar.rotate(Axis.Z, sw["rot"]).translate((cx, cy, C.MAIN_RIM_Z))
+        if (cv & collar).volume > 1e-4:
+            binding.append(sw["name"])
+    assert not binding, (
+        f"{len(binding)}/{len(switches)} windows bind on a collar {stack} mm/side oversize "
+        f"— no room for the assembly tolerance stack: {binding}")
+
+
 def test_puller_notches_open_two_faces_per_switch(monkeypatch):
     """A switch puller grips the switch collar at the plate line; the flush window
     hugs it too tightly to admit a claw. Each MX switch must get a puller notch on

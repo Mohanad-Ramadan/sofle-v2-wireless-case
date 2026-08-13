@@ -53,20 +53,29 @@ OUTER_TOP_CHAMFER = 1.9   # mm, 45° outer-top bevel leg (~40% of WALL_THICKNESS
 # ---------- Top cover (sandwich lid over the switch plate) ----------
 # A thin printed layer the shape of the switch plate, sitting on the plate top
 # (Z = MAIN_RIM_Z) and held by the same standoffs via taller M2 screws. Each
-# 14 mm plate cutout is grown to a ~15.7 mm window (0.05 mm/side) that HUGS the
+# 14 mm plate cutout is grown to a 16.1 mm window (0.25 mm/side) that CLEARS the
 # switch's 15.6 mm top housing so the switch pokes through and the cover seats flat
-# on the plate. The window is sized to hug the switch body (not oversized) so NO ring
-# of the switch plate shows around each key — the case/plate can be different colours
-# and the plate never peeks through (the 0.05 mm gap reads as a shadow line, not
-# plate colour, and keeps the boolean/print non-degenerate). The window corners are
-# mitered square (Kind.INTERSECTION), not rounded, so the switch box's square corners
-# clear too. Keycaps float entirely above it — skirt at full
+# on the plate. The window corners are mitered square (Kind.INTERSECTION), not
+# rounded, so the switch box's square corners clear too.
+#
+# THE 0.25 IS A PRINT/ASSEMBLY BUDGET, NOT A STYLE CHOICE, AND IT WAS LEARNED THE HARD
+# WAY. This was 0.85 (a 15.70 mm window, 0.05 mm/side) chosen so NO ring of switch plate
+# shows around any key. That window cannot be assembled: the membrane has to swallow all
+# 29 collars at once in the last millimetre of travel, and the tolerance stack against it
+# is at least ±0.2 mm — the plate floats ±0.1 on Ø3.9 pins in its Ø4.1 holes, and each
+# switch floats ±0.1 in its own 14.0 mm cutout with a 13.8 mm lower housing — before any
+# FDM error, and printed windows come out UNDERSIZE. Measured on the built TOP: at 0.85
+# every one of the 29 windows binds on a collar oversized by only 0.10 mm. The printed
+# case would not close over the keyboard while the empty shells mated fine.
+# So the cover now shows a 0.25 mm ring of plate per key. That reads as a shadow line at
+# any normal viewing distance, which is the price of a lid that goes on.
+# Keycaps float entirely above it — skirt at full
 # press ~14.0 mm > cover top 16.0 mm — so 1.0 mm is safe (1.5 mm would just kiss the
 # skirt on a hard edge press). The plate's own inner notch leaves the MCU/OLED/
 # slide/JST bay open for free.
 MX_TOP_HOUSING_W        = 15.6   # mm; widest part of a Cherry MX switch (rests on plate) — drives the window size
 COVER_THICKNESS         = 1.0    # mm; lid thickness, top at MAIN_RIM_Z + 1.0 = 16.0
-COVER_WINDOW_OFFSET     = 0.85   # mm; 14 mm cutout -> 15.7 mm window, 0.05 mm/side off the 15.6 housing (invisible shadow gap, plate hidden, non-degenerate)
+COVER_WINDOW_OFFSET     = 1.05   # mm; 14 mm cutout -> 16.1 mm window, 0.25 mm/side off the 15.6 housing (was 0.85 = 0.05/side, which would not assemble — see above)
 COVER_SCREW_CLEARANCE_DIA = 2.4  # mm; M2 screw shaft clearance through the cover
 
 # ---------- Switch-puller access notches ----------
@@ -129,11 +138,9 @@ SEAM_POCKET_LEAD_IN = 0.4  # mm; 45° starter chamfer on the tub pocket MOUTH (t
 #                            so 0.4 leaves ≥1.4 mm of skin at the ground-line first layer.
 SEAM_RIM_THK    = WALL_THICKNESS - SEAM_SKIN - SEAM_FIT_CLEAR   # = 2.55; derived plate-rim thickness
 
-# Snap aids (assembly hold-shut) are DEFERRED: the 5 standoff screws are the real
-# clamp and the rabbet self-locates, so the first print validates that fit alone.
-# Adding barb/detent pairs needs robust placement on the irregular Sofle outline
-# (a naive rectangular layout floats barbs off the curved wall spans) — a follow-up
-# once the rabbet clearance is dialled in. See the spec's snap section.
+# Snap aids (assembly hold-shut) are no longer deferred — the first print showed the
+# rabbet alone does NOT hold the ends shut. See the "Rabbet snap latch" block further
+# down (it has to follow SEAM_NORTH_RISE_Z, which sets the Z budget it fits into).
 
 # ---------- Drafted rim facet (outer-top treatment) ----------
 # The tall (16 mm) flat wall read as an ugly slab from the sides. The old rim treatment
