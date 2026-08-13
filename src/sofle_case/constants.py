@@ -299,7 +299,12 @@ assert 0.0 <= TENT_SKIRT_LIFT <= TENT_SKIRT_LIFT_MAX, (
 #
 # The SOUTH is untouched by this dial. Over the southern run the skin still descends to
 # TENT_SKIRT_LIFT above the desk and the bottom stays inset behind it — see that block above.
-SEAM_NORTH_RISE_FRAC = 0.5   # 0.0 = flat at Z=0 (the old behaviour), 1.0 = up to the ledge
+# Held at 0.0: lifting the line made the north read as an UNFINISHED SKIRT. The reveal is not a
+# constant band — it is 0.5 mm at the south and 7.25 mm growing to 10.75 mm at the back — and
+# because the bottom stays inset 2.2 mm the lifted skin edge floats over a shadow slot with
+# nothing flush behind it. At 0.0 the north reveal is exactly the wedge (4.1 → 7.6 mm), the skin
+# edge lands on Z=0 all round, and the full 6.3 mm rabbet lap survives north of the sweep.
+SEAM_NORTH_RISE_FRAC = 0.0   # 0.0 = flat at Z=0 (the old behaviour), 1.0 = up to the ledge
 SEAM_NORTH_RISE_Z    = SEAM_NORTH_RISE_FRAC * SEAM_LEDGE_Z   # derived; the actual height
 
 assert 0.0 <= SEAM_NORTH_RISE_FRAC <= 1.0, (
