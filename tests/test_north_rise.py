@@ -55,8 +55,10 @@ def _x_span_at(part, y: float, z: float):
 def test_the_north_run_rides_at_the_rise():
     """North of the sweep the top case's bottom edge is the dial, flat, and nothing else."""
     top = _top()
-    # All stations must be north of the Y1→Y2 sweep; y=70 was inside that blend.
-    for y in (C.TENT_SEAM_Y2 + 2.0, C.TENT_SEAM_Y2 + 20.0, C.OUTER_DEPTH - 6.0):
+    # All stations must be north of the Y1→Y2 ramp AND still on the case. The ramp now reaches
+    # y2=123.5 of a 126 mm depth, so the rear run is the last ~2.5 mm and `y2 + 20` is off the
+    # back of the part entirely — it used to be comfortably inside because the ramp was short.
+    for y in (C.TENT_SEAM_Y2 + 0.8, C.OUTER_DEPTH - 1.2):
         got = _lowest_at(top, y)
         assert got is not None, f"no material at y={y}"
         assert abs(got - C.SEAM_NORTH_RISE_Z) < 0.06, (
@@ -130,7 +132,7 @@ def test_the_dial_is_a_fraction_of_the_ledge(monkeypatch, frac):
     it is set to. Sampling north of the ramp asks the question the dial actually answers."""
     monkeypatch.setattr(C, "SEAM_NORTH_RISE_Z", frac * C.SEAM_LEDGE_Z)
     cutter = _below_seam_cutter()
-    for y in (C.TENT_SEAM_Y2 + 5.0, C.OUTER_DEPTH - 6.0):
+    for y in (C.TENT_SEAM_Y2 + 0.8, C.OUTER_DEPTH - 1.2):
         slab = cutter & Solid.make_box(400.0, 0.4, 200.0).translate((-100.0, y - 0.2, -100.0))
         assert slab.volume > 1e-9, f"frac={frac}: no cutter at y={y}"
         got = slab.bounding_box().max.Z
@@ -139,10 +141,12 @@ def test_the_dial_is_a_fraction_of_the_ledge(monkeypatch, frac):
             f"{frac * C.SEAM_LEDGE_Z:.3f}")
 
 
-@pytest.mark.parametrize("bad", ["-0.1", "1.5"])
+@pytest.mark.parametrize("bad", ["-3.0", "1.5"])
 def test_the_dial_is_bounded_to_the_ledge(bad):
     """Past 1.0 the line would pass the plate rim's top and the bottom case would have nothing
-    left to show; below 0 it would climb back down into the wedge. The guard names both ends."""
+    left to show. The floor is no longer 0.0 — negative IS the rear skirt, and the dial is set
+    negative — so the low end tested here is past SEAM_NORTH_RISE_FRAC_MIN, where the rear skin
+    would go through the desk. -0.1 used to belong in this list and is now perfectly legal."""
     src = Path(C.__file__).read_text()
     assert src.count("SEAM_NORTH_RISE_FRAC = ") == 1, "the dial is no longer a single assignment"
     line = [ln for ln in src.splitlines() if ln.startswith("SEAM_NORTH_RISE_FRAC = ")][0]

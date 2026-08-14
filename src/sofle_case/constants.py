@@ -226,8 +226,9 @@ TENT_WEDGE_MIN_H = 1.0   # mm; wedge thickness at the south (the thin end)
 # ---- Where the two cases hand over: the visible parting line ----
 # Like the reference, the TOP case does not stop at Z=0 all the way round. Over the southern
 # stretch its skin carries on down to just above the desk, so the front of the keyboard reads
-# as one piece over a narrow reveal of bottom case (TENT_SKIRT_LIFT, below). Further north the
-# skin stops at Z=0 as before and the whole bottom wedge is exposed beneath it.
+# as one piece over a reveal so narrow it looks like none (TENT_SKIRT_LIFT, below). It lifts
+# away over the middle, where the bottom case shows at its widest, and comes back down below
+# Z=0 over the REAR so the band closes again -- see SEAM_WAVE_KNOTS and SEAM_NORTH_RISE_FRAC.
 #
 # Seen from the side with the case standing, that gives the reference's profile exactly: flat
 # along the desk at the front, a sweep up, then a long run that rises at the tilt angle. That
@@ -244,7 +245,7 @@ TENT_WEDGE_MIN_H = 1.0   # mm; wedge thickness at the south (the thin end)
 # in principle, but the usable ceiling is lower in practice -- the sweep has to finish before
 # the +Y relief bump (see the TENT_SEAM_Y2 guard, which computes the ceiling and reports it).
 TENT_SEAM_SOUTH_FRAC = 0.36   # fraction of depth where the top case rides the desk
-TENT_SEAM_RAMP_FRAC  = 0.46   # fraction of depth the wave takes to climb and come back down
+TENT_SEAM_RAMP_FRAC  = 0.62   # fraction of depth the wave takes to climb and come back down
 
 # ---- The WAVE: the shape the ramp takes between those two runs ----
 # The ramp used to be a single spline hump -- two endpoints and two tangents, monotonic by
@@ -284,6 +285,13 @@ TENT_SEAM_RAMP_FRAC  = 0.46   # fraction of depth the wave takes to climb and co
 # the tub. As a fraction of the wedge's own height it is scale-free, which is what "the bottom
 # case looks like a lens" actually means. The conversion back is one line in _seam_sweep_params.
 #
+# THE REAR HALF OF THIS TABLE IS NOT THE REFERENCE'S, it is this project's answer to a problem
+# the reference solves off-camera. Nothing images the reference's rear 18%, and a wave that just
+# stops leaves the band re-opening to the full wedge height at the back (14.24 mm), wider than
+# the crest -- a ripple, not a lens. The knots from u=0.820 carry the line back DOWN through Z=0
+# so the top case's skin descends again at the rear and the band keeps closing. See
+# SEAM_NORTH_RISE_FRAC, which is negative for the same reason and sets where this lands.
+#
 #   u       band      -> at 6 deg: mm above desk   local Z    what it is
 #   0.360   (run)                   0.30           -5.47      end of the south run (computed)
 #   0.406   0.0716                  1.02           -5.36      the front knife-edge opening up
@@ -293,7 +301,9 @@ TENT_SEAM_RAMP_FRAC  = 0.46   # fraction of depth the wave takes to climb and co
 #   0.670   0.9459                 13.47           +3.60      CREST in local Z
 #   0.710   0.9565                 13.62           +3.22      crest in the VISIBLE BAND
 #   0.749   0.9256                 13.18           +2.26      easing
-#   0.820   (run)                  11.86            0.00      back on the northern run (computed)
+#   0.820   0.8800                 12.53           +0.67      still easing; about to re-cross Z=0
+#   0.890   0.8450                 12.04           -0.75      rear skirt: the skin is back below Z=0
+#   0.980   (run)                  11.68           -2.30      lands on the rear run (computed)
 SEAM_WAVE_KNOTS = (
     (0.406, 0.0716),
     (0.485, 0.2992),
@@ -302,6 +312,9 @@ SEAM_WAVE_KNOTS = (
     (0.670, 0.9459),
     (0.710, 0.9565),
     (0.749, 0.9256),
+    (0.820, 0.8800),
+    (0.890, 0.8537),
+    (0.935, 0.8330),
 )
 
 # ---- How far the skirt stops SHORT of the desk: the reveal ----
@@ -392,19 +405,42 @@ assert TENT_SKIRT_CLEAR_MIN <= TENT_SKIRT_LIFT <= TENT_SKIRT_LIFT_MAX, (
 #
 # The SOUTH is untouched by this dial. Over the southern run the skin still descends to
 # TENT_SKIRT_LIFT above the desk and the bottom stays inset behind it — see that block above.
-# Held at 0.0: lifting the line made the north read as an UNFINISHED SKIRT. The reveal is not a
-# constant band — it is 0.5 mm at the south and 7.25 mm growing to 10.75 mm at the back — and
-# because the bottom stays inset 2.2 mm the lifted skin edge floats over a shadow slot with
-# nothing flush behind it. At 0.0 the north reveal is exactly the wedge (4.1 → 7.6 mm), the skin
-# edge lands on Z=0 all round, and the full 6.3 mm rabbet lap survives north of the sweep.
-SEAM_NORTH_RISE_FRAC = 0.0   # 0.0 = flat at Z=0 (the old behaviour), 1.0 = up to the ledge
+#
+# ---- THE RANGE NOW GOES NEGATIVE, AND THAT IS WHERE IT IS SET ----
+# Everything above describes lifting the line UP the wall, which was the only direction that
+# made sense while the ramp was a monotonic sweep: the line arrived at the north from below and
+# the dial decided how high. It was held at 0.0 because lifting it read as an unfinished skirt —
+# the bottom stays inset 2.2 mm, so a lifted skin edge floats over a shadow slot with nothing
+# flush behind it.
+#
+# The wave changed the question. Its band CRESTS at u=0.71 and eases, and for that to read as a
+# lens rather than a ripple the band has to keep narrowing to the back. It cannot: the band at
+# the back is at least the wedge's height there (14.24 mm) for any parting line at or above Z=0,
+# which is wider than the 13.62 mm crest. A crest tall enough to beat it needs local Z +5.63 and
+# leaves 0.67 mm of rabbet lap, under the 2.0 floor. So the line has to go BELOW Z=0 at the back
+# — the top case's skin descends again there, exactly as it does at the front, and the lens
+# closes. Negative frac is that, as a fraction of the same SEAM_LEDGE_Z travel.
+#
+# THIS COSTS NO RABBET. Below Z=0 there is no pocket wall to give up; the lap is bounded by how
+# high the line climbs, and going down does not touch it. What it costs instead is a second
+# stretch of skirt band, at the rear, which is why skirt_extension had to stop being a polygon
+# offset and start sectioning the tub — the +Y relief bump lives back there.
+#
+#   frac    line at the back    band at the back    what it reads as
+#   +1.00   +6.30 mm            20.54 mm            plinth, rabbet gone north
+#    0.00    0.00 mm            14.24 mm            the old flat line; band widest at the back
+#   -0.29   -1.83 mm            12.41 mm            lens nearly closed
+#   -0.37   -2.30 mm            11.94 mm            lens closed: back is narrower than the crest
+SEAM_NORTH_RISE_FRAC = -0.365  # <0 = line drops below Z=0 (rear skirt), 1.0 = up to the ledge
 SEAM_NORTH_RISE_Z    = SEAM_NORTH_RISE_FRAC * SEAM_LEDGE_Z   # derived; the actual height
 
-assert 0.0 <= SEAM_NORTH_RISE_FRAC <= 1.0, (
-    f"SEAM_NORTH_RISE_FRAC={SEAM_NORTH_RISE_FRAC} is a fraction of SEAM_LEDGE_Z={SEAM_LEDGE_Z}; "
-    f"0.0 leaves the parting line flat at Z=0, 1.0 puts it on the ledge and gives up the rabbet "
-    f"north of the sweep. There is nothing sane above 1.0 — the line would pass the plate rim's "
-    f"own top and the bottom case would have no material left to show")
+# The ceiling is stated here; the FLOOR is a function of the tent (it is the desk, with the same
+# clearance the front skirt keeps) and cannot be computed until TENT_WEDGE_MAX_H exists — see
+# SEAM_NORTH_RISE_FRAC_MIN further down, beside the other derived seam numbers.
+assert SEAM_NORTH_RISE_FRAC <= 1.0, (
+    f"SEAM_NORTH_RISE_FRAC={SEAM_NORTH_RISE_FRAC} is a fraction of SEAM_LEDGE_Z={SEAM_LEDGE_Z}. "
+    f"There is nothing sane above 1.0 — the line would pass the plate rim's own top and the "
+    f"bottom case would have no material left to show")
 
 # The ceiling here is a PRACTICAL band, not a derived limit, and it is worth saying so rather
 # than implying a calculation that does not exist. The geometry has no hard stop: every part of
@@ -696,15 +732,32 @@ assert TENT_WEDGE_MIN_H >= FOOT_DEPTH + 0.3, (
 TENT_SEAM_Y1 = TENT_SEAM_SOUTH_FRAC * OUTER_DEPTH                        # 63.0 at 0.50
 TENT_SEAM_Y2 = TENT_SEAM_Y1 + TENT_SEAM_RAMP_FRAC * OUTER_DEPTH          # 85.7 at 0.50
 
-# The sweep must finish south of the +Y relief bump (y>=115). The bump stands proud of the
-# nominal outline offset and carries a corner fillet, so a skirt reaching it would have to
-# chase the tub's real footprint instead of a plain offset -- the complexity this design
-# deliberately avoids. y = OUTER_DEPTH - 20 is the conservative stand-in for that limit.
-TENT_SEAM_FRAC_MAX = (OUTER_DEPTH - 20.0) / OUTER_DEPTH - TENT_SEAM_RAMP_FRAC   # 0.66 at ramp 0.18
-assert TENT_SEAM_Y2 < OUTER_DEPTH - 20.0, (
-    f"TENT_SEAM_SOUTH_FRAC={TENT_SEAM_SOUTH_FRAC} puts the sweep's end at y={TENT_SEAM_Y2:.1f}, "
-    f"which runs into the +Y relief bump. With TENT_SEAM_RAMP_FRAC={TENT_SEAM_RAMP_FRAC} the "
-    f"ceiling is {TENT_SEAM_FRAC_MAX:.2f} — lower the south fraction or shorten the ramp")
+# The ramp used to have to finish south of the +Y relief bump at y = OUTER_DEPTH - 20. That was
+# never about the ramp: it was about the SKIRT the ramp drags below Z=0. The bump stands proud of
+# the nominal outline offset and carries a corner fillet, and skirt_extension built its band from
+# a polygon offset, so a band reaching the bump would have sat INSIDE the wall above it and left a
+# step at Z=0 along the whole bump face. The limit fenced the skirt off from that region instead
+# of solving it.
+#
+# skirt_extension now sections the TUB at Z=0 and projects that outline down, so the band IS
+# whatever the wall above it is -- bump, fillet and all. The limit is therefore retired, which is
+# what lets the wave carry a rear skirt at all. What remains is only that the ramp has to fit in
+# the case.
+TENT_SEAM_FRAC_MAX = 1.0 - TENT_SEAM_RAMP_FRAC
+assert TENT_SEAM_Y2 <= OUTER_DEPTH, (
+    f"TENT_SEAM_SOUTH_FRAC={TENT_SEAM_SOUTH_FRAC} puts the ramp's end at y={TENT_SEAM_Y2:.1f}, "
+    f"past the back of the case at {OUTER_DEPTH:.1f}. With TENT_SEAM_RAMP_FRAC="
+    f"{TENT_SEAM_RAMP_FRAC} the ceiling is {TENT_SEAM_FRAC_MAX:.2f} — lower the south fraction "
+    f"or shorten the ramp")
+
+# The rear parting line's floor: the desk, less the clearance the skin must always keep from it.
+# Stated here rather than beside the dial because it needs the tent's own numbers.
+SEAM_NORTH_RISE_FRAC_MIN = -(TENT_WEDGE_MAX_H - TENT_SKIRT_CLEAR_MIN) / SEAM_LEDGE_Z
+assert SEAM_NORTH_RISE_FRAC >= SEAM_NORTH_RISE_FRAC_MIN, (
+    f"SEAM_NORTH_RISE_FRAC={SEAM_NORTH_RISE_FRAC} puts the rear parting line at "
+    f"{SEAM_NORTH_RISE_Z:.2f}, which is through the desk at the back ({-TENT_WEDGE_MAX_H:.2f}) or "
+    f"inside TENT_SKIRT_CLEAR_MIN={TENT_SKIRT_CLEAR_MIN} of it. The floor at this tent angle is "
+    f"{SEAM_NORTH_RISE_FRAC_MIN:.3f}")
 
 # ---- The wave's knots, checked against the geometry they have to live inside ----
 # SEAM_WAVE_KNOTS is written as literal numbers because it is MEASURED DATA, not a formula, so

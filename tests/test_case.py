@@ -81,8 +81,16 @@ def test_pocket_mouth_has_starter_chamfer():
     elephant-foot-pinch. Probed on a plain −X wall span."""
     from build123d import Solid
     top = build_top_part("right")
-    # This probe must be on the northern flat run, not at TENT_SEAM_Y1 where the sweep starts.
-    y = C.TENT_SEAM_Y2 + 5.0
+    # It used to sit at y2 + 5, on the old short ramp's northern run. The wave's ramp reaches
+    # y2 = 123.5 of a 126 mm case, so that station is now off the back of the part.
+    #
+    # y=110 is chosen against two constraints, both of which rule out most of the −X wall: it must
+    # be a PLAIN span (the MCU hill and slide scoop own roughly y=72..104, where there is no skin
+    # at this depth to probe), and it must be SOUTH of the +Y relief bump at y=115, where the wall
+    # is pushed out and its inner face is not the nominal offset computed here. It is also in the
+    # rear-skirt stretch, where the parting line runs below Z=0 and the mouth is back at Z=0 —
+    # which is the case the clamp below exists for.
+    y = 110.0
     # −X wall: outer face, then SEAM_SKIN inward = seated skirt-inner face.
     skin_inner = C.pcb_to_case(0, 0)[0] - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE + C.SEAM_SKIN
     probe_x = skin_inner - 0.15   # 0.15 inside the skin from the seated inner face
@@ -91,10 +99,14 @@ def test_pocket_mouth_has_starter_chamfer():
         b = Solid.make_box(s, 3.0, s).translate((probe_x - s / 2, y - 1.5, z - s / 2))
         return (top & b).volume > 1e-6
 
-    # Measured from the MOUTH, not from Z=0. This probe sits north of the sweep, where the mouth
-    # rides at SEAM_NORTH_RISE_Z — a fixed 0.7/0.1 pair would be probing the empty space below
-    # the parting line entirely. At frac 0 the mouth is back at Z=0 and these are the old numbers.
-    mouth_z = C.SEAM_NORTH_RISE_Z
+    # Measured from the MOUTH, not from Z=0, because the mouth moves with the parting line —
+    # a fixed 0.7/0.1 pair would probe empty space below the line entirely.
+    #
+    # CLAMPED AT ZERO, and that is the part the negative dial changed. The mouth is the pocket's
+    # own chamfered edge at Z=0; the parting line can only take it HIGHER, by cutting the skin
+    # back up the wall. When the line drops BELOW Z=0 — the rear skirt — the skin descends past
+    # the mouth and the mouth stays where the pocket put it.
+    mouth_z = max(0.0, C.SEAM_NORTH_RISE_Z)
     assert solid_at(mouth_z + C.SEAM_LEAD_IN + 0.3), "seated skirt is missing skin — probe off the wall"
     assert not solid_at(mouth_z + 0.1), "pocket mouth is not chamfered — no tub-side starter"
 
@@ -173,7 +185,7 @@ def test_split_conserves_volume(side):
     from sofle_case.battery import battery_pocket
     from tests.shared_builds import build_top_cover
     from sofle_case.case import (_encoder_shell, _slide_scoop, _slide_actuator_cavity,
-                                 _foot_recesses, tent_wedge, skirt_extension,
+                                 _foot_recesses, tent_wedge, skirt_extension, seam_skirt_tub,
                                  _plate_pocket, _below_seam_cutter)
     from tests.shared_builds import build_canopy
 
@@ -182,7 +194,7 @@ def test_split_conserves_volume(side):
     # wedge, and the TOP's skin extension over the southern stretch. Without them here the
     # split looks like it invented ~50 cm^3 and the sign check below fires.
     ref = cast(Part, ref + tent_wedge())
-    ref = cast(Part, ref + skirt_extension())
+    ref = cast(Part, ref + skirt_extension(seam_skirt_tub()))
     ref = cast(Part, ref + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     ref = cast(Part, ref + _encoder_shell())
     ref = cast(Part, ref + build_canopy())   # the canopy is fused into the TOP now

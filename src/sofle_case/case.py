@@ -388,26 +388,55 @@ def _extrude_across_x(sk: BuildSketch) -> Part:
     return cast(Part, solid.translate((-60.0, 0.0, 0.0)))
 
 
-def skirt_extension() -> Part:
-    """The TOP case's skin carried on below Z=0, down toward the desk over the southern stretch.
+def seam_skirt_tub() -> Part:
+    """The deep tub exactly as ``skirt_extension`` must see it: plate pocket carved, mouth NOT
+    yet chamfered. One definition so ``build_top_part`` and the tests cannot disagree about
+    which of the two states the skirt is sectioned from — see ``skirt_extension``."""
+    return cast(Part, build_tray(rim_z=C.COVER_TOP_Z, bottom_chamfer=False) - _plate_pocket())
+
+
+def skirt_extension(tub: Part) -> Part:
+    """The TOP case's skin carried on below Z=0, down toward the desk.
 
     Only the outer ``SEAM_SKIN`` band — the same ring the tub's wall already is below the
     rabbet ledge — so it descends OUTBOARD of the wedge (which is inset SEAM_SKIN +
-    SEAM_FIT_CLEAR) and the two never meet. Bounded above by Z=0 and below by the seam
-    profile, which is what makes it die away to nothing by ``TENT_SEAM_Y2``.
+    SEAM_FIT_CLEAR) and the two never meet. Bounded above by Z=0 and below by the seam profile,
+    which is what makes it appear and die away on its own wherever that profile crosses Z=0.
 
     It stops ``TENT_SKIRT_LIFT`` short of the tent plane rather than landing on it, so the
     wedge alone carries the ground contact and a reveal of bottom case shows under the skin.
 
-    Adds no height: it fills space that already existed between Z=0 and the tent plane."""
-    outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
-    pocket_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK + C.SEAM_FIT_CLEAR
+    Adds no height: it fills space that already existed between Z=0 and the tent plane.
+
+    THE OUTLINE IS THE TUB'S OWN CROSS-SECTION, taken at Z=0 and projected straight down —
+    not a polygon offset. That is what lets the skirt run the WHOLE perimeter, including the
+    rear, and it is the difference between this and the version that could only work south of
+    the +Y relief bump. The bump stands proud of the nominal offset and carries a corner
+    fillet, so a polygon-offset band reaching it would sit INSIDE the wall above and leave a
+    step at Z=0 all along the bump's face; ``TENT_SEAM_FRAC_MAX`` existed to keep the skirt
+    away from that region rather than solve it. Sectioning the tub solves it for every wall
+    feature at once, present and future, because the band is by construction whatever the wall
+    directly above it is.
+
+    PASS THE UN-CHAMFERED TUB. The section is taken at Z=0, and that is precisely where
+    ``_chamfer_pocket_mouth`` sits: a 45° chamfer on the mouth edge takes material from the bore
+    AND from the Z=0 face, so a chamfered tub hands back a bore already set back
+    ``SEAM_POCKET_LEAD_IN``. The band inherits it, the channel's own ``SEAM_LEAD_IN`` relief
+    then has 0.4 mm less to cut, and the mouth measures 0.2 mm of lead-in instead of 0.6 — the
+    two starters cancelling instead of stacking. The mouth chamfer belongs to the pocket, not to
+    the wall, and must not run down the skirt."""
     z_bot = wedge_deep_z() - 1.0
-    band = cast(Part, offset_extruded(outer, z_bot, 0.0, rounded=True)
-                - offset_extruded(pocket_outer, z_bot - 1.0, 0.1))
+    slab = cast(Part, tub & Solid.make_box(400.0, C.OUTER_DEPTH + 200.0, 0.05)
+                .translate((-100.0, -100.0, 0.0)))
+    face = slab.faces().filter_by(Plane.XY).sort_by(Axis.Z)[0]
+    # DIRECTION GIVEN EXPLICITLY. This face is the slab's underside, so its own normal already
+    # points at -Z; `amount=z_bot` (negative) reverses that and builds the band UPWARD through
+    # the tub instead — it came back spanning Z 0..15.01 rather than -15.24..0. Same trap as
+    # _extrude_across_x's, and the same fix: never leave the direction to the face's normal.
+    band = cast(Part, extrude(face, amount=abs(z_bot), dir=(0.0, 0.0, -1.0)))
     # Keep only what lies BETWEEN the seam and Z=0. Subtracting everything below the seam does
-    # both jobs at once: south of y1 the seam IS the tent plane, so this trims the skin to the
-    # desk; north of y2 the seam IS Z=0, so the skin vanishes and the wedge shows instead.
+    # both jobs at once: where the seam runs below Z=0 this trims the skin to it, and where the
+    # seam has climbed above Z=0 the band vanishes entirely and the wedge shows instead.
     band = cast(Part, band - _below_seam_cutter())
     return cast(Part, band - _lead_in_relief(z_bot))
 
@@ -832,11 +861,16 @@ def build_top_part(side: Side) -> Part:
     # Deep tub: the FULL-height tray (outer skin to the ground), then carve the inset
     # plate pocket out of its base. This leaves the SEAM_SKIN skirt as the descending
     # outer wall — no mid-wall seam — and the rabbet ledge that receives the plate rim.
-    top = cast(Part, build_tray(rim_z=C.COVER_TOP_Z, bottom_chamfer=False) - _plate_pocket())
-    top = _chamfer_pocket_mouth(top)   # tub-side starter chamfer at the pocket mouth
+    tub = seam_skirt_tub()
+    top = _chamfer_pocket_mouth(tub)   # tub-side starter chamfer at the pocket mouth
     # Carry the skin down to the desk over the southern stretch, so the front of the case
     # reads as one piece and the bottom wedge only shows further north. Costs no height.
-    top = cast(Part, top + skirt_extension())
+    # The UN-chamfered tub is what the skirt is sectioned from. _chamfer_pocket_mouth opens the
+    # mouth bore by SEAM_POCKET_LEAD_IN at exactly Z=0, which is exactly where the section is
+    # taken, so the chamfered tub hands back a bore already set back 0.4 mm — and the channel's
+    # lead-in then measures 0.2 instead of SEAM_LEAD_IN's 0.6, the two starters cancelling. The
+    # mouth chamfer is a feature of the pocket, not of the wall, and must not run down the skirt.
+    top = cast(Part, top + skirt_extension(tub))
     # ...and north of the sweep, carve the skin back UP the wall to SEAM_NORTH_RISE_Z, handing
     # that band of face to the bottom part. The skirt only ever trimmed its own band, all of it
     # below Z=0; the raised northern run cuts into the tub itself, so the same profile has to
