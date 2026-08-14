@@ -202,4 +202,7 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     #   * SEAM_FLARE_STEP_MAX went 0.15 -> 0.20, and _flare_slab_bounds reads it as "how fine to
     #     cut the slabs". That coupling is worth knowing about: the cap is an acceptance
     #     threshold AND a build input, so moving it moves the part.
-    assert abs(build_bottom_part(side).volume - 197438.191003) < 2e-2
+    #   * +8.66 more when face_lofted went UNRULED. A ruled loft chords between its sections, so
+    #     it cut the corner on a wall that curves outward — the smooth surface bulges back out to
+    #     where band_offset actually says it should be. More material, and the right amount.
+    assert abs(build_bottom_part(side).volume - 197446.855543) < 2e-2

@@ -204,7 +204,11 @@ def face_lofted(face: Face, levels, kind: Kind = Kind.ARC) -> Part:
         sections = [cast(Face, Pos(0, 0, z) * offset(face, amount=a, kind=kind))
                     for z, a in run]
         with BuildPart() as bp:
-            loft(sections, ruled=True)
+            # UNRULED. Ruled makes every gap between neighbouring sections its own conical band,
+            # so the wall arrives as a stack of flats with a visible line at each level — 199
+            # faces where unruled gives 47, on identical input and in the same 0.1 s. The band
+            # is a smooth curve in Z (see band_offset / seam_flare); the surface should be too.
+            loft(sections, ruled=False)
         assert bp.part is not None
         parts.append(cast(Part, bp.part))
     out = parts[0]
