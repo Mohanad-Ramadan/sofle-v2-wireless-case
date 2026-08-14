@@ -220,15 +220,42 @@ def wedge_deep_z() -> float:
 
 
 def _seam_sweep_params():
-    """The sweep's two endpoints and its tangents — one definition, two consumers.
+    """The ramp's knots and its end tangents — one definition, three consumers.
 
-    ``_below_seam_cutter`` draws the spline and ``seam_profile_min_z`` measures it, and they
-    must be measuring the SAME curve. Kept here rather than duplicated so the two cannot drift
-    apart when a dial moves."""
+    ``_below_seam_cutter`` draws the spline and ``seam_profile_min_z`` / ``seam_profile_max_z``
+    measure it, and they must all be measuring the SAME curve. Kept here rather than duplicated
+    so they cannot drift apart when a dial moves.
+
+    Returns the full knot list, south end first, INCLUDING both endpoints. It used to return
+    exactly two points and be typed that way by its callers; the wave needs interior knots (see
+    ``SEAM_WAVE_KNOTS``), and a through-fit spline over 2 points is precisely the old curve, so
+    this generalises rather than replaces. The tangents are unchanged and still do the same job:
+    the tent plane's own slope at the south so the ramp leaves the run without a kink, and
+    horizontal at the north so it arrives on the flat run the same way.
+
+    THE KNOTS ARE CONVERTED HERE, not read off ``SEAM_WAVE_Y``. That constant holds the same
+    arithmetic, but frozen at the angle the module was imported at; this reads the tent plane
+    live, so monkeypatching ``TENT_ANGLE_DEG`` moves the wave with the desk instead of leaving
+    it behind. The constant exists for the import-time guards, which have no plane to ask."""
     y1, y2 = C.TENT_SEAM_Y1, C.TENT_SEAM_Y2
     z1 = tent_ground_z(y1) + C.TENT_SKIRT_LIFT
     slope = -math.tan(math.radians(C.TENT_ANGLE_DEG))
-    return (y1, z1), (y2, C.SEAM_NORTH_RISE_Z), ((1.0, slope), (1.0, 0.0))
+    # The bottom case's full height at the back — the yardstick the band fractions are in.
+    # tent_ground_z(OUTER_DEPTH) IS -TENT_WEDGE_MAX_H, asked of the live plane.
+    wedge_max_h = -tent_ground_z(C.OUTER_DEPTH)
+    wave = tuple((u * C.OUTER_DEPTH,
+                  band * wedge_max_h + tent_ground_z(u * C.OUTER_DEPTH))
+                 for u, band in C.SEAM_WAVE_KNOTS)
+    knots = ((y1, z1), *wave, (y2, C.SEAM_NORTH_RISE_Z))
+    return knots, ((1.0, slope), (1.0, 0.0))
+
+
+def _seam_ramp_edge():
+    """The ramp as a single OCC edge — built once, measured by everything that needs a number."""
+    knots, tangents = _seam_sweep_params()
+    with BuildLine() as bl:
+        Spline(*knots, tangents=tangents)
+    return bl.line.edges()[0]
 
 
 def seam_profile_min_z() -> float:
@@ -258,13 +285,10 @@ def seam_profile_min_z() -> float:
     0.05 tolerance, so it fitted underneath and nobody had to know; at 7 deg it is 0.074 and
     four assertions failed at once. They were never quite right — the angle only made it
     visible."""
-    start, end, tangents = _seam_sweep_params()
-    with BuildLine() as bl:
-        Spline(start, end, tangents=tangents)
-    edge = bl.line.edges()[0]
+    edge = _seam_ramp_edge()
     # Sketch-local (u, v) here maps to (case Y, case Z), so .Y on the sampled point is the Z.
     lo = min((edge @ (i / 400.0)).Y for i in range(401))
-    return min(lo, start[1])
+    return min(lo, _seam_sweep_params()[0][0][1])
 
 
 def seam_profile_max_z() -> float:
@@ -284,14 +308,11 @@ def seam_profile_max_z() -> float:
     Bounded to the case's own footprint. South of y=0 the cutter deliberately rides up to Z=0 as
     an overhang guard (see ``_below_seam_cutter``), and that stretch is not parting line — it is
     outside the part and must not drag the answer up with it."""
-    start, end, tangents = _seam_sweep_params()
-    with BuildLine() as bl:
-        Spline(start, end, tangents=tangents)
-    edge = bl.line.edges()[0]
+    edge = _seam_ramp_edge()
     hi = max((edge @ (i / 400.0)).Y for i in range(401))
     # The southern run is parallel to the tent plane, which rises going south, so its high point
-    # inside the case is at y=0. North of the sweep the run is flat at the northern rise.
-    return max(hi, end[1], tent_ground_z(0.0) + C.TENT_SKIRT_LIFT)
+    # inside the case is at y=0. North of the ramp the run is flat at SEAM_NORTH_RISE_Z.
+    return max(hi, C.SEAM_NORTH_RISE_Z, tent_ground_z(0.0) + C.TENT_SKIRT_LIFT)
 
 
 def _below_seam_cutter() -> Part:
@@ -300,10 +321,16 @@ def _below_seam_cutter() -> Part:
     The edge profile is drawn once in the Y-Z plane and extruded along X, so every wall gets
     the same handover with no per-wall special casing — it is a function of Y alone.
 
-    Three stretches, south to north: running parallel to the tent plane; a SPLINE sweeping up
-    off it; then flat at ``SEAM_NORTH_RISE_Z``. The spline is given the tent plane's slope as
-    its start tangent and horizontal as its end tangent, so it leaves the desk and arrives at
-    the northern run tangentially — swept, not kinked.
+    Three stretches, south to north: running parallel to the tent plane; a SPLINE ramp; then flat
+    at ``SEAM_NORTH_RISE_Z``. The spline is given the tent plane's slope as its start tangent and
+    horizontal as its end tangent, so it leaves the desk and arrives at the northern run
+    tangentially — swept, not kinked.
+
+    The ramp is a THROUGH-FIT over ``SEAM_WAVE_KNOTS``, not a two-point hump, and that is what
+    makes the bottom case read as a lens instead of a skirt: it crests above Z=0 around u=0.67
+    and eases back down. A two-point spline between the runs is monotonic by construction, so
+    the visible band could only widen northward. See the knot table for where the shape came
+    from and how far to trust it.
 
     The southern run is offset ``TENT_SKIRT_LIFT`` ABOVE the plane rather than lying on it, so
     the skin floats clear of the desk and a band of bottom case shows beneath it. Offsetting
@@ -322,7 +349,8 @@ def _below_seam_cutter() -> Part:
     fixed by ``TENT_SEAM_RAMP_FRAC``, so the higher the dial the steeper that climb — 3.14 mm
     over 8.8 mm at frac 0, 9.44 mm over the same 8.8 mm at frac 1. The joins stay tangent
     either way, but lengthening the ramp is the lever if the blend starts to read as a corner."""
-    (y1, z1), (y2, rise), sweep_tangents = _seam_sweep_params()
+    knots, sweep_tangents = _seam_sweep_params()
+    (y1, z1), (y2, rise) = knots[0], knots[-1]
     lift = C.TENT_SKIRT_LIFT
     slope = -math.tan(math.radians(C.TENT_ANGLE_DEG))
     y_s, y_n = -20.0, C.OUTER_DEPTH + 60.0
@@ -339,7 +367,7 @@ def _below_seam_cutter() -> Part:
                 Line((y_s - z_s / slope, 0.0), (y1, z1))
             else:
                 Line((y_s, z_s), (y1, z1))
-            Spline((y1, z1), (y2, rise), tangents=sweep_tangents)
+            Spline(*knots, tangents=sweep_tangents)
             Line((y2, rise), (y_n, rise))
             Line((y_n, rise), (y_n, bot))
             Line((y_n, bot), (y_s, bot))

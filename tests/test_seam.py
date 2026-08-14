@@ -2,12 +2,17 @@
 
 Over the southern ``TENT_SEAM_SOUTH_FRAC`` of the depth the TOP case's skin carries on below
 Z=0 and runs parallel to the desk, ``TENT_SKIRT_LIFT`` above it, so the front reads as one
-piece over a narrow reveal of bottom case. It then sweeps back up to Z=0, and from there north
-the whole wedge is exposed beneath it.
+piece over a reveal so narrow it looks like none. A WAVE then carries it up, crests it above
+Z=0 around u=0.67, and eases it back down onto the northern run at ``SEAM_NORTH_RISE_Z``.
 
-Seen from the side with the case standing that is the reference's profile exactly: flat along
-the desk at the front, a sweep, then a long run rising at the tilt angle. That last run is not
-built — it IS the Z=0 plane, which slopes at TENT_ANGLE_DEG once the case stands on its wedge.
+Seen from the side with the case standing, the bottom case is a LENS: pinched to almost
+nothing at the front, swelling to a crest around two-thirds back, easing again. That is the
+shape the ramp exists to produce, and it is why the ramp is a through-fit spline over
+``SEAM_WAVE_KNOTS`` rather than the two-point hump it began as — a two-point spline between
+the runs is monotonic by construction, so the band could only ever widen going north.
+
+The last stretch is not built — it IS the Z=0 plane, which slopes at TENT_ANGLE_DEG once the
+case stands on its wedge.
 
 Two headline invariants: this costs NO height (the skin drops into space that already existed
 between Z=0 and the tent plane), and the skin never touches the desk — ground contact belongs
@@ -18,8 +23,9 @@ import pytest
 from build123d import Solid
 from sofle_case import constants as C
 from sofle_case.canopy import CANOPY_RIDGE_TOP_Z
-from sofle_case.case import (_below_seam_cutter, seam_profile_min_z, skirt_extension,
-                             tent_ground_z, tent_plane, wedge_deep_z)
+from sofle_case.case import (_below_seam_cutter, _seam_ramp_edge, seam_profile_max_z,
+                             seam_profile_min_z, skirt_extension, tent_ground_z, tent_plane,
+                             wedge_deep_z)
 # shared_builds' rule is "never import builders from sofle_case directly", and this is the one
 # sanctioned exception: the mutation test below patches a constant, which the side-keyed cache
 # cannot see. Named so nothing reaches for it by accident.
@@ -33,6 +39,20 @@ def _seam_z(y: float) -> float:
     """Where the skin's bottom edge belongs over the southern run: parallel to the tent plane,
     lifted clear of it by TENT_SKIRT_LIFT."""
     return tent_ground_z(y) + C.TENT_SKIRT_LIFT
+
+
+def _first_zero_crossing() -> float:
+    """The southernmost Y at which the parting line reaches Z=0, read off the installed ramp.
+
+    Where the skirt band has to die: it is the skin below Z=0, so it exists only south of here.
+    With the wave the ramp crosses zero mid-run and stays above it, so this is NOT y2."""
+    edge = _seam_ramp_edge()
+    pts = [edge @ (i / 800.0) for i in range(801)]
+    for a, b in zip(pts, pts[1:]):
+        if a.Y <= 0.0 <= b.Y:            # sketch-local .Y is case Z; .X is case Y
+            t = (0.0 - a.Y) / (b.Y - a.Y) if b.Y != a.Y else 0.0
+            return a.X + t * (b.X - a.X)
+    return C.TENT_SEAM_Y2
 
 
 def _lowest_at(part, y: float, s: float = 0.4):
@@ -143,18 +163,34 @@ def test_skin_is_gone_north_of_the_sweep():
             f"y={y}: skin hangs to {got:.3f}, expected the parting line at {C.SEAM_NORTH_RISE_Z:.3f}"
 
 
-def test_the_sweep_climbs_monotonically_between_the_two():
-    """Through the blend the edge rises steadily from the desk to Z=0 — no dip, no reversal,
-    and no step at either end. A kink here is exactly what the sweep exists to avoid."""
+def test_the_ramp_crests_once_and_eases_back():
+    """The wave's defining shape, and the assertion that replaced a monotonicity check.
+
+    The ramp used to be a two-point spline, monotonic by construction, and the test said so. The
+    wave is not monotonic and MUST NOT BE — it crests above Z=0 and eases back down to the
+    northern run, which is the whole reason the bottom case reads as a lens rather than a skirt
+    that stops. Asserting "climbs steadily" against this curve tests the old design.
+
+    What still has to hold is that it turns over exactly ONCE. Two crests would be a wobble in
+    the parting line, visible from a metre away, and a through-fit spline over a mis-typed knot
+    is precisely how you would get one."""
     top = build_top_part("right")
-    ys = [C.TENT_SEAM_Y1 + f * (C.TENT_SEAM_Y2 - C.TENT_SEAM_Y1) for f in
-          (0.0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.0)]
+    ys = [C.TENT_SEAM_Y1 + f * (C.TENT_SEAM_Y2 - C.TENT_SEAM_Y1)
+          for f in (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)]
     zs = [_lowest_at(top, y) for y in ys]
-    assert all(z is not None for z in zs)
-    for (ya, za), (yb, zb) in zip(zip(ys, zs), zip(ys[1:], zs[1:])):
-        assert zb >= za - 0.02, f"edge dips between y={ya:.1f} and y={yb:.1f} ({za:.3f} -> {zb:.3f})"
-    assert abs(zs[0] - _seam_z(C.TENT_SEAM_Y1)) < 0.06, "sweep does not start where the run ends"
-    assert abs(zs[-1] - C.SEAM_NORTH_RISE_Z) < 0.06, "sweep does not finish on the northern run"
+    assert all(z is not None for z in zs), "the ramp has a hole in it"
+
+    rising = [zb > za for za, zb in zip(zs, zs[1:])]
+    turns = sum(a != b for a, b in zip(rising, rising[1:]))
+    assert turns == 1, (
+        f"the ramp changes direction {turns} times, want exactly 1 (up to the crest, then down). "
+        f"Profile: {['%.2f' % z for z in zs]}")
+    assert rising[0] and not rising[-1], "the ramp must climb first and ease second, not the reverse"
+
+    assert abs(zs[0] - _seam_z(C.TENT_SEAM_Y1)) < 0.06, "ramp does not start where the run ends"
+    assert abs(zs[-1] - C.SEAM_NORTH_RISE_Z) < 0.06, "ramp does not finish on the northern run"
+    assert max(zs) > C.SEAM_NORTH_RISE_Z + 1.0, \
+        "the ramp never rises meaningfully above the northern run — the crest has gone flat"
 
 
 def test_the_handover_costs_no_height():
@@ -198,17 +234,18 @@ def test_skirt_extension_alone_is_a_clean_solid():
     assert len(sk.solids()) == 1
     bb = sk.bounding_box()
     assert abs(bb.max.Z) < 1e-6, f"skirt should top out at Z=0, got {bb.max.Z:.4f}"
-    # The band is the skin BELOW Z=0, so it dies where the parting line reaches Z=0 — at y2 when
-    # the northern run is flat there, and progressively further south as SEAM_NORTH_RISE_FRAC
-    # lifts that run and the sweep therefore crosses zero earlier.
+    # The band is the skin BELOW Z=0, so it dies where the parting line FIRST reaches Z=0 — and
+    # with the wave that is inside the ramp, not at its end: the ramp crosses zero around u=0.55
+    # and spends the rest of its run above it. Measured against the profile rather than against
+    # y2, because "where does the seam cross Z=0" is a property of the installed curve. The old
+    # form asserted y2 whenever the northern run was flat, which was only ever true because the
+    # two-point ramp reached Z=0 exactly once, at its end.
+    cross_y = _first_zero_crossing()
     assert bb.max.Y <= C.TENT_SEAM_Y2 + 0.5, \
-        f"skirt reaches y={bb.max.Y:.2f}, past the end of the sweep at y2={C.TENT_SEAM_Y2:.2f}"
-    if C.SEAM_NORTH_RISE_Z <= 0.0:
-        assert bb.max.Y >= C.TENT_SEAM_Y2 - 0.5, \
-            f"skirt dies at y={bb.max.Y:.2f} with a flat northern run, expected y2"
-    else:
-        assert C.TENT_SEAM_Y1 < bb.max.Y < C.TENT_SEAM_Y2, \
-            f"skirt dies at y={bb.max.Y:.2f}, expected inside the sweep where the line crosses Z=0"
+        f"skirt reaches y={bb.max.Y:.2f}, past the end of the ramp at y2={C.TENT_SEAM_Y2:.2f}"
+    assert abs(bb.max.Y - cross_y) < 0.5, (
+        f"skirt dies at y={bb.max.Y:.2f}, expected y={cross_y:.2f} where the parting line "
+        f"crosses Z=0")
     assert abs(bb.min.Z - seam_profile_min_z()) < 0.005, \
         f"skirt bottoms out at {bb.min.Z:.4f}, expected the profile minimum {seam_profile_min_z():.4f}"
 
@@ -343,7 +380,35 @@ def test_the_handover_actually_sits_where_the_dial_says():
 
 
 @pytest.mark.parametrize("angle", [1.0, 3.0, 7.0, 10.0])
-def test_the_seam_cutter_never_reaches_above_z0(monkeypatch, angle):
+def test_the_seam_cutter_never_reaches_above_the_rabbet_ledge(monkeypatch, angle):
+    """The cutter's ceiling — restated for the wave, because its old form was Z=0 and the wave
+    deliberately crests above that.
+
+    Z=0 was never the real limit; it was where the old profile happened to stop. What the cutter
+    must not do is eat the TUB, and the height at which that starts is SEAM_LEDGE_Z: below the
+    ledge the tub is only its outer skin, because _plate_pocket has already taken the floor and
+    inner wall out from behind it, so the cutter takes skin and nothing else. Above the ledge it
+    starts taking the tub proper. That is the same reason SEAM_NORTH_RISE_FRAC's ceiling is 1.0,
+    asked at a different Y.
+
+    Also pinned to seam_profile_max_z(), so the built solid and the measured curve agree — the
+    two are consumed by different callers (_lead_in_relief gates on the measurement) and a drift
+    between them would strand the channel mouth exactly where the crest needs it opened."""
+    monkeypatch.setattr(C, "TENT_ANGLE_DEG", angle)
+    cutter = _below_seam_cutter()
+    inside = cutter & Solid.make_box(400.0, C.OUTER_DEPTH, 200.0).translate((-100.0, 0.0, -100.0))
+    assert inside.volume > 1e-9, f"{angle} deg: the cutter missed the case entirely"
+    got = inside.bounding_box().max.Z
+    assert got < C.SEAM_LEDGE_Z, (
+        f"{angle} deg: the seam cutter reaches Z={got:.4f}, at or above the rabbet ledge "
+        f"{C.SEAM_LEDGE_Z:.4f} — it is eating the tub, not its skin")
+    assert abs(got - seam_profile_max_z()) < 0.01, (
+        f"{angle} deg: the built cutter tops out at {got:.4f} but the measured profile says "
+        f"{seam_profile_max_z():.4f} — solid and curve have drifted apart")
+
+
+@pytest.mark.parametrize("angle", [1.0, 3.0, 7.0, 10.0])
+def test_the_seam_cutter_holds_at_z0_south_of_the_case(monkeypatch, angle):
     """The cutter's southern guard branch, which only becomes REACHABLE at a steep angle.
 
     ``_below_seam_cutter`` starts its profile 20 mm south of the case, and the southern run is
@@ -360,15 +425,19 @@ def test_the_seam_cutter_never_reaches_above_z0(monkeypatch, angle):
     guarantees. So the crossing is always SOUTH of the case and the tub is never touched.
 
     Swept across the band rather than tested at one angle, because the branch that fires
-    depends on the angle and both branches must land in the same place."""
+    depends on the angle and both branches must land in the same place.
+
+    Measured SOUTH of y=0 only. The ceiling inside the case is a different question with a
+    different answer now that the wave crests above Z=0 — see the test above. Out here, where
+    there is no case for the profile to be a parting line of, the hold at Z=0 is absolute."""
     monkeypatch.setattr(C, "TENT_ANGLE_DEG", angle)
     cutter = _below_seam_cutter()
-    inside = cutter & Solid.make_box(400.0, C.OUTER_DEPTH, 200.0).translate((-100.0, 0.0, -100.0))
-    assert inside.volume > 1e-9, f"{angle} deg: the cutter missed the case entirely"
-    assert inside.bounding_box().max.Z <= C.SEAM_NORTH_RISE_Z + 1e-6, (
-        f"{angle} deg: the seam cutter reaches Z={inside.bounding_box().max.Z:.4f} inside the "
-        f"case, above the parting line at {C.SEAM_NORTH_RISE_Z:.4f} — it is eating the tub, "
-        f"not the skirt")
+    overhang = cutter & Solid.make_box(400.0, 20.0, 200.0).translate((-100.0, -20.0, -100.0))
+    assert overhang.volume > 1e-9, f"{angle} deg: no cutter south of the case at all"
+    got = overhang.bounding_box().max.Z
+    assert got <= 1e-6, (
+        f"{angle} deg: south of the case the seam cutter reaches Z={got:.4f} — the hold at Z=0 "
+        f"has failed and it will eat the tub proper at the front edge")
 
 
 @pytest.mark.parametrize("angle", [3.0, 7.0, 10.0])

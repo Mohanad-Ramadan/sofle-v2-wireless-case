@@ -80,20 +80,22 @@ def test_the_recess_deepens_but_the_bottom_never_moves():
                 f"usual {INSET} — the dial has moved the bottom's outline")
 
 
-def test_the_sweep_climbs_monotonically_to_the_rise():
-    """Through the blend the edge rises steadily from the southern run to the northern one — no
-    dip, no reversal, no step at either end. The higher the dial the steeper this climb, which is
-    exactly why it is measured rather than assumed."""
+def test_the_ramp_lands_on_the_rise_from_both_ends():
+    """What this test can still say now that the ramp is a wave.
+
+    It used to assert the blend climbs monotonically to the rise, which was true of a two-point
+    spline and is deliberately false of the wave — that curve crests above Z=0 and eases back
+    down (the lens shape; see SEAM_WAVE_KNOTS). The SHAPE is test_seam's business. What belongs
+    HERE, in the dial's own file, is only that the ramp still starts on the southern run and
+    still finishes on whatever height the dial puts the northern one at — i.e. that the dial
+    keeps its grip on the north end of a curve it does not otherwise control."""
     top = _top()
-    ys = [C.TENT_SEAM_Y1 + f * (C.TENT_SEAM_Y2 - C.TENT_SEAM_Y1)
-          for f in (0.0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.0)]
+    ys = [C.TENT_SEAM_Y1, C.TENT_SEAM_Y2]
     zs = [_lowest_at(top, y) for y in ys]
-    assert all(z is not None for z in zs), "the sweep has a hole in it"
-    for (ya, za), (yb, zb) in zip(zip(ys, zs), zip(ys[1:], zs[1:])):
-        assert zb >= za - 0.02, f"edge dips between y={ya:.1f} and y={yb:.1f} ({za:.3f} -> {zb:.3f})"
+    assert all(z is not None for z in zs), "the ramp has a hole in it"
     start = tent_ground_z(C.TENT_SEAM_Y1) + C.TENT_SKIRT_LIFT
-    assert abs(zs[0] - start) < 0.06, "sweep does not start where the southern run ends"
-    assert abs(zs[-1] - C.SEAM_NORTH_RISE_Z) < 0.06, "sweep does not finish at the rise"
+    assert abs(zs[0] - start) < 0.06, "ramp does not start where the southern run ends"
+    assert abs(zs[-1] - C.SEAM_NORTH_RISE_Z) < 0.06, "ramp does not finish at the rise"
 
 
 def test_the_south_is_untouched():
@@ -120,12 +122,21 @@ def test_the_south_is_untouched():
 @pytest.mark.parametrize("frac", [0.0, 0.5, 1.0])
 def test_the_dial_is_a_fraction_of_the_ledge(monkeypatch, frac):
     """0 leaves the line flat at Z=0 as it always was; 1 puts it on the plate rim's top, which is
-    as far as it can go before it would start eating the tub proper rather than its skin."""
+    as far as it can go before it would start eating the tub proper rather than its skin.
+
+    Measured on the NORTHERN RUN, not on the profile's global maximum. Those were the same number
+    while the run was the highest thing on the curve; the wave crests above it around u=0.67, so
+    reading the bounding box now measures the crest and reports the dial as stuck at 3.60 whatever
+    it is set to. Sampling north of the ramp asks the question the dial actually answers."""
     monkeypatch.setattr(C, "SEAM_NORTH_RISE_Z", frac * C.SEAM_LEDGE_Z)
-    got = _below_seam_cutter().bounding_box().max.Z
-    assert abs(got - frac * C.SEAM_LEDGE_Z) < 1e-6, (
-        f"frac={frac}: the parting profile tops out at {got:.3f}, expected "
-        f"{frac * C.SEAM_LEDGE_Z:.3f}")
+    cutter = _below_seam_cutter()
+    for y in (C.TENT_SEAM_Y2 + 5.0, C.OUTER_DEPTH - 6.0):
+        slab = cutter & Solid.make_box(400.0, 0.4, 200.0).translate((-100.0, y - 0.2, -100.0))
+        assert slab.volume > 1e-9, f"frac={frac}: no cutter at y={y}"
+        got = slab.bounding_box().max.Z
+        assert abs(got - frac * C.SEAM_LEDGE_Z) < 1e-3, (
+            f"frac={frac}: the northern run sits at {got:.3f}, expected "
+            f"{frac * C.SEAM_LEDGE_Z:.3f}")
 
 
 @pytest.mark.parametrize("bad", ["-0.1", "1.5"])

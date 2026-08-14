@@ -243,8 +243,66 @@ TENT_WEDGE_MIN_H = 1.0   # mm; wedge thickness at the south (the thin end)
 # front edge, 1.0 = it would run the whole way. Both ends of that range are accepted
 # in principle, but the usable ceiling is lower in practice -- the sweep has to finish before
 # the +Y relief bump (see the TENT_SEAM_Y2 guard, which computes the ceiling and reports it).
-TENT_SEAM_SOUTH_FRAC = 0.50   # fraction of depth where the top case rides the desk
-TENT_SEAM_RAMP_FRAC  = 0.15   # fraction of depth the sweep takes to climb back to Z=0
+TENT_SEAM_SOUTH_FRAC = 0.36   # fraction of depth where the top case rides the desk
+TENT_SEAM_RAMP_FRAC  = 0.46   # fraction of depth the wave takes to climb and come back down
+
+# ---- The WAVE: the shape the ramp takes between those two runs ----
+# The ramp used to be a single spline hump -- two endpoints and two tangents, monotonic by
+# construction, so the visible band of bottom case could only ever WIDEN going north. Against
+# the reference that read as unfinished: a skirt that stops rather than a shape that resolves.
+#
+# The reference's bottom case is a LENS seen from the side. Pinched to nothing at the front,
+# swelling to a crest around two-thirds back, then easing again. Reproducing that needs a curve
+# family the two-point spline cannot express, so the ramp is now a through-fit spline over the
+# knots below and the endpoints/tangents are unchanged around it. Everything else about the
+# profile is as it was: one Y-Z sketch, extruded across X, a function of Y alone.
+#
+# WHERE THESE NUMBERS COME FROM, and how much to trust them. Digitised off a CAD side elevation
+# of the reference board plus a photograph of the real product, then rescaled to this case's
+# 126 mm depth. Two rounds: the first read the zero-reveal front as ending at u=0.19, which
+# spliced across a V-notch in the drawing at x~1170 px. That notch is the reference's own front
+# knife-edge, so the front runs to u=0.36 and the rise is compressed into ~35% of the depth
+# rather than 53%. The crest's POSITION survived both reads and an independent re-extraction by
+# a different method (scipy find_peaks vs. a dark-run threshold), and the crest is visible on
+# the painted blue/white shell boundary in the photograph -- it is real geometry, not a shading
+# artifact of the render.
+#
+# WHAT IS NOT MEASURED: nothing images the reference's rear 18%, so where the wave lands north
+# of u=0.82 is this project's decision, not the reference's. It is held at SEAM_NORTH_RISE_Z
+# (i.e. Z=0), which is what the north has been since the parting line was dropped back there.
+#
+# UNITS, and this is the part that matters. Each knot is (u, band), where u is a fraction of
+# OUTER_DEPTH and `band` is the VISIBLE HEIGHT OF BOTTOM CASE there, as a fraction of
+# TENT_WEDGE_MAX_H -- the bottom case's full height at the back. Not local Z, and not millimetres.
+#
+# Local Z was the obvious choice and it was wrong. The sketch is drawn in local Z, so storing it
+# that way saves a conversion; but local Z bakes in the tent angle the numbers were measured at,
+# and the desk is what the shape is measured FROM. Held in local Z at 6 deg, the table put the
+# crest 2.55 mm through the desk when the angle was swept to 3 -- a table that only means what it
+# says at one angle. Millimetres above the desk fail the other way: the band cannot be 13.6 mm
+# tall on a 7.6 mm wedge, so at a shallow angle the crest is driven above SEAM_LEDGE_Z and eats
+# the tub. As a fraction of the wedge's own height it is scale-free, which is what "the bottom
+# case looks like a lens" actually means. The conversion back is one line in _seam_sweep_params.
+#
+#   u       band      -> at 6 deg: mm above desk   local Z    what it is
+#   0.360   (run)                   0.30           -5.47      end of the south run (computed)
+#   0.406   0.0716                  1.02           -5.36      the front knife-edge opening up
+#   0.485   0.2992                  4.26           -3.16
+#   0.558   0.6159                  8.77           +0.38      crosses Z=0 -- eats pocket wall above
+#   0.598   0.7690                 10.95           +2.03
+#   0.670   0.9459                 13.47           +3.60      CREST in local Z
+#   0.710   0.9565                 13.62           +3.22      crest in the VISIBLE BAND
+#   0.749   0.9256                 13.18           +2.26      easing
+#   0.820   (run)                  11.86            0.00      back on the northern run (computed)
+SEAM_WAVE_KNOTS = (
+    (0.406, 0.0716),
+    (0.485, 0.2992),
+    (0.558, 0.6159),
+    (0.598, 0.7690),
+    (0.670, 0.9459),
+    (0.710, 0.9565),
+    (0.749, 0.9256),
+)
 
 # ---- How far the skirt stops SHORT of the desk: the reveal ----
 # TENT_SEAM_SOUTH_FRAC dials the skirt's LENGTH (how far north it reaches). This dials its
@@ -264,7 +322,13 @@ TENT_SEAM_RAMP_FRAC  = 0.15   # fraction of depth the sweep takes to climb back 
 # enough to keep a real band of skin rather than a feather edge. To show MORE bottom case at
 # the front than that allows, the wedge itself has to get thicker at the south
 # (TENT_WEDGE_MIN_H), and that one does cost height, 1:1.
-TENT_SKIRT_LIFT = 0.5   # mm; bottom case visible below the skin at the front
+# 0.3 rather than the 0.5 it was, because the wave wants the front to read as ZERO reveal --
+# the reference's bottom case is pinched to a knife edge there and the two shells look like one
+# piece. Literal zero was on the table and was rejected: at 0.0 the skirt's underside is
+# coplanar with the wedge's ground face and the two printed parts fight over how the case sits
+# (see TENT_SKIRT_CLEAR_MIN). 0.3 is the smallest reveal that still leaves ground contact
+# unambiguously with the wedge, and at arm's length it reads as none.
+TENT_SKIRT_LIFT = 0.3   # mm; bottom case visible below the skin at the front
 
 assert 0.0 <= TENT_SEAM_SOUTH_FRAC <= 1.0, (
     f"TENT_SEAM_SOUTH_FRAC must be a fraction of the depth, 0.0-1.0; got {TENT_SEAM_SOUTH_FRAC}")
@@ -641,6 +705,38 @@ assert TENT_SEAM_Y2 < OUTER_DEPTH - 20.0, (
     f"TENT_SEAM_SOUTH_FRAC={TENT_SEAM_SOUTH_FRAC} puts the sweep's end at y={TENT_SEAM_Y2:.1f}, "
     f"which runs into the +Y relief bump. With TENT_SEAM_RAMP_FRAC={TENT_SEAM_RAMP_FRAC} the "
     f"ceiling is {TENT_SEAM_FRAC_MAX:.2f} — lower the south fraction or shorten the ramp")
+
+# ---- The wave's knots, checked against the geometry they have to live inside ----
+# SEAM_WAVE_KNOTS is written as literal numbers because it is MEASURED DATA, not a formula, so
+# nothing here can derive it -- these only catch a table that has drifted out of the space the
+# rest of the design leaves for it.
+#   local Z = (band above the desk) + (Z of the desk there)
+#           = band * TENT_WEDGE_MAX_H  -  (TENT_WEDGE_MIN_H + TENT_RISE * u)
+# The second term is tent_ground_z() written out in terms of u; case.py has the function, but
+# constants cannot import it, and the guards below have to run at import time.
+SEAM_WAVE_Y = tuple((u * OUTER_DEPTH,
+                     band * TENT_WEDGE_MAX_H - (TENT_WEDGE_MIN_H + TENT_RISE * u))
+                    for u, band in SEAM_WAVE_KNOTS)
+assert all(TENT_SEAM_Y1 < y < TENT_SEAM_Y2 for y, _z in SEAM_WAVE_Y), (
+    f"a wave knot sits outside the ramp it shapes (y must be strictly inside "
+    f"{TENT_SEAM_Y1:.2f}..{TENT_SEAM_Y2:.2f}); the runs either side own those ends")
+assert all(a[0] < b[0] for a, b in zip(SEAM_WAVE_Y, SEAM_WAVE_Y[1:])), (
+    "wave knots must be strictly increasing in y — a through-fit spline cannot double back")
+
+# The ceiling is the rabbet ledge, and for exactly the reason SEAM_NORTH_RISE_FRAC's own ceiling
+# of 1.0 exists: below SEAM_LEDGE_Z the tub is ONLY its outer skin, because _plate_pocket has
+# already taken the floor and inner wall out from behind it, so the cutter eats skin and nothing
+# else. Above the ledge it starts eating the tub proper. The crest is the same question asked at
+# a different Y, and it costs the same thing -- rabbet lap, 1 mm for 1 mm.
+SEAM_WAVE_CREST_Z = max(z for _y, z in SEAM_WAVE_Y)
+SEAM_WAVE_LAP_LEFT = SEAM_LEDGE_Z - max(SEAM_WAVE_CREST_Z, SEAM_NORTH_RISE_Z)   # 2.70 at crest 3.60
+assert SEAM_WAVE_CREST_Z < SEAM_LEDGE_Z, (
+    f"the wave crests at Z={SEAM_WAVE_CREST_Z:.2f}, at or above the rabbet ledge "
+    f"SEAM_LEDGE_Z={SEAM_LEDGE_Z:.2f} — past there the seam cutter eats the tub itself, not its "
+    f"skin. Lower the crest, or raise the ledge (which is FLOOR_THICKNESS and costs height)")
+assert SEAM_WAVE_LAP_LEFT >= 2.0, (
+    f"the crest at Z={SEAM_WAVE_CREST_Z:.2f} leaves only {SEAM_WAVE_LAP_LEFT:.2f} mm of rabbet "
+    f"lap to locate the two halves against each other; 2.0 is the floor")
 
 PCB_OFFSET_X = (OUTER_WIDTH - (PCB_X_MAX - PCB_X_MIN)) / 2 - PCB_X_MIN
 PCB_OFFSET_Y = (OUTER_DEPTH - (PCB_Y_MAX - PCB_Y_MIN)) / 2 - PCB_Y_MIN
