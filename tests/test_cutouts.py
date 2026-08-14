@@ -189,4 +189,8 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # comes out to the tub's skin and stands SEAM_FLARE_MAX past it below the reveal, so the
     # visible band is real material now instead of the floor of a recess. +8205.8 mm³ (was
     # 188629.693062), checked against _bottom_outer_shell()'s own volume before being accepted.
-    assert abs(build_bottom_part(side).volume - 196835.535452) < 2e-2
+    # Rebased again, +537.4, when the band moved onto the TUB's outline and its flare was
+    # re-datumed to the band's own top edge: the tub outline is 126.9 mm² larger in plan than the
+    # polygon offset (it carries the +Y bump), and the eased onset adds material through y=55-75
+    # that the one-shot step used to leave out.
+    assert abs(build_bottom_part(side).volume - 197372.915753) < 2e-2

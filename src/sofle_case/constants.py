@@ -285,7 +285,25 @@ SEAM_REVEAL_H = 2.0   # mm; vertical gap from the parting line down to the botto
 # below it flares. The deeper the band at a given depth, the more flare shows, which is the
 # same way round as the reference reads.
 SEAM_FLARE_MAX = 1.5   # mm; how far past the skin the bottom case stands at the deepest point
+SEAM_FLARE_DEPTH = 11.0  # mm below the band's own top edge at which the flare reaches its max
 SEAM_FLARE_STEPS = 10  # loft sections through the flare curve (ruled between; see offset_lofted)
+
+# ---- Slabbing the flare along Y, and the step it is there to keep invisible ----
+# The flare is measured below the band's OWN TOP EDGE, that edge follows the wave, and a
+# concentric offset can only vary with Z -- so the shell is built as a stack of Y-slabs, each
+# thin enough that its top edge is effectively one height. See _bottom_outer_shell.
+#
+# That trades one big step for many small ones, so the count is an acceptance criterion rather
+# than a taste. The defect being fixed measured 3.215 mm in a single millimetre of Y, at the
+# station where the reveal opens; the cap below is what "smooth" is allowed to mean, and
+# test_seam.py sweeps the plan silhouette at 1 mm to enforce it.
+SEAM_FLARE_STEP_MAX = 0.15 # mm; largest jump allowed in the plan-view outline, anywhere
+SEAM_FLARE_ONSET = 18.0    # mm of depth over which the band eases out of the wedge's own line
+#
+# There is deliberately NO slab-count dial. Evenly spaced slabs spend themselves where nothing
+# is happening and starve the onset, where the offset travels 3.7 mm: 24 uniform slabs left a
+# 0.681 mm step, and getting under the cap that way wanted about 97 of them. _flare_slab_bounds
+# places them off the curve instead and lands on ~36, most of them in the first 20 mm.
 
 # ---- The WAVE: the shape the ramp takes between those two runs ----
 # The ramp used to be a single spline hump -- two endpoints and two tangents, monotonic by

@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 from functools import cache
 from typing import Literal, cast
-from build123d import (Part, mirror, Plane, Pos, fillet, chamfer, Axis, BuildPart,
+from build123d import (Part, Face, mirror, Plane, Pos, fillet, chamfer, Axis, BuildPart,
                        BuildSketch, BuildLine, Line, Spline, Locations, Cylinder,
                        Sphere, Solid, Box, Location, GeomType, add, extrude, make_face)
 from OCP.Standard import Standard_Failure
@@ -19,7 +19,7 @@ from OCP.ShapeFix import ShapeFix_Shape
 from OCP.TopoDS import TopoDS
 from . import constants as C
 from .pcb_geometry import slide_switch_placement, rotate_2d
-from .tray import build_tray, offset_extruded, offset_lofted
+from .tray import build_tray, offset_extruded, offset_lofted, face_lofted
 from .standoffs import stepped_standoff
 from .battery import battery_pocket
 from .top_cover import build_top_cover, _load_plate_cutouts
@@ -232,8 +232,9 @@ def bottom_deep_z() -> float:
     That difference, about 0.39 mm, is the only height the flare costs, and it is a real cost:
     the assembly is that much taller than the wedge alone would make it. It buys a base that is
     wider than the lid instead of narrower, which is the whole point of the flare."""
-    skin = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
-    y_max = offset_extruded(skin + C.SEAM_FLARE_MAX, 0.0, 1.0, rounded=True).bounding_box().max.Y
+    y_max = face_lofted(tub_outline_face(),
+                        [(0.0, C.SEAM_FLARE_MAX),
+                         (1.0, C.SEAM_FLARE_MAX)]).bounding_box().max.Y
     return tent_ground_z(y_max)
 
 
@@ -413,11 +414,40 @@ def _extrude_across_x(sk: BuildSketch) -> Part:
     return cast(Part, solid.translate((-60.0, 0.0, 0.0)))
 
 
+@cache
 def seam_skirt_tub() -> Part:
     """The deep tub exactly as ``skirt_extension`` must see it: plate pocket carved, mouth NOT
     yet chamfered. One definition so ``build_top_part`` and the tests cannot disagree about
-    which of the two states the skirt is sectioned from — see ``skirt_extension``."""
+    which of the two states the skirt is sectioned from — see ``skirt_extension``.
+
+    CACHED because the bottom part needs it too now (``tub_outline_face``), and it builds a
+    whole tray. ``build_bottom_part`` never touched a tray before this; without the cache the
+    suite pays for one per bottom build."""
     return cast(Part, build_tray(rim_z=C.COVER_TOP_Z, bottom_chamfer=False) - _plate_pocket())
+
+
+@cache
+def tub_outline_face() -> Face:
+    """The TOP case's real outer outline at Z=0, filled — the silhouette the bottom must match.
+
+    Sectioned rather than reconstructed, for the same reason ``skirt_extension`` sections: the
+    outline is not a polygon offset. It carries the +Y relief bump (``_bump_facet_south_y``,
+    y=115) squared off proud of the nominal offset, and that bump's NW corner fillet. Offsetting
+    the PCB polygon instead is what put the bottom case 36 mm outside the top at y=115 when the
+    two were compared from below.
+
+    OUTER WIRE ONLY. At Z=0 the tub is a ring — ``_plate_pocket`` has taken the floor and inner
+    wall out from behind the skin — so the section comes back with an inner wire too, which is
+    the pocket bore and is not this outline. Filling from the outer wire alone gives the plan
+    silhouette rather than the wall's cross-section.
+
+    Taken at Z=0 exactly, below the mouth chamfer, and from the UN-chamfered tub, for the
+    reasons ``skirt_extension`` spells out."""
+    tub = seam_skirt_tub()
+    slab = cast(Part, tub & Solid.make_box(400.0, C.OUTER_DEPTH + 200.0, 0.05)
+                .translate((-100.0, -100.0, 0.0)))
+    section = slab.faces().filter_by(Plane.XY).sort_by(Axis.Z)[0]
+    return cast(Face, make_face(section.outer_wire()))
 
 
 def skirt_extension(tub: Part) -> Part:
@@ -515,14 +545,20 @@ def _lead_in_relief(z_bot: float) -> Part:
 def tent_wedge() -> Part:
     """The bottom case's tent wedge: the block below Z=0 that stands the keyboard at an angle.
 
-    Follows the PLATE's own rim profile, so the bottom case stays inset behind the tub's skin
-    by SEAM_SKIN + SEAM_FIT_CLEAR (2.3 mm) — the "skinny" look. The tub's skin therefore ends
-    at Z=0 and floats clear of the desk; it is carried by the screws through the standoffs and
-    by its rabbet on the plate rim, not by the wedge.
+    Follows the PLATE's own rim profile, so the wedge stays inset behind the tub's skin by
+    SEAM_SKIN + SEAM_FIT_CLEAR (2.2 mm). Concentric offsets of one polygon, which is what
+    guarantees that clearance everywhere.
 
-    Being the same profile as ``_plate_envelope`` is what keeps this cheap: no need to chase
-    the tub's real footprint (the +Y bump squares the NW corner off proud of the nominal
-    offset and carries a fillet), and no tray build inside ``build_bottom_part``.
+    KEEP IT ON THE POLYGON. Putting the wedge on the tub's outline instead — inset 2.2 from it,
+    to make the two silhouettes agree in plan — was tried and reverted: an INWARD offset raises
+    arcs at the concave corners that bulge toward the wall, so the 0.2 mm fit clearance is not
+    preserved there and the two parts overlapped by 197 mm³. Concentric offsets of the same
+    polygon cannot do that to each other.
+
+    It costs nothing to stay here. The wedge is only visible south of where the reveal opens,
+    and the tub's outline departs from the polygon at the +Y relief bump (y≥115) — nowhere near.
+    North of the reveal it is the flared band, not the wedge, that shows, and THAT is on the
+    tub's outline (see ``_bottom_outer_shell``).
 
     ``TENT_WEDGE_MIN_H`` thick at the south, climbing to ``TENT_WEDGE_MAX_H`` at the north.
     Solid rather than shelled — only a few mm thick, and the mass is welcome."""
@@ -531,14 +567,20 @@ def tent_wedge() -> Part:
     return cast(Part, stock - _below_plane_cutter(*tent_plane()))
 
 
-def seam_flare(z: float) -> float:
-    """How far past the outer skin the bottom case stands at height ``z``.
+def seam_flare(depth: float) -> float:
+    """How far past the outer skin the bottom case stands, ``depth`` mm BELOW ITS OWN TOP EDGE.
 
-    Zero at and above Z=0, growing downward to ``SEAM_FLARE_MAX`` at the deepest the wedge
-    reaches. Convex — steepest just under Z=0 and easing as it nears the desk, which is how the
-    reference's own end elevation leans (see SEAM_FLARE_MAX)."""
-    depth = -tent_ground_z(C.OUTER_DEPTH) + 1.0          # deepest the wedge ever goes
-    t = min(max(-z, 0.0), depth) / depth
+    Not below Z=0, and that re-datum is the whole fix for the step in the plan view. Keyed to
+    absolute Z, the flare was already 1.037 mm where the band was 0.00 mm tall — the desk is
+    6.8 mm down by the time the reveal opens at y=55, so the band was born at nearly full width
+    and the silhouette jumped 3.215 mm in a single millimetre of Y. Backwards, exactly: widest
+    where the band is thinnest.
+
+    Measured from the top edge instead, the band leaves the reveal flush with the skin and leans
+    out as it falls, which is both what the reference does and a smooth onset for free.
+
+    Convex — steepest just under the edge, easing as it nears the desk."""
+    t = min(max(depth, 0.0), C.SEAM_FLARE_DEPTH) / C.SEAM_FLARE_DEPTH
     return C.SEAM_FLARE_MAX * (1.0 - (1.0 - t) ** 2)
 
 
@@ -565,21 +607,129 @@ def _bottom_outer_shell() -> Part:
     takes all of it and nothing is added. That is the bottom case tapering out on its own, and
     it is why the reveal reads as a lens without a lens ever being drawn."""
     rim_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK
-    skin = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
-    z_bot = wedge_deep_z() - 1.0
-    z_top = C.SEAM_LEDGE_Z
+    # OFFSETS ARE THE FLARE ALONE. tub_outline_face() already IS the outer skin, unlike the PCB
+    # polygon offset_lofted starts from — adding the skin offset on top of it put the band 6.7 mm
+    # proud instead of 1.5.
+    face = tub_outline_face()
+    z_bot = bottom_deep_z() - 1.0
 
-    levels = []
-    for i in range(C.SEAM_FLARE_STEPS + 1):
-        z = z_top + (z_bot - z_top) * i / C.SEAM_FLARE_STEPS
-        levels.append((z, skin + seam_flare(z)))
-    levels.reverse()                                     # loft wants increasing Z
-    stock = offset_lofted(levels, rounded=True)
-    band = cast(Part, stock - offset_extruded(rim_outer, z_bot - 1.0, z_top + 1.0))
+    # BUILT IN Y-SLABS, and it has to be. The flare is measured below the band's own top edge
+    # (see seam_flare), that edge follows the wave, and a concentric offset can only vary with
+    # Z — so one loft cannot express it. Each slab is thin enough in Y that its top edge is
+    # effectively one height, which makes the offsets inside it a plain function of Z again.
+    # The slab count is not cosmetic: too few and the fix trades one 3.2 mm step in the plan
+    # silhouette for a row of small ones. test_seam.py sweeps it at 1 mm and caps any single
+    # step at SEAM_FLARE_STEP_MAX.
+    y0, y1 = _shell_y_range()
+    bounds = _flare_slab_bounds(y0, y1)
+    slabs = []
+    for i, (ya, yb) in enumerate(zip(bounds, bounds[1:])):
+        top_edge = _seam_z_at((ya + yb) / 2.0) - C.SEAM_REVEAL_H
+        # EASED OUT OF THE WEDGE ALONG Y, which is the other half of the smooth onset. Getting
+        # the depth datum right stops the band being born at full flare, but it is still born
+        # FLUSH WITH THE SKIN while the wedge beside it sits rim_outer (2.2 mm) further in — so
+        # the plan silhouette still stepped, just by 2.2 instead of 3.2. Starting the band on the
+        # wedge's own line and easing it out over SEAM_FLARE_ONSET removes the last of it.
+        ease = min(1.0, ((ya + yb) / 2.0 - y0) / C.SEAM_FLARE_ONSET)
+        inset0 = rim_outer - (C.WALL_THICKNESS + C.PCB_XY_CLEARANCE)   # -2.2, the wedge's line
+        levels = []
+        for j in range(C.SEAM_FLARE_STEPS + 1):
+            z = z_bot + (top_edge - z_bot) * j / C.SEAM_FLARE_STEPS
+            levels.append((z, inset0 + (seam_flare(top_edge - z) - inset0) * ease))
+        stock = face_lofted(face, levels)
+        pad = 0.001                                      # overlap so the union has no seam face
+        # The LAST slab runs past the back edge, so the flare wraps the north face too. Clipped
+        # at OUTER_DEPTH the sides would lean out and the back would stay vertical.
+        hi = yb + (C.SEAM_FLARE_MAX + 1.0 if i == len(bounds) - 2 else pad)
+        box = Solid.make_box(400.0, hi - (ya - pad), 400.0).translate(
+            (-100.0, ya - pad, -200.0))
+        slabs.append(cast(Part, stock & box))
+    # ONE multi-argument fuse, not a chain of pairwise ones. OCC builds the whole union in a
+    # single pass; folding `+` over three dozen slabs re-walks a growing solid every time.
+    band = cast(Part, slabs[0].fuse(*slabs[1:]) if len(slabs) > 1 else slabs[0])
+
+    band = cast(Part, band - offset_extruded(rim_outer, z_bot - 1.0, C.SEAM_LEDGE_Z + 1.0))
     # Open the reveal: drop the parting-line cutter by SEAM_REVEAL_H and keep only what is under
     # it. Intersecting (not subtracting) because this cutter IS "everything below the line".
     band = cast(Part, band & _below_seam_cutter().translate((0.0, 0.0, -C.SEAM_REVEAL_H)))
+    # Trimmed to the desk LAST, and once, so the underside comes out as a single planar face —
+    # ground_face() picks the largest one and test_contact_is_the_whole_footprint wants the
+    # whole footprint, not the largest of two dozen coplanar slivers.
     return cast(Part, band - _below_plane_cutter(*tent_plane()))
+
+
+def _flare_offset_at(y: float, y0: float) -> float:
+    """The band's outer offset at its DEEPEST point at this Y — what shows in the plan view.
+
+    One place, so the slab chooser and the slab builder cannot disagree about the curve being
+    approximated."""
+    top_edge = _seam_z_at(y) - C.SEAM_REVEAL_H
+    inset0 = -(C.SEAM_SKIN + C.SEAM_FIT_CLEAR)
+    ease = min(1.0, (y - y0) / C.SEAM_FLARE_ONSET)
+    return inset0 + (seam_flare(top_edge - tent_ground_z(y)) - inset0) * ease
+
+
+def _flare_slab_bounds(y0: float, y1: float) -> list[float]:
+    """Y boundaries for the slabs the band is built from — ADAPTIVE, not evenly spaced.
+
+    The band's offset is held constant across a slab, so each boundary is a step in the plan
+    silhouette and the step's size is however much the offset moved. Even spacing spends its
+    slabs where nothing is happening and starves the onset, where the offset travels 3.7 mm:
+    24 uniform slabs left a 0.681 mm step at y=70 against a 0.15 cap, and getting under the cap
+    that way needed ~97 of them.
+
+    So boundaries are placed by the curve instead — a new slab whenever the offset has moved
+    ``SEAM_FLARE_STEP_MAX`` since the last one. That puts them close together through the onset
+    and far apart over the back half, where the offset barely moves at all."""
+    TOP_EDGE_DRIFT = 1.5     # mm the band's top edge may move inside one slab
+
+    def top(yy):
+        return _seam_z_at(yy) - C.SEAM_REVEAL_H
+
+    bounds = [y0]
+    ref, ref_top = _flare_offset_at(y0, y0), top(y0)
+    y = y0
+    while y < y1:
+        y = min(y + 0.2, y1)
+        # TWO reasons to break. The offset one is the plan-view step. The top-edge one is the
+        # side elevation: the slab's flare profile is measured from ONE top-edge height, its
+        # midpoint's, so a slab that spans a lot of wave leans by the wrong amount at its ends.
+        # Without it the back half comes out as a single 52.9 mm slab.
+        # ...and a third, local to the first few mm: the band comes into existence there, going
+        # from no material to an edge, and the offset rule underestimates it because the band is
+        # still thinner than anything probing it. Left to the rule alone the opening slabs came
+        # out 1.0 mm wide and the first step measured 0.186 against a 0.15 cap.
+        if (abs(_flare_offset_at(y, y0) - ref) >= C.SEAM_FLARE_STEP_MAX * 0.8
+                or abs(top(y) - ref_top) >= TOP_EDGE_DRIFT
+                or (y < y0 + 4.0 and y - bounds[-1] >= 0.4)):
+            bounds.append(y)
+            ref, ref_top = _flare_offset_at(y, y0), top(y)
+    if y1 - bounds[-1] < 1e-6:
+        bounds[-1] = y1
+    else:
+        bounds.append(y1)
+    return bounds
+
+
+def _seam_z_at(y: float) -> float:
+    """The parting line's Z at a given case-Y — the three stretches, as the cutter draws them."""
+    if y <= C.TENT_SEAM_Y1:
+        return tent_ground_z(y) + C.TENT_SKIRT_LIFT
+    if y >= C.TENT_SEAM_Y2:
+        return C.SEAM_NORTH_RISE_Z
+    edge = _seam_ramp_edge()
+    pts = [edge @ (i / 1000.0) for i in range(1001)]
+    return min(pts, key=lambda p: abs(p.X - y)).Y     # sketch-local .X is case Y, .Y is case Z
+
+
+def _shell_y_range() -> tuple[float, float]:
+    """Where the visible band exists: from the first Y at which it is taller than the reveal,
+    to the back edge. The southern end is the lens's own point — nothing is drawn to make it."""
+    ys = [i * C.OUTER_DEPTH / 2000.0 for i in range(2001)]
+    for y in ys:
+        if _seam_z_at(y) - C.SEAM_REVEAL_H > tent_ground_z(y):
+            return y, C.OUTER_DEPTH
+    raise ValueError("the reveal never opens — SEAM_REVEAL_H is deeper than the band ever gets")
 
 
 def ground_face(part: Part):

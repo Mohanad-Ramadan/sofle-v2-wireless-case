@@ -21,14 +21,16 @@ Two headline invariants: this costs NO height (the skin drops into space that al
 between Z=0 and the tent plane), and the skin never touches the desk — ground contact belongs
 to the wedge alone, so two separately-printed parts are never fighting over how the case sits."""
 import math
+from typing import cast
 
 import pytest
-from build123d import Solid
+from build123d import Part, Solid
 from sofle_case import constants as C
 from sofle_case.canopy import CANOPY_RIDGE_TOP_Z
 from sofle_case.case import (_below_seam_cutter, _seam_ramp_edge, _seam_sweep_params,
                              seam_profile_max_z,
                              bottom_deep_z, seam_profile_min_z, seam_skirt_tub, skirt_extension, tent_ground_z,
+                             tub_outline_face,
                              tent_plane,
                              wedge_deep_z)
 # shared_builds' rule is "never import builders from sofle_case directly", and this is the one
@@ -199,6 +201,79 @@ def test_the_skin_follows_the_parting_line_across_the_rear():
         want = _profile_z_at(y)
         assert abs(got - want) < 0.06, \
             f"y={y}: skin hangs to {got:.3f}, expected the parting line at {want:.3f}"
+
+
+def test_the_band_eases_out_instead_of_stepping_out_in_plan():
+    """Seen from underneath, the band must GROW out of the wedge's line, not appear at full
+    width. It used to jump 3.215 mm in a single millimetre of Y, at y=55 where the reveal opens.
+
+    Two causes, both fixed, and the measurement covers both: the flare was keyed to absolute Z,
+    so the band was born carrying 1.037 mm of it while still 0.00 mm tall; and it was born flush
+    with the skin while the wedge beside it sat 2.2 mm further in.
+
+    MEASURED AGAINST THE TUB'S OWN PLAN SILHOUETTE, and sampled at 0.25 mm. Against a fixed line
+    this would report the outline's own shape instead — and the outline has a real 35 mm cliff at
+    the north-east corner (y≈115), which the band has to follow. Stations within a flare radius
+    of one of the tub's own steps are therefore skipped: there the band is allowed to move
+    exactly as fast as the tub does."""
+    from build123d import extrude
+    bottom = build_bottom_part("right")
+    tub = extrude(tub_outline_face(), amount=1.0)
+
+    def east(part, y, z, s=0.15):
+        sl = part & Solid.make_box(400.0, s, s).translate((-100.0, y - s / 2, z - s / 2))
+        return None if sl.volume < 1e-9 else sl.bounding_box().max.X
+
+    ys, tv, bv = [], [], []
+    y = 50.0
+    while y <= C.OUTER_DEPTH - 0.5:
+        t = east(tub, y, 0.5)
+        b = east(bottom, y, tent_ground_z(y) + 0.4)
+        if t is not None and b is not None:
+            ys.append(y); tv.append(t); bv.append(b)
+        y += 0.25
+    assert len(ys) > 200, "the sweep found almost nothing to measure"
+
+    skip = set()
+    for i in range(len(ys) - 1):
+        if abs(tv[i + 1] - tv[i]) > 0.5:                 # the tub's outline steps here
+            skip.update(j for j in range(len(ys))
+                        if abs(ys[j] - ys[i]) <= C.SEAM_FLARE_MAX + 1.0)
+
+    worst, worst_y = 0.0, None
+    for i in range(len(ys) - 1):
+        if i in skip or i + 1 in skip:
+            continue
+        d = abs((bv[i + 1] - tv[i + 1]) - (bv[i] - tv[i]))
+        if d > worst:
+            worst, worst_y = d, ys[i + 1]
+    assert worst <= C.SEAM_FLARE_STEP_MAX, (
+        f"the plan silhouette steps {worst:.3f} mm at y={worst_y:.2f}, over the "
+        f"{C.SEAM_FLARE_STEP_MAX} mm cap — the band is jumping out, not easing out")
+
+    # ...and it really does travel the whole way, from the wedge's line out past the skin.
+    span = max(b - t for b, t in zip(bv, tv)) - min(b - t for b, t in zip(bv, tv))
+    assert span > 3.0, f"the band only moves {span:.2f} mm — the ease is not doing anything"
+
+
+def test_the_bottom_stays_inside_the_top_s_own_outline():
+    """From the bottom plan the two shells must register: the bottom follows the TOP's outline,
+    not the PCB polygon's.
+
+    The polygon knows nothing about the +Y relief bump or the tub's north-east corner, so the
+    old bottom sailed straight past both. Stated as containment rather than a per-Y comparison,
+    because an outward offset ROUNDS convex corners — the band legitimately bulges up to a flare
+    radius past the corner in Y, and a station-by-station check reads that as a 33 mm error."""
+    from sofle_case.tray import face_lofted
+    bottom = build_bottom_part("right")
+    grown = face_lofted(tub_outline_face(),
+                        [(-40.0, C.SEAM_FLARE_MAX + 0.05), (1.0, C.SEAM_FLARE_MAX + 0.05)])
+    below = cast(Part, bottom & Solid.make_box(400.0, 400.0, 60.0)
+                 .translate((-100.0, -100.0, -60.0)))
+    spill = cast(Part, below - grown)
+    assert spill.volume < 1e-3, (
+        f"{spill.volume:.3f} mm³ of bottom case sits outside the top's outline grown by the "
+        f"flare — the two do not register from below")
 
 
 def test_the_rear_skirt_exists_and_closes_the_lens():

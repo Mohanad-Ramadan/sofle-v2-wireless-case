@@ -149,19 +149,20 @@ def test_the_bottom_stands_PROUD_of_the_skin_where_it_shows():
     skin = east(top, 90.0, C.SEAM_LEDGE_Z + 3.0)
     assert skin is not None, "no tub skin to measure against"
 
-    # proud, and by more the deeper it goes (the flare is convex in Z)
-    prev = None
-    for y in (70.0, 90.0, 110.0):
-        z = tent_ground_z(y) + 0.6                       # just above the desk
-        got = east(bottom, y, z)
+    def proud(y):
+        got = east(bottom, y, tent_ground_z(y) + 0.6)    # just above the desk
         assert got is not None, f"no bottom case at y={y}"
-        assert got > skin, \
-            f"y={y}: bottom reaches {got:.3f}, inside the skin at {skin:.3f} — still the old inset"
-        if prev is not None:
-            assert got > prev, "the flare should grow toward the back, where the band is deeper"
-        prev = got
-    assert prev - skin <= C.SEAM_FLARE_MAX + 1e-3, \
-        f"bottom stands {prev - skin:.3f} mm proud, past SEAM_FLARE_MAX={C.SEAM_FLARE_MAX}"
+        return got - skin
+
+    # Grows through the onset, then sits at the flare's ceiling. It does NOT keep growing to the
+    # back, and asserting that it did was a leftover from keying the flare to absolute Z: the
+    # flare follows the BAND'S OWN DEPTH now, and the band is deepest around y=100 (10.7 mm),
+    # easing to 9.2 mm by the back edge. So y=110 comes back a hair under y=90, by 0.024 mm.
+    assert proud(70.0) > 0.0, "bottom is still inside the skin at y=70"
+    assert proud(80.0) > proud(70.0), "the flare is not growing through the onset"
+    for y in (80.0, 90.0, 100.0, 110.0):
+        assert C.SEAM_FLARE_MAX - 0.1 <= proud(y) <= C.SEAM_FLARE_MAX + 1e-3, \
+            f"y={y}: stands {proud(y):.3f} mm proud, off the {C.SEAM_FLARE_MAX} mm ceiling"
 
     # ...and the rabbet is untouched: the plate rim is still inset up at ledge height.
     rim = east(bottom, 90.0, C.SEAM_LEDGE_Z - 1.0)
