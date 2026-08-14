@@ -711,15 +711,44 @@ def _flare_slab_bounds(y0: float, y1: float) -> list[float]:
     return bounds
 
 
+@cache
+def _seam_ramp_table(_angle: float, _rise: float, _y1: float, _y2: float,
+                     n: int = 4001) -> tuple[float, ...]:
+    """The ramp resampled onto an even Y grid, built once.
+
+    KEYED ON THE DIALS IT DEPENDS ON. The four arguments are unused inside; they are there so a
+    test monkeypatching the tent angle or the north rise gets a fresh table rather than a stale
+    one, which is the whole hazard of caching something derived from mutable constants.
+
+    IT EXISTS BECAUSE THE LOOKUP WAS THE BUILD. ``_seam_z_at`` used to rebuild the ramp spline
+    and sample it a thousand times on EVERY call — about 12 ms each, and the band's layout asks
+    for it a few thousand times. Profiled: one offset 0.00 s, 240 wire samples 0.02 s, a spline
+    through 241 points 0.00 s, and 240 of these 2.96 s. That single helper was essentially the
+    entire 28 s cost of building the bottom part."""
+    edge = _seam_ramp_edge()
+    pts = sorted((p.X, p.Y) for p in (edge @ (i / 4000.0) for i in range(4001)))
+    out, j = [], 0
+    for i in range(n):
+        y = C.OUTER_DEPTH * i / (n - 1)
+        while j + 2 < len(pts) and pts[j + 1][0] < y:
+            j += 1
+        (ya, za), (yb, zb) = pts[j], pts[j + 1]
+        t = 0.0 if yb == ya else (y - ya) / (yb - ya)
+        out.append(za + (zb - za) * t)
+    return tuple(out)
+
+
 def _seam_z_at(y: float) -> float:
     """The parting line's Z at a given case-Y — the three stretches, as the cutter draws them."""
     if y <= C.TENT_SEAM_Y1:
         return tent_ground_z(y) + C.TENT_SKIRT_LIFT
     if y >= C.TENT_SEAM_Y2:
         return C.SEAM_NORTH_RISE_Z
-    edge = _seam_ramp_edge()
-    pts = [edge @ (i / 1000.0) for i in range(1001)]
-    return min(pts, key=lambda p: abs(p.X - y)).Y     # sketch-local .X is case Y, .Y is case Z
+    tbl = _seam_ramp_table(C.TENT_ANGLE_DEG, C.SEAM_NORTH_RISE_Z,
+                           C.TENT_SEAM_Y1, C.TENT_SEAM_Y2)
+    f = y / C.OUTER_DEPTH * (len(tbl) - 1)
+    i = min(int(f), len(tbl) - 2)
+    return tbl[i] + (tbl[i + 1] - tbl[i]) * (f - i)
 
 
 def _shell_y_range() -> tuple[float, float]:

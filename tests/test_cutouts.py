@@ -193,4 +193,13 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # re-datumed to the band's own top edge: the tub outline is 126.9 mm² larger in plan than the
     # polygon offset (it carries the +Y bump), and the eased onset adds material through y=55-75
     # that the one-shot step used to leave out.
-    assert abs(build_bottom_part(side).volume - 197372.915753) < 2e-2
+    # Rebased +65.3 mm³ (0.03%), from two changes that both move the band's slab layout:
+    #   * _seam_z_at stopped being a nearest-of-1001-samples lookup and became an interpolated
+    #     4001-point table. The old form quantised the parting line to ~0.126 mm in Y; this one
+    #     puts the sections where the curve actually is. More accurate, not less — and worth
+    #     touching because the old lookup rebuilt the ramp spline on EVERY call and was
+    #     essentially the entire 28 s build cost.
+    #   * SEAM_FLARE_STEP_MAX went 0.15 -> 0.20, and _flare_slab_bounds reads it as "how fine to
+    #     cut the slabs". That coupling is worth knowing about: the cap is an acceptance
+    #     threshold AND a build input, so moving it moves the part.
+    assert abs(build_bottom_part(side).volume - 197438.191003) < 2e-2
