@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from build123d import Solid
 from sofle_case import constants as C
-from sofle_case.case import tent_ground_z, _below_seam_cutter
+from sofle_case.case import tent_ground_z, _below_seam_cutter, _seam_sweep_params
 from tests.shared_builds import build_bottom_part, build_top_part
 
 INSET = C.SEAM_SKIN + C.SEAM_FIT_CLEAR          # 2.2; how far the bottom hides behind the skin
@@ -52,18 +52,28 @@ def _x_span_at(part, y: float, z: float):
     return bb.min.X, bb.max.X
 
 
-def test_the_north_run_rides_at_the_rise():
-    """North of the sweep the top case's bottom edge is the dial, flat, and nothing else."""
+def test_the_dial_sets_the_line_at_the_back_edge_and_it_is_still_falling():
+    """What the dial means now that there is no flat northern run to ride.
+
+    It used to set the level of a run that carried the parting line from the end of the sweep to
+    the back of the case, and this test probed two stations on it. That run is gone: it held the
+    line level while the desk kept dropping away underneath, so the visible band RE-OPENED over
+    the last stretch and the wave turned back up right at the end — the one thing the reference's
+    sweep never does. The ramp now finishes at the back edge itself.
+
+    So the dial sets one point, the line's height where the case runs out, and the thing worth
+    guarding besides that is that the curve is still DESCENDING when it gets there."""
+    end_y, end_z = _seam_sweep_params()[0][-1]
+    assert abs(end_y - C.OUTER_DEPTH) < 1e-9, \
+        f"the ramp ends at y={end_y:.2f}, not at the back edge {C.OUTER_DEPTH:.2f}"
+    assert abs(end_z - C.SEAM_NORTH_RISE_Z) < 1e-9, \
+        f"the ramp ends at {end_z:.4f}, not on the dial at {C.SEAM_NORTH_RISE_Z:.4f}"
+
     top = _top()
-    # All stations must be north of the Y1→Y2 ramp AND still on the case. The ramp now reaches
-    # y2=123.5 of a 126 mm depth, so the rear run is the last ~2.5 mm and `y2 + 20` is off the
-    # back of the part entirely — it used to be comfortably inside because the ramp was short.
-    for y in (C.TENT_SEAM_Y2 + 0.8, C.OUTER_DEPTH - 1.2):
-        got = _lowest_at(top, y)
-        assert got is not None, f"no material at y={y}"
-        assert abs(got - C.SEAM_NORTH_RISE_Z) < 0.06, (
-            f"y={y}: tub reaches down to {got:.3f}, expected the parting line at "
-            f"{C.SEAM_NORTH_RISE_Z:.3f}")
+    a = _lowest_at(top, C.OUTER_DEPTH - 6.0)
+    b = _lowest_at(top, C.OUTER_DEPTH - 1.2)
+    assert a is not None and b is not None, "no material near the back edge"
+    assert b < a, f"the parting line rises into the back edge ({a:.3f} -> {b:.3f}) — it must fall"
 
 
 def test_the_recess_deepens_but_the_bottom_never_moves():
@@ -126,19 +136,18 @@ def test_the_dial_is_a_fraction_of_the_ledge(monkeypatch, frac):
     """0 leaves the line flat at Z=0 as it always was; 1 puts it on the plate rim's top, which is
     as far as it can go before it would start eating the tub proper rather than its skin.
 
-    Measured on the NORTHERN RUN, not on the profile's global maximum. Those were the same number
-    while the run was the highest thing on the curve; the wave crests above it around u=0.67, so
-    reading the bounding box now measures the crest and reports the dial as stuck at 3.60 whatever
-    it is set to. Sampling north of the ramp asks the question the dial actually answers."""
+    Read off the curve's ENDPOINT, not off a slab through the solid and not off the profile's
+    global maximum. Two separate reasons, both learned the hard way:
+      * the maximum is the crest (u≈0.67), which the dial does not move at all, so a bounding box
+        reports it stuck at 3.60 whatever the dial says;
+      * there is no flat run left to slab through — the ramp descends into the back edge, so any
+        station short of it reads a little high and by an amount that depends on the tail slope."""
     monkeypatch.setattr(C, "SEAM_NORTH_RISE_Z", frac * C.SEAM_LEDGE_Z)
-    cutter = _below_seam_cutter()
-    for y in (C.TENT_SEAM_Y2 + 0.8, C.OUTER_DEPTH - 1.2):
-        slab = cutter & Solid.make_box(400.0, 0.4, 200.0).translate((-100.0, y - 0.2, -100.0))
-        assert slab.volume > 1e-9, f"frac={frac}: no cutter at y={y}"
-        got = slab.bounding_box().max.Z
-        assert abs(got - frac * C.SEAM_LEDGE_Z) < 1e-3, (
-            f"frac={frac}: the northern run sits at {got:.3f}, expected "
-            f"{frac * C.SEAM_LEDGE_Z:.3f}")
+    end_y, end_z = _seam_sweep_params()[0][-1]
+    assert abs(end_y - C.OUTER_DEPTH) < 1e-9
+    assert abs(end_z - frac * C.SEAM_LEDGE_Z) < 1e-9, (
+        f"frac={frac}: the line lands at {end_z:.3f} at the back edge, expected "
+        f"{frac * C.SEAM_LEDGE_Z:.3f}")
 
 
 @pytest.mark.parametrize("bad", ["-3.0", "1.5"])

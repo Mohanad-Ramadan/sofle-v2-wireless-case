@@ -185,4 +185,8 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # rim tilts more (BOTTOM_CHAMFER * tan(angle) deeper). So the bottom moves by the wedge and by
     # nothing else, which is exactly what this assertion exists to prove — as with the slide cavity.
     # 2e-2 abs tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 188629.693062) < 2e-2
+    # Rebased for the FLARED OUTER BAND: the bottom case no longer stops at the plate rim, it
+    # comes out to the tub's skin and stands SEAM_FLARE_MAX past it below the reveal, so the
+    # visible band is real material now instead of the floor of a recess. +8205.8 mm³ (was
+    # 188629.693062), checked against _bottom_outer_shell()'s own volume before being accepted.
+    assert abs(build_bottom_part(side).volume - 196835.535452) < 2e-2

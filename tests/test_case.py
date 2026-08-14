@@ -166,9 +166,11 @@ def test_bottom_part_z_range(side):
     # A hair above the nominal deep end: the elephant-foot counter-chamfer trims the ground
     # rim inboard by BOTTOM_CHAMFER, and 0.5 mm inboard on a 2 deg plane lifts the deepest
     # surviving point by 0.5*tan(2 deg) ~ 0.017 mm. Never below, though.
-    from sofle_case.case import wedge_deep_z
+    # bottom_deep_z(), not wedge_deep_z(): the flared band reaches past the tub's skin, so the
+    # part's footprint runs ~3.7 mm further north than the wedge's and the desk is lower there.
+    from sofle_case.case import bottom_deep_z
     lift = C.BOTTOM_CHAMFER * math.tan(math.radians(C.TENT_ANGLE_DEG))
-    assert wedge_deep_z() <= bb.min.Z <= wedge_deep_z() + lift + 1e-3, \
+    assert bottom_deep_z() <= bb.min.Z <= bottom_deep_z() + lift + 1e-3, \
         f"floor at {bb.min.Z:.4f}, expected the wedge's deep end {wedge_deep_z():.4f}"
     assert abs(bb.max.Z - C.PLATE_SEAT_Z) < 0.01
 
@@ -186,7 +188,7 @@ def test_split_conserves_volume(side):
     from tests.shared_builds import build_top_cover
     from sofle_case.case import (_encoder_shell, _slide_scoop, _slide_actuator_cavity,
                                  _foot_recesses, tent_wedge, skirt_extension, seam_skirt_tub,
-                                 _plate_pocket, _below_seam_cutter)
+                                 _bottom_outer_shell, _plate_pocket, _below_seam_cutter)
     from tests.shared_builds import build_canopy
 
     ref = build_tray(rim_z=C.COVER_TOP_Z, bottom_chamfer=False)
@@ -195,6 +197,9 @@ def test_split_conserves_volume(side):
     # split looks like it invented ~50 cm^3 and the sign check below fires.
     ref = cast(Part, ref + tent_wedge())
     ref = cast(Part, ref + skirt_extension(seam_skirt_tub()))
+    # ...and the flared band outboard of the wedge, which is the third thing that exists in
+    # neither the tray nor the cover. Without it the split looks like it invented ~8 cm^3.
+    ref = cast(Part, ref + _bottom_outer_shell())
     ref = cast(Part, ref + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     ref = cast(Part, ref + _encoder_shell())
     ref = cast(Part, ref + build_canopy())   # the canopy is fused into the TOP now
@@ -408,8 +413,15 @@ def test_split_bottom_left_equals_right():
     # the SAME 2.9e-6 (a rigid translation of the mirrored copy, not a change of size), the
     # volumes agree to 5e-8 relative, and Y and Z are bit-identical. A real asymmetry moves one
     # edge and not the other, and shows in the volume first.
+    # X IS COMPARED MIRRORED, the others directly. The left half is the right one reflected about
+    # x = OUTER_WIDTH/2, so its min.X pairs with the right's MAX.X, not its min. Comparing them
+    # straight only ever worked because the old bottom happened to be bbox-symmetric about that
+    # line: it was a plain offset of the outline, inset the same 2.2 mm all round. The flared
+    # band is not — it exists only north of where the reveal opens, and the outline is narrower
+    # there — so the box is now 2.20..155.45 and a direct comparison reports a 3.6 mm asymmetry
+    # that is really just the mirror working correctly.
     for a, b in (
-        (lbb.min.X, rbb.min.X), (lbb.max.X, rbb.max.X),
+        (lbb.min.X, C.OUTER_WIDTH - rbb.max.X), (lbb.max.X, C.OUTER_WIDTH - rbb.min.X),
         (lbb.min.Y, rbb.min.Y), (lbb.max.Y, rbb.max.Y),
         (lbb.min.Z, rbb.min.Z), (lbb.max.Z, rbb.max.Z),
     ):

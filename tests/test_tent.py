@@ -13,7 +13,7 @@ import math
 from build123d import Solid
 from sofle_case import constants as C
 from sofle_case.canopy import CANOPY_RIDGE_TOP_Z, canopy_ridge_top_z
-from sofle_case.case import (ground_face, tent_ground_z, tent_plane, tent_wedge,
+from sofle_case.case import (bottom_deep_z, ground_face, tent_ground_z, tent_plane, tent_wedge,
                              wedge_deep_z)
 from tests.shared_builds import build_bottom_part, build_top_part
 from sofle_case.tray import offset_extruded
@@ -115,35 +115,61 @@ def test_total_height_is_exactly_the_wedge():
     tb, bb = top.bounding_box(), bottom.bounding_box()
     lo, hi = min(tb.min.Z, bb.min.Z), max(tb.max.Z, bb.max.Z)
     lift = C.BOTTOM_CHAMFER * math.tan(math.radians(C.TENT_ANGLE_DEG))
-    assert wedge_deep_z() <= lo <= wedge_deep_z() + lift + 1e-3, \
-        f"floor at {lo:.4f}, expected {wedge_deep_z():.4f} + up to {lift:.4f} of chamfer"
-    assert (hi - lo) <= CANOPY_RIDGE_TOP_Z + C.TENT_WEDGE_MAX_H + 1e-3, \
+    assert bottom_deep_z() <= lo <= bottom_deep_z() + lift + 1e-3, \
+        f"floor at {lo:.4f}, expected {bottom_deep_z():.4f} + up to {lift:.4f} of chamfer"
+    # Measured against wedge_deep_z(), not TENT_WEDGE_MAX_H. That constant is the wedge at the
+    # TUB's outline; the bottom case's flare now stands SEAM_FLARE_MAX past the skin, so the
+    # footprint reaches further north and the desk is lower by the time it gets there. The extra
+    # is real height and it belongs to the flare — see wedge_deep_z.
+    assert (hi - lo) <= CANOPY_RIDGE_TOP_Z - bottom_deep_z() + 1e-3, \
         f"total {hi - lo:.3f} exceeds ridge + wedge — something else grew"
 
 
 # ------------------------------------------------------------------- fit and finish
 
-def test_wedge_is_inset_behind_the_tub_skin():
-    """Deliberately "skinny": the wedge rides the PLATE's rim profile, so the bottom case sits
-    SEAM_SKIN + SEAM_FIT_CLEAR back from the tub's outer face and shows as a recessed plinth.
+def test_the_bottom_stands_PROUD_of_the_skin_where_it_shows():
+    """The inversion. This test used to assert the exact opposite and the opposite was the bug.
 
-    That inset is what keeps this cheap. A flush wedge would have to chase the tub's REAL
-    footprint — the +Y relief bump squares the NW corner off proud of the nominal offset and
-    carries a fillet — which meant sampling a whole built tray inside every bottom part.
+    The bottom case rode the PLATE's rim profile everywhere, so it sat SEAM_SKIN + SEAM_FIT_CLEAR
+    (2.2 mm) behind the tub's outer face — the "skinny" look — and every millimetre of bottom
+    case on show was therefore the floor of a recess. Against the reference that reads as a lid
+    on a smaller box. There the bottom is WIDER than the top and leans outward as it falls, so
+    the two shells read as one body split along the wave.
 
-    SEAM_NORTH_RISE_FRAC does not touch this. It cuts the TUB back and nothing else, so lifting
-    the parting line deepens the recess rather than filling it: the bottom's outline is the same
-    at every setting of the dial."""
+    Two different claims now, at two different heights, and both have to hold:
+      * BELOW the reveal, where the bottom shows, it stands proud of the skin;
+      * ABOVE it the plate rim is still inset, because that is the rabbet — it has to slide
+        into the tub's pocket, and nothing about the outside changes that."""
     top, bottom = build_top_part("right"), build_bottom_part("right")
-    tb, bb = top.bounding_box(), bottom.bounding_box()
-    inset = C.SEAM_SKIN + C.SEAM_FIT_CLEAR
-    for lo_t, lo_b in ((tb.min.X, bb.min.X), (tb.min.Y, bb.min.Y)):
-        assert 0.5 < lo_b - lo_t <= inset + 1e-6, \
-            f"bottom case inset {lo_b - lo_t:.2f} mm, expected up to {inset:.2f}"
-    assert bb.max.X < tb.max.X and bb.max.Y < tb.max.Y, "bottom case is not inset on all sides"
-    # The tub's skin descends past the wedge over the southern stretch, but always OUTBOARD of
-    # it — that inset is exactly the room the skin drops through. They must never touch.
-    assert (build_top_part("right") & bottom).volume < 1e-6, "skin and wedge collide"
+
+    def east(part, y, z, s=0.6):
+        sl = part & Solid.make_box(400.0, s, s).translate((-100.0, y - s / 2, z - s / 2))
+        return None if sl.volume < 1e-9 else sl.bounding_box().max.X
+
+    skin = east(top, 90.0, C.SEAM_LEDGE_Z + 3.0)
+    assert skin is not None, "no tub skin to measure against"
+
+    # proud, and by more the deeper it goes (the flare is convex in Z)
+    prev = None
+    for y in (70.0, 90.0, 110.0):
+        z = tent_ground_z(y) + 0.6                       # just above the desk
+        got = east(bottom, y, z)
+        assert got is not None, f"no bottom case at y={y}"
+        assert got > skin, \
+            f"y={y}: bottom reaches {got:.3f}, inside the skin at {skin:.3f} — still the old inset"
+        if prev is not None:
+            assert got > prev, "the flare should grow toward the back, where the band is deeper"
+        prev = got
+    assert prev - skin <= C.SEAM_FLARE_MAX + 1e-3, \
+        f"bottom stands {prev - skin:.3f} mm proud, past SEAM_FLARE_MAX={C.SEAM_FLARE_MAX}"
+
+    # ...and the rabbet is untouched: the plate rim is still inset up at ledge height.
+    rim = east(bottom, 90.0, C.SEAM_LEDGE_Z - 1.0)
+    assert rim is not None and abs((skin - rim) - (C.SEAM_SKIN + C.SEAM_FIT_CLEAR)) < 0.05, \
+        f"plate rim sits {skin - rim:.3f} mm in, expected {C.SEAM_SKIN + C.SEAM_FIT_CLEAR}"
+
+    # Proud or not, the two parts still must not touch — that is what the reveal buys.
+    assert (top & bottom).volume < 1e-6, "top and bottom collide"
 
 
 def test_parts_still_close_and_the_plate_still_inserts():

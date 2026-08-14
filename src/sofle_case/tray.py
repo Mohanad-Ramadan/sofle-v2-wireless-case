@@ -8,7 +8,7 @@ from functools import cache
 from typing import cast
 from build123d import (
     Part, Wire, Face, Pos, Polyline, make_face, extrude, offset, Kind, Solid,
-    Plane, BuildPart, BuildSketch, BuildLine, Axis, fillet, chamfer,
+    Plane, BuildPart, BuildSketch, BuildLine, Axis, fillet, chamfer, loft,
 )
 from OCP.LocOpe import LocOpe_DPrism
 from OCP.Standard import Standard_Failure
@@ -132,6 +132,32 @@ def offset_extruded(amount: float, z_lo: float, z_hi: float, kind: Kind = Kind.A
         extrude(amount=z_hi - z_lo)
     assert bp.part is not None
     return cast(Part, Pos(0, 0, z_lo) * bp.part)
+
+
+def offset_lofted(levels, kind: Kind = Kind.ARC, rounded: bool = False) -> Part:
+    """PCB polygon offset by a DIFFERENT amount at each Z, lofted between them.
+
+    ``levels`` is a sequence of ``(z, amount)``, south to north in Z. Where
+    ``offset_extruded`` gives a prism with vertical walls, this gives a wall whose
+    draft varies with height — which is what the bottom case's outward flare is.
+
+    RULED, not smooth. A smooth loft through this outline is a BSpline through
+    ~90 vertices per section and OCC is slow and brittle on it; ruled segments are
+    exact cones between neighbouring sections and never fail. Pass enough levels
+    that the faceting is under the print's own resolution — the caller samples the
+    flare curve, so the error is a chord against that curve, not against a plane.
+    """
+    wire = _rounded_wire() if rounded else _polygon_wire()
+    sections = []
+    for z, amount in levels:
+        with BuildSketch(Plane.XY.offset(z)) as sk:
+            face = make_face(wire)  # type: ignore[arg-type]
+            offset(face, amount=amount, kind=kind)
+        sections.append(sk.sketch)
+    with BuildPart() as bp:
+        loft(sections, ruled=True)
+    assert bp.part is not None
+    return cast(Part, bp.part)
 
 
 def _inner_extruded(z_lo: float, z_hi: float) -> Part:

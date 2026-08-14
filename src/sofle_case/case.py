@@ -19,7 +19,7 @@ from OCP.ShapeFix import ShapeFix_Shape
 from OCP.TopoDS import TopoDS
 from . import constants as C
 from .pcb_geometry import slide_switch_placement, rotate_2d
-from .tray import build_tray, offset_extruded
+from .tray import build_tray, offset_extruded, offset_lofted
 from .standoffs import stepped_standoff
 from .battery import battery_pocket
 from .top_cover import build_top_cover, _load_plate_cutouts
@@ -213,9 +213,27 @@ def wedge_deep_z() -> float:
     NOT ``-TENT_WEDGE_MAX_H``. That constant is the depth at ``OUTER_DEPTH``, i.e. at the
     TUB's outline; the wedge rides the PLATE's rim profile, which stops SEAM_SKIN +
     SEAM_FIT_CLEAR short of it and so tops out around y=123.8. The constant stays a safe
-    upper bound for sizing the stock; this is what the part actually reaches."""
+    upper bound for sizing the stock; this is what the wedge actually reaches.
+
+    THE WEDGE, not the bottom part. Those parted company when the visible band started standing
+    proud of the skin — see ``bottom_deep_z``."""
     rim_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK
     y_max = offset_extruded(rim_outer, 0.0, 1.0).bounding_box().max.Y
+    return tent_ground_z(y_max)
+
+
+def bottom_deep_z() -> float:
+    """Z of the BOTTOM PART's deepest point — which is no longer the wedge's.
+
+    The wedge stops at the plate rim, ~2.2 mm inside the tub's skin, so it bottoms out at
+    y≈123.8. The flared band goes the other way: it reaches ``SEAM_FLARE_MAX`` PAST the skin, so
+    the footprint runs out to y≈127.5 — and the desk is still falling over those last 3.7 mm.
+
+    That difference, about 0.39 mm, is the only height the flare costs, and it is a real cost:
+    the assembly is that much taller than the wedge alone would make it. It buys a base that is
+    wider than the lid instead of narrower, which is the whole point of the flare."""
+    skin = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+    y_max = offset_extruded(skin + C.SEAM_FLARE_MAX, 0.0, 1.0, rounded=True).bounding_box().max.Y
     return tent_ground_z(y_max)
 
 
@@ -247,7 +265,14 @@ def _seam_sweep_params():
                   band * wedge_max_h + tent_ground_z(u * C.OUTER_DEPTH))
                  for u, band in C.SEAM_WAVE_KNOTS)
     knots = ((y1, z1), *wave, (y2, C.SEAM_NORTH_RISE_Z))
-    return knots, ((1.0, slope), (1.0, 0.0))
+    # THE END TANGENT IS NOT HORIZONTAL, and that is the whole reason the ramp reaches the back
+    # edge now. A horizontal arrival flattens the line while the desk keeps dropping away beneath
+    # it, so the visible band starts WIDENING again over the last stretch — the profile turned
+    # back up at the end. It has to keep descending, and faster than the desk does, or the band
+    # cannot still be closing when the case runs out. SEAM_TAIL_SLOPE is that rate, and it is
+    # stated as a multiple of the desk's own slope so it stays correct at any tent angle.
+    tail = slope * C.SEAM_TAIL_SLOPE
+    return knots, ((1.0, slope), (1.0, tail))
 
 
 def _seam_ramp_edge():
@@ -506,6 +531,57 @@ def tent_wedge() -> Part:
     return cast(Part, stock - _below_plane_cutter(*tent_plane()))
 
 
+def seam_flare(z: float) -> float:
+    """How far past the outer skin the bottom case stands at height ``z``.
+
+    Zero at and above Z=0, growing downward to ``SEAM_FLARE_MAX`` at the deepest the wedge
+    reaches. Convex — steepest just under Z=0 and easing as it nears the desk, which is how the
+    reference's own end elevation leans (see SEAM_FLARE_MAX)."""
+    depth = -tent_ground_z(C.OUTER_DEPTH) + 1.0          # deepest the wedge ever goes
+    t = min(max(-z, 0.0), depth) / depth
+    return C.SEAM_FLARE_MAX * (1.0 - (1.0 - t) ** 2)
+
+
+def _bottom_outer_shell() -> Part:
+    """The band of bottom case that SHOWS: out at the skin and flaring past it, below the reveal.
+
+    This is the part of the design the old bottom simply did not have. The plate and the wedge
+    are both plain offsets inset behind the tub's skin, so every millimetre of bottom case on
+    show was the floor of a 2.2 mm recess. Here the visible band comes back out to the skin
+    plane and keeps going — see SEAM_FLARE_MAX — so the two shells read as one body split along
+    the wave rather than as a lid sitting on a smaller box.
+
+    Built as a band OUTBOARD of the existing bottom outline and fused on, never cut: the plate
+    rim and the wedge keep their own geometry untouched, and this only adds what is outside them.
+
+    Three cuts define it:
+      * everything above ``seam − SEAM_REVEAL_H`` is removed, which is what opens the reveal.
+        The cutter is the seam cutter itself, shifted down — the two edges are the same curve,
+        so the gap is exactly parallel to the parting line the whole way round;
+      * the tent plane trims the bottom, so it lands on the desk with the wedge;
+      * the inner offset keeps it a band rather than a slab.
+
+    Where the visible band is shallower than the reveal — the front of the case — the first cut
+    takes all of it and nothing is added. That is the bottom case tapering out on its own, and
+    it is why the reveal reads as a lens without a lens ever being drawn."""
+    rim_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK
+    skin = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+    z_bot = wedge_deep_z() - 1.0
+    z_top = C.SEAM_LEDGE_Z
+
+    levels = []
+    for i in range(C.SEAM_FLARE_STEPS + 1):
+        z = z_top + (z_bot - z_top) * i / C.SEAM_FLARE_STEPS
+        levels.append((z, skin + seam_flare(z)))
+    levels.reverse()                                     # loft wants increasing Z
+    stock = offset_lofted(levels, rounded=True)
+    band = cast(Part, stock - offset_extruded(rim_outer, z_bot - 1.0, z_top + 1.0))
+    # Open the reveal: drop the parting-line cutter by SEAM_REVEAL_H and keep only what is under
+    # it. Intersecting (not subtracting) because this cutter IS "everything below the line".
+    band = cast(Part, band & _below_seam_cutter().translate((0.0, 0.0, -C.SEAM_REVEAL_H)))
+    return cast(Part, band - _below_plane_cutter(*tent_plane()))
+
+
 def ground_face(part: Part):
     """The wedge's underside — the face that meets the desk — or None.
 
@@ -585,6 +661,10 @@ def build_bottom_part(side: Side) -> Part:
     # inset behind the tub's skin, thin at the south and thick at the north. Added, never cut —
     # see the tent section in constants.py for why cutting would wreck the Z ladder.
     bottom = cast(Part, bottom + tent_wedge())
+    # ...and the band that actually SHOWS, outboard of both of those: out to the tub's skin and
+    # flaring past it, starting where the visible band first gets taller than SEAM_REVEAL_H.
+    # Added last of the three so it fuses onto a wedge that is already whole.
+    bottom = cast(Part, bottom + _bottom_outer_shell())
     for hx, hy in C.MOUNTING_HOLES:
         cx, cy = C.pcb_to_case(hx, hy)
         bottom = cast(Part, bottom + stepped_standoff(at=(cx, cy)))

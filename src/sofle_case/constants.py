@@ -245,7 +245,47 @@ TENT_WEDGE_MIN_H = 1.0   # mm; wedge thickness at the south (the thin end)
 # in principle, but the usable ceiling is lower in practice -- the sweep has to finish before
 # the +Y relief bump (see the TENT_SEAM_Y2 guard, which computes the ceiling and reports it).
 TENT_SEAM_SOUTH_FRAC = 0.36   # fraction of depth where the top case rides the desk
-TENT_SEAM_RAMP_FRAC  = 0.62   # fraction of depth the wave takes to climb and come back down
+TENT_SEAM_RAMP_FRAC  = 0.64   # fraction of depth the wave takes to climb and come back down
+
+# How steeply the ramp is still falling when it reaches the back edge, as a MULTIPLE of the
+# desk's own slope. Above 1.0 the line drops faster than the desk does, which is the condition
+# for the visible band to still be narrowing at the very back.
+#
+# It exists because the ramp used to arrive horizontally onto a flat rear run. That looked
+# harmless and was not: the desk keeps falling away under a level line, so the band re-opened
+# over the last stretch and the wave turned back up right at the end -- the one thing the
+# reference's sweep never does. It rises, peaks, and descends all the way out.
+SEAM_TAIL_SLOPE = 1.5   # x the desk slope; >1 means the band is still closing at the back edge
+
+# ---- The REVEAL: the two shells do not touch, and the gap is the design ----
+# The reference's parting line is not one line, it is TWO -- the top case's lower edge and the
+# bottom case's upper edge -- with a recessed shadow between them. Measured off the reference's
+# own elevation, that gap holds ~22 px against a 434 px case height, i.e. about 5% of the case,
+# and it is CONSTANT over the back two thirds. Near the front it appears to swallow the whole
+# band, but that is not the gap growing: it is the bottom case running out, leaving nothing
+# below the gap at all.
+#
+# So this is one number, measured straight down from the parting line, and the lens shape falls
+# out of the geometry rather than being drawn: the bottom case exists exactly where the visible
+# band is taller than the reveal, which starts partway up the ramp and runs to the back edge.
+# That is what "the bottom matches the top from where the top leaves the ground to the north
+# end" means in practice.
+SEAM_REVEAL_H = 2.0   # mm; vertical gap from the parting line down to the bottom case's top edge
+
+# ---- The FLARE: the bottom case is WIDER than the top, not inset behind it ----
+# The old bottom sat SEAM_SKIN + SEAM_FIT_CLEAR (2.2 mm) INSIDE the skin -- the "skinny" look --
+# so every bit of bottom case on show was a recess. The reference does the opposite: below the
+# reveal the bottom case comes back out to the skin and keeps going, leaning outward as it falls
+# until it meets the desk. On the reference's own back elevation the end face leans out ~32 px
+# over a ~326 px height, about 5.5 deg, and the lean is steepest at the top and eases lower --
+# convex, not a straight taper.
+#
+# Measured from Z=0 downward, not from the reveal, because the offset has to be one number per Z
+# for the section to stay a plain concentric offset. Above Z=0 the shell is flush with the skin;
+# below it flares. The deeper the band at a given depth, the more flare shows, which is the
+# same way round as the reference reads.
+SEAM_FLARE_MAX = 1.5   # mm; how far past the skin the bottom case stands at the deepest point
+SEAM_FLARE_STEPS = 10  # loft sections through the flare curve (ruled between; see offset_lofted)
 
 # ---- The WAVE: the shape the ramp takes between those two runs ----
 # The ramp used to be a single spline hump -- two endpoints and two tangents, monotonic by
@@ -302,8 +342,9 @@ TENT_SEAM_RAMP_FRAC  = 0.62   # fraction of depth the wave takes to climb and co
 #   0.710   0.9565                 13.62           +3.22      crest in the VISIBLE BAND
 #   0.749   0.9256                 13.18           +2.26      easing
 #   0.820   0.8800                 12.53           +0.67      still easing; about to re-cross Z=0
-#   0.890   0.8450                 12.04           -0.75      rear skirt: the skin is back below Z=0
-#   0.980   (run)                  11.68           -2.30      lands on the rear run (computed)
+#   0.890   0.8500                 12.11           -0.68      rear skirt: the skin is back below Z=0
+#   0.950   0.8150                 11.61           -1.99
+#   1.000   (end)                  11.22           -3.02      the BACK EDGE, and still falling
 SEAM_WAVE_KNOTS = (
     (0.406, 0.0716),
     (0.485, 0.2992),
@@ -313,8 +354,8 @@ SEAM_WAVE_KNOTS = (
     (0.710, 0.9565),
     (0.749, 0.9256),
     (0.820, 0.8800),
-    (0.890, 0.8537),
-    (0.935, 0.8330),
+    (0.890, 0.8500),
+    (0.950, 0.8150),
 )
 
 # ---- How far the skirt stops SHORT of the desk: the reveal ----
@@ -431,7 +472,7 @@ assert TENT_SKIRT_CLEAR_MIN <= TENT_SKIRT_LIFT <= TENT_SKIRT_LIFT_MAX, (
 #    0.00    0.00 mm            14.24 mm            the old flat line; band widest at the back
 #   -0.29   -1.83 mm            12.41 mm            lens nearly closed
 #   -0.37   -2.30 mm            11.94 mm            lens closed: back is narrower than the crest
-SEAM_NORTH_RISE_FRAC = -0.365  # <0 = line drops below Z=0 (rear skirt), 1.0 = up to the ledge
+SEAM_NORTH_RISE_FRAC = -0.48   # <0 = line drops below Z=0 (rear skirt), 1.0 = up to the ledge
 SEAM_NORTH_RISE_Z    = SEAM_NORTH_RISE_FRAC * SEAM_LEDGE_Z   # derived; the actual height
 
 # The ceiling is stated here; the FLOOR is a function of the tent (it is the desk, with the same

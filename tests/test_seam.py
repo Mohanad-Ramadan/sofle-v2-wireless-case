@@ -26,8 +26,9 @@ import pytest
 from build123d import Solid
 from sofle_case import constants as C
 from sofle_case.canopy import CANOPY_RIDGE_TOP_Z
-from sofle_case.case import (_below_seam_cutter, _seam_ramp_edge, seam_profile_max_z,
-                             seam_profile_min_z, seam_skirt_tub, skirt_extension, tent_ground_z,
+from sofle_case.case import (_below_seam_cutter, _seam_ramp_edge, _seam_sweep_params,
+                             seam_profile_max_z,
+                             bottom_deep_z, seam_profile_min_z, seam_skirt_tub, skirt_extension, tent_ground_z,
                              tent_plane,
                              wedge_deep_z)
 # shared_builds' rule is "never import builders from sofle_case directly", and this is the one
@@ -254,13 +255,19 @@ def test_the_ramp_crests_once_and_eases_back():
 
 
 def test_the_handover_costs_no_height():
-    """THE requirement. The skin fills space that already existed between Z=0 and the tent
-    plane, so the envelope must be identical to what the wedge alone produced."""
+    """THE requirement, and it still holds — for the SKIN. The skin fills space that already
+    existed between Z=0 and the tent plane, so it adds nothing.
+
+    The flare is a separate matter and it DOES cost height: the bottom case now reaches
+    SEAM_FLARE_MAX past the tub's skin, so its footprint runs further north and the desk is
+    ~0.4 mm lower by the time it gets there. That is accounted for inside wedge_deep_z(), which
+    is why this compares against that function and not against TENT_WEDGE_MAX_H — the two used
+    to agree and no longer do."""
     top, bottom = build_top_part("right"), build_bottom_part("right")
     tb, bb = top.bounding_box(), bottom.bounding_box()
     lo, hi = min(tb.min.Z, bb.min.Z), max(tb.max.Z, bb.max.Z)
     lift = C.BOTTOM_CHAMFER * math.tan(math.radians(C.TENT_ANGLE_DEG))
-    assert wedge_deep_z() <= lo <= wedge_deep_z() + lift + 1e-3, \
+    assert bottom_deep_z() <= lo <= bottom_deep_z() + lift + 1e-3, \
         f"floor moved to {lo:.4f} — the skin added height"
     assert abs(hi - CANOPY_RIDGE_TOP_Z) < 0.01
     # and the deepest the SKIN itself reaches is the lifted run at y1, well above the wedge's floor
@@ -463,12 +470,16 @@ def test_the_handover_actually_sits_where_the_dial_says():
     of it just north of y2. Catches the constant being changed without the geometry following."""
     top = build_top_part("right")
     south = _lowest_at(top, C.TENT_SEAM_Y1 - 8.0)
-    # The ramp now reaches y2=123.5 of a 126 mm case, so `y2 + 8` is off the back and probes air.
+    # There is no flat rear run left to probe — the ramp descends all the way to the back edge,
+    # which is what stops the band re-opening at the end. So the north station is compared with
+    # the PROFILE there, and the dial is checked where it actually applies: at y = OUTER_DEPTH.
     north = _lowest_at(top, C.OUTER_DEPTH - 1.2)
     assert abs(south - _seam_z(C.TENT_SEAM_Y1 - 8.0)) < 0.06, \
         "skin is not on its lifted run south of the handover"
-    assert abs(north - C.SEAM_NORTH_RISE_Z) < 0.06, \
-        "skin is not on its rear run past the ramp"
+    assert abs(north - _profile_z_at(C.OUTER_DEPTH - 1.2)) < 0.06, \
+        "skin is not on the ramp near the back edge"
+    assert abs(_seam_sweep_params()[0][-1][1] - C.SEAM_NORTH_RISE_Z) < 1e-9, \
+        "the ramp does not finish on the dial"
 
 
 @pytest.mark.parametrize("angle", [1.0, 3.0, 7.0, 10.0])
