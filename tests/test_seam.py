@@ -20,6 +20,10 @@ from sofle_case import constants as C
 from sofle_case.canopy import CANOPY_RIDGE_TOP_Z
 from sofle_case.case import (_below_seam_cutter, seam_profile_min_z, skirt_extension,
                              tent_ground_z, tent_plane, wedge_deep_z)
+# shared_builds' rule is "never import builders from sofle_case directly", and this is the one
+# sanctioned exception: the mutation test below patches a constant, which the side-keyed cache
+# cannot see. Named so nothing reaches for it by accident.
+from sofle_case.case import build_top_part as uncached_build_top_part
 from tests.shared_builds import build_bottom_part, build_top_part
 
 OUTER = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
@@ -50,19 +54,66 @@ def test_skin_runs_just_above_the_desk_over_the_southern_stretch():
             f"y={y}: skin bottom at {got:.3f}, expected {C.TENT_SKIRT_LIFT} above the desk ({want:.3f})"
 
 
+def _worst_desk_clearance(side: str, builder=build_top_part) -> float:
+    """Closest the top case comes to the tent plane anywhere, measured perpendicular to it over
+    the whole tessellated skin. Negative means it has gone through the desk.
+
+    ``builder`` is a seam so the mutation test can hand in the UNCACHED build — see there."""
+    o, n = tent_plane()
+    verts, _f = builder(side).tessellate(0.2)
+    return min((v.X - o[0]) * n[0] + (v.Y - o[1]) * n[1] + (v.Z - o[2]) * n[2] for v in verts)
+
+
 def test_the_skin_never_touches_the_desk():
     """THE reason the lift exists, beyond looks. At lift 0 the skirt's underside is coplanar
     with the wedge's ground face, so the top and bottom parts share the desk contact and
     whichever prints proud decides how the keyboard sits. The wedge must own it alone — it is
     the part ground_face() chamfers and the part the foot seats are cut into.
 
-    Measured against the tent plane itself, over the whole tessellated skin, both halves."""
-    o, n = tent_plane()
+    ANCHORED TO TENT_SKIRT_CLEAR_MIN, NOT TO THE LIFT, and that distinction is the whole point
+    of the test. It used to read `worst > TENT_SKIRT_LIFT - 0.06`, which derives the threshold
+    from the very dial that can violate the invariant: at lift 0.0 it relaxed to `worst > -0.06`
+    and passed on a case whose skin sat ON the desk. The physical floor is a constant of the
+    print process, not of the styling."""
     for side in ("right", "left"):
-        verts, _f = build_top_part(side).tessellate(0.2)
-        worst = min((v.X - o[0]) * n[0] + (v.Y - o[1]) * n[1] + (v.Z - o[2]) * n[2] for v in verts)
-        assert worst > C.TENT_SKIRT_LIFT - 0.06, \
-            f"{side}: skin comes within {worst:.4f} mm of the desk, want {C.TENT_SKIRT_LIFT}"
+        worst = _worst_desk_clearance(side)
+        assert worst >= C.TENT_SKIRT_CLEAR_MIN, (
+            f"{side}: skin comes within {worst:.4f} mm of the desk, floor is "
+            f"{C.TENT_SKIRT_CLEAR_MIN} — the wedge no longer owns ground contact alone")
+
+
+def test_the_skin_actually_achieves_the_lift_it_is_set_to():
+    """Separate assertion, deliberately. The one above protects the case from being unbuildable;
+    this one checks it looks the way the dial says — that the reveal really is TENT_SKIRT_LIFT
+    wide and the skin is not sitting somewhere else entirely for an unrelated reason.
+
+    Split apart so that turning the styling dial can never move the safety threshold again."""
+    worst = _worst_desk_clearance("right")
+    assert abs(worst - C.TENT_SKIRT_LIFT) < 0.06, \
+        f"skin's closest approach is {worst:.4f} mm, but TENT_SKIRT_LIFT asks for {C.TENT_SKIRT_LIFT}"
+
+
+def test_the_desk_clearance_guard_is_not_anchored_to_the_dial():
+    """Mutation test on the guard itself: drive TENT_SKIRT_LIFT to 0 and the measurement must
+    actually collapse, proving `test_the_skin_never_touches_the_desk` would FIRE rather than
+    relax alongside it.
+
+    Written because the old form of that guard passed at lift 0 — the failure mode is invisible
+    unless something checks that the threshold and the measurement move independently.
+
+    THE UNCACHED BUILDER, deliberately, against shared_builds' usual rule. That cache is keyed on
+    `side` alone, so a monkeypatched constant does not invalidate it and the shared instance comes
+    back built at the ORIGINAL lift — this test read 0.4973 against a patched 0.0 and failed for
+    that reason before the switch. Any mutation test that patches a constant must rebuild."""
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        monkeypatch.setattr(C, "TENT_SKIRT_LIFT", 0.0)
+        worst = _worst_desk_clearance("right", builder=uncached_build_top_part)
+    finally:
+        monkeypatch.undo()
+    assert worst < C.TENT_SKIRT_CLEAR_MIN, (
+        f"at lift 0 the skin still stands {worst:.4f} mm off the desk — either the lift no longer "
+        f"drives the seam, or the measurement is not seeing the skirt")
 
 
 def test_the_lift_leaves_a_real_skirt_at_the_south():
@@ -346,6 +397,15 @@ def test_the_sweep_dips_below_the_run_and_costs_no_clearance(monkeypatch, angle)
     o, n = tent_plane()
     y_dip = C.TENT_SEAM_Y1 + 1.2                      # ~where the minimum sits, all angles
     gap = (y_dip - o[1]) * n[1] + (lo - o[2]) * n[2]
-    assert gap > C.TENT_SKIRT_LIFT * 0.9, (
-        f"{angle} deg: the dip pulled the skin to {gap:.4f} mm off the desk, eating into the "
-        f"{C.TENT_SKIRT_LIFT} mm lift — it must not, the desk falls faster than the spline")
+    assert gap >= C.TENT_SKIRT_CLEAR_MIN, (
+        f"{angle} deg: the dip pulled the skin to {gap:.4f} mm off the desk, under the "
+        f"{C.TENT_SKIRT_CLEAR_MIN} mm floor")
+    # ...and it costs essentially nothing of whatever lift is set, which is the docstring's other
+    # claim. Stated as ABSOLUTE mm eaten, not as a fraction of the dial: the old form
+    # `gap > TENT_SKIRT_LIFT * 0.9` scaled its own threshold down with the lift and went trivially
+    # true at 0, exactly as the clearance guard did. How much the dip costs is a property of the
+    # tangency, and it does not get cheaper because the reveal got narrower.
+    eaten = C.TENT_SKIRT_LIFT - gap
+    assert eaten < 0.05, (
+        f"{angle} deg: the dip pulled the skin {eaten:.4f} mm closer to the desk than the run "
+        f"does — it must not, the desk falls faster than the spline")

@@ -270,12 +270,32 @@ assert 0.0 <= TENT_SEAM_SOUTH_FRAC <= 1.0, (
     f"TENT_SEAM_SOUTH_FRAC must be a fraction of the depth, 0.0-1.0; got {TENT_SEAM_SOUTH_FRAC}")
 assert TENT_SEAM_RAMP_FRAC > 0.0, "the sweep needs a non-zero run"
 
+# ---- The floor under the reveal: ground contact belongs to the wedge, full stop ----
+# TENT_SKIRT_LIFT is a STYLING dial -- how wide a band of bottom case shows. This is the
+# PHYSICAL invariant underneath it, and the two are deliberately separate numbers.
+#
+# They were the same number once, and that was a defect. Every guard on "the skin never
+# touches the desk" derived its threshold FROM the lift (worst > TENT_SKIRT_LIFT - 0.06), so
+# turning the lift down turned the guard down with it and at 0.0 the assertion read
+# worst > -0.06 -- it went trivially true at exactly the moment it should have fired. An
+# assertion has to be anchored to the physical thing it protects, never to the dial that can
+# violate it.
+#
+# 0.2 mm is the floor, not a target: two FDM parts printed to a nominal contact plane vary by
+# about a layer, so anything under that and whichever comes out proud decides how the keyboard
+# sits. The wedge must own the desk alone -- it is the part ground_face() chamfers and the part
+# the foot seats are cut into.
+TENT_SKIRT_CLEAR_MIN = 0.2   # mm; least the skin may ever come to the tent plane, at any dial
+
 TENT_SKIRT_MIN_H = 0.3   # mm; skin that must survive at the south so the skirt is not a feather edge
 TENT_SKIRT_LIFT_MAX = TENT_WEDGE_MIN_H - TENT_SKIRT_MIN_H
-assert 0.0 <= TENT_SKIRT_LIFT <= TENT_SKIRT_LIFT_MAX, (
-    f"TENT_SKIRT_LIFT={TENT_SKIRT_LIFT} leaves {TENT_WEDGE_MIN_H - TENT_SKIRT_LIFT:.2f} mm of skirt "
-    f"at the south; with TENT_WEDGE_MIN_H={TENT_WEDGE_MIN_H} the ceiling is "
-    f"{TENT_SKIRT_LIFT_MAX:.2f} — lower the lift, or thicken the wedge's thin end (which costs height)")
+assert TENT_SKIRT_CLEAR_MIN <= TENT_SKIRT_LIFT <= TENT_SKIRT_LIFT_MAX, (
+    f"TENT_SKIRT_LIFT={TENT_SKIRT_LIFT} is outside its band [{TENT_SKIRT_CLEAR_MIN:.2f}, "
+    f"{TENT_SKIRT_LIFT_MAX:.2f}]. Below the floor the skin starts sharing desk contact with the "
+    f"wedge; above the ceiling it leaves only "
+    f"{TENT_WEDGE_MIN_H - TENT_SKIRT_LIFT:.2f} mm of skirt at the south, a feather edge. To show "
+    f"MORE bottom case at the front, thicken the wedge's thin end (TENT_WEDGE_MIN_H), which costs "
+    f"height 1:1")
 
 # ---- How high the parting line rides NORTH of the sweep: the riser ----
 # North of TENT_SEAM_Y2 the parting line has always sat flat at Z=0, so the visible band of

@@ -267,6 +267,33 @@ def seam_profile_min_z() -> float:
     return min(lo, start[1])
 
 
+def seam_profile_max_z() -> float:
+    """The HIGHEST Z the parting line reaches anywhere over the case, measured off the curve.
+
+    Companion to ``seam_profile_min_z``, and it exists for the same reason: so callers ask the
+    INSTALLED profile what it does instead of reading a dial and assuming.
+
+    ``_lead_in_relief`` is the caller that needed it. Both its stock ceiling and the gate in
+    ``build_top_part`` used to test ``SEAM_NORTH_RISE_Z > 0.0`` — a constant, not a property of
+    the curve. That is only the same question while the northern run is the profile's high
+    point. Any profile that climbs above Z=0 some other way (a crest mid-depth, say) would ship
+    with the channel mouth unopened and NOTHING WOULD FAIL, because the thing being asked is not
+    the thing that matters. Same defect class as the sweep dip: a test written against a dial
+    rather than against the geometry.
+
+    Bounded to the case's own footprint. South of y=0 the cutter deliberately rides up to Z=0 as
+    an overhang guard (see ``_below_seam_cutter``), and that stretch is not parting line — it is
+    outside the part and must not drag the answer up with it."""
+    start, end, tangents = _seam_sweep_params()
+    with BuildLine() as bl:
+        Spline(start, end, tangents=tangents)
+    edge = bl.line.edges()[0]
+    hi = max((edge @ (i / 400.0)).Y for i in range(401))
+    # The southern run is parallel to the tent plane, which rises going south, so its high point
+    # inside the case is at y=0. North of the sweep the run is flat at the northern rise.
+    return max(hi, end[1], tent_ground_z(0.0) + C.TENT_SKIRT_LIFT)
+
+
 def _below_seam_cutter() -> Part:
     """Everything BELOW the top case's bottom edge, as a solid swept across the full width.
 
@@ -387,13 +414,17 @@ def _lead_in_relief(z_bot: float) -> Part:
     POCKET WALL — the face the plate rim seats against — so it is opened only where the mouth
     genuinely needs it, and then by exactly ``SEAM_LEAD_IN``.
 
-    With the dial at 0 the mouth sits ON Z=0, which is precisely where ``_chamfer_pocket_mouth``
-    puts the tub-side starter, so nothing is owed here and the stock stops at 0.1 as it always
-    did. Lift the mouth off that plane and the chamfer is stranded below it — then, and only
-    then, this has to reach up and open the mouth itself."""
+    With the mouth ON Z=0 — which is precisely where ``_chamfer_pocket_mouth`` puts the tub-side
+    starter — nothing is owed here and the stock stops at 0.1 as it always did. Lift the mouth
+    off that plane and the chamfer is stranded below it; then, and only then, this has to reach
+    up and open the mouth itself.
+
+    THE CEILING IS READ OFF THE CURVE, not off ``SEAM_NORTH_RISE_Z``. Those agree only while the
+    northern run is the profile's high point; ``seam_profile_max_z`` asks the installed profile
+    directly, so a crest anywhere along the depth is served too."""
     pocket_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK + C.SEAM_FIT_CLEAR
-    stock_top = (0.1 if C.SEAM_NORTH_RISE_Z <= 0.0
-                 else C.SEAM_NORTH_RISE_Z + C.SEAM_LEAD_IN + 0.1)
+    mouth_z = seam_profile_max_z()
+    stock_top = 0.1 if mouth_z <= 0.0 else mouth_z + C.SEAM_LEAD_IN + 0.1
     wide = offset_extruded(pocket_outer + C.SEAM_LEAD_IN, z_bot - 1.0, stock_top)
     above_mouth = cast(Part, _below_seam_cutter().translate((0.0, 0.0, C.SEAM_LEAD_IN)))
     return cast(Part, wide & above_mouth)
@@ -788,11 +819,16 @@ def build_top_part(side: Side) -> Part:
     # off the tub itself here — north of the sweep there is no skirt band left for
     # skirt_extension to have taken it out of.
     #
-    # Gated, because this one is not a no-op when the dial is off: skirt_extension only ever
-    # subtracts the relief from its own band, all of it below Z=0, and taking it off the whole
-    # tub would additionally shave the 0.1 mm of pocket wall the stock reaches above Z=0. Small
-    # (~7 mm³) and harmless, but it would mean frac 0 no longer reproduces the un-dialled case.
-    if C.SEAM_NORTH_RISE_Z > 0.0:
+    # Gated, because this one is not a no-op when the parting line stays at or below Z=0:
+    # skirt_extension only ever subtracts the relief from its own band, all of it below Z=0, and
+    # taking it off the whole tub would additionally shave the 0.1 mm of pocket wall the stock
+    # reaches above Z=0. Small (~7 mm³) and harmless, but it would mean a flat parting line no
+    # longer reproduces the un-dialled case.
+    #
+    # The gate asks the PROFILE, not the dial. `SEAM_NORTH_RISE_Z > 0.0` answered the same
+    # question only while the northern run was the high point of the curve — any other way of
+    # climbing above Z=0 got no relief and no failure. See seam_profile_max_z.
+    if seam_profile_max_z() > 0.0:
         top = cast(Part, top - _lead_in_relief(wedge_deep_z() - 1.0))
     top = cast(Part, top + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     top = cast(Part, top + _encoder_shell())
