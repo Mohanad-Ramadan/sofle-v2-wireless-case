@@ -36,8 +36,18 @@ BODY_TOP_Z = C.ENCODER_BODY_TOP_Z          # PCB top + BODY_H
 BODY_W = 12.4          # mm; square body
 BODY_LUG_W = 13.9      # mm; across the two mounting lugs (wider than the body in X)
 BODY_LUG_H = 1.2       # mm; lug thickness, sitting at the body's base
-BUSHING_DIA = 7.0      # mm; threaded collar, M7 × 0.75
-BUSHING_H = 5.0        # mm; above the body top
+BUSHING_DIA = 7.0      # mm; threaded collar, M7 × 0.75 — diameter only, see BUSHING_H
+BUSHING_H = 0.0        # mm; ABSENT on this part. Was 5.0, assumed off the ALPS panel-mount
+                       #   envelope, and it was load-bearing: knob.knob_hem_z treated the collar as
+                       #   the floor the knob rests on. It cannot be there. The knob's Ø6 bore takes
+                       #   16 mm of the 20 mm shaft (measured), and a Ø6 bore cannot pass a Ø7
+                       #   collar — a 5 mm collar would cap coverage at 15 mm. The user also looked
+                       #   for a collar on the assembled board and found only the locating LEG on
+                       #   the box edge. The generic ALPS drawing does show a stepped section at the
+                       #   shaft base, but that drawing is the panel-mount variant and already
+                       #   disagrees with this clone on body height (4.5 vs ~6.5), so it does not
+                       #   describe this part. 0.0 draws no collar at all; anything up to 3.5 would
+                       #   not change the seating anyway (the plateau top is the taller floor).
 SHAFT_DIA = 6.0        # mm; knurled
 SHAFT_LEN = 20.0       # mm; from the mounting face (= body top), per the listing's "20 mm"
 PIN_LEN = 3.5          # mm; below the PCB
@@ -82,11 +92,13 @@ def build_ec11(trimmed: bool = True) -> Part:
         (ex - BODY_W / 2, ey - BODY_W / 2, C.PCB_TOP_Z))
     lugs = Solid.make_box(BODY_W * 0.5, BODY_LUG_W, BODY_LUG_H).translate(
         (ex - BODY_W * 0.25, ey - BODY_LUG_W / 2, C.PCB_TOP_Z))
-    bushing = Solid.make_cylinder(BUSHING_DIA / 2, BUSHING_H).translate((ex, ey, BODY_TOP_Z))
     shaft = Solid.make_cylinder(SHAFT_DIA / 2, shaft_len).translate((ex, ey, BODY_TOP_Z))
     leg = Solid.make_box(LEG_W, LEG_W, LEG_H).translate(
         (ex - BODY_W / 2, ey - LEG_W / 2, BODY_TOP_Z))
-    part = cast(Part, body + lugs + bushing + shaft + leg)
+    part = cast(Part, body + lugs + shaft + leg)
+    if BUSHING_H > 0:      # absent on this part — see BUSHING_H
+        part = cast(Part, part + Solid.make_cylinder(
+            BUSHING_DIA / 2, BUSHING_H).translate((ex, ey, BODY_TOP_Z)))
 
     for dy in (-2.5, 0.0, 2.5):
         part = cast(Part, part + Solid.make_box(PIN_W, PIN_W, PIN_LEN).translate(
