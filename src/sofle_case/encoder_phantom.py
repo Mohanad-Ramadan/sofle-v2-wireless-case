@@ -27,9 +27,10 @@ from build123d import Part, Solid
 
 from . import constants as C
 
-# --- measured, already in constants.py -------------------------------------
-BODY_TOP_Z = C.ENCODER_BODY_TOP_Z          # 17.0 — measured on the real board
-BODY_H = BODY_TOP_Z - C.PCB_TOP_Z          # 6.6  — follows from the measurement
+# --- PCB-anchored, already in constants.py ----------------------------------
+BODY_H = C.ENCODER_BODY_H                  # 7.0 — see constants.py note: held above two
+                                            # vendor-datasheet readings (~6.0-6.5) as a margin
+BODY_TOP_Z = C.ENCODER_BODY_TOP_Z          # PCB top + BODY_H
 
 # --- standard EC11E envelope (assumed; verify with calipers) ---------------
 BODY_W = 12.4          # mm; square body

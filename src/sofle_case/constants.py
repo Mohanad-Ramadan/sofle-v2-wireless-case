@@ -575,13 +575,29 @@ assert 0.0 < TENT_ANGLE_DEG <= 10.0, (
 
 # ---------- Encoder plateau (TOP part, around EC11 rotary encoder) ----------
 # The EC11 body is a ~12 mm box that mounts through the plate's encoder cutout
-# (~12.7 mm) and protrudes ~2 mm above the plate top. On the sandwich TOP part a
-# single-body PLATEAU caps it: one low mound, hollow inside to clear the box, with
-# a closed roof and a plain shaft hole. The plateau leaves the cover tangentially
-# (concave ogee foot) and rounds over at the top edge — no hard step, no second
-# tier. The box is hidden; the bushing + 6 mm shaft exit through the shaft hole.
-ENCODER_BODY_PROUD     = 2.0   # mm; EC11 box top above the plate (measured)
-ENCODER_BODY_TOP_Z     = PLATE_TOP_Z + ENCODER_BODY_PROUD   # 17.0; box top (cavity must clear this)
+# (~12.7 mm). On the sandwich TOP part a single-body PLATEAU caps it: one low
+# mound, hollow inside to clear the box, with a closed roof and a plain shaft
+# hole. The plateau leaves the cover tangentially (concave ogee foot) and rounds
+# over at the top edge — no hard step, no second tier. The box is hidden; the
+# bushing + 6 mm shaft exit through the shaft hole.
+#
+# ENCODER_BODY_H is a PCB datum, not a plate one — the encoder is soldered to the
+# PCB, so its height can't change when the plate does. It used to be the other
+# way round (PLATE_TOP_Z + a measured "proud" offset), which meant every plate
+# fix silently re-derived a different box height — 6.6 at MX_BODY_CLEAR=3.0, 7.0
+# at 3.7, whatever the plate happened to be that week, independent of the actual
+# hardware. Two independent sources for the real number (a vendor listing's own
+# dimensioned photo — case top to the PCB-face color boundary, ≈5.9mm — and a
+# second vendor's drawing giving 6.5mm for the same span) put it at 6.0–6.5mm.
+# Held at 7.0 anyway, above both readings: the plateau's clearance over the box
+# matters more than shaving the margin to match an estimate, and reading the
+# case a little short costs nothing while reading it a little tall risks the
+# same collision class as the encoder-plateau fix this datum already needed
+# once (commit 7a54949).
+ENCODER_BODY_H         = 7.0   # mm; PCB top -> EC11 box top. See note above.
+ENCODER_BODY_TOP_Z     = PCB_TOP_Z + ENCODER_BODY_H          # box top (cavity must clear this)
+ENCODER_BODY_PROUD     = ENCODER_BODY_TOP_Z - PLATE_TOP_Z    # derived, informational only: how far
+                                                              # the box stands above the CURRENT plate
 ENCODER_SHELL_WALL     = 1.5   # mm; plateau side-wall thickness (thin → smaller footprint)
 ENCODER_SHELL_ROOF     = 1.5   # mm; closed top-face thickness
 ENCODER_SHELL_CAVITY_CLEAR = 0.4  # mm/side; cavity grows past the plate cutout so the ring
