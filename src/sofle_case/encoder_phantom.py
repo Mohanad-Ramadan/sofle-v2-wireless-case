@@ -43,6 +43,13 @@ SHAFT_LEN = 20.0       # mm; from the mounting face (= body top), per the listin
 PIN_LEN = 3.5          # mm; below the PCB
 PIN_W = 0.8
 
+# Measured: a small metal locating leg standing up from the body top, on the same edge the
+# 3 solder pins exit from, in line with the shaft (X-centered). At BODY_H=7.0 it lands 1.6 mm
+# short of ENCODER_CAVITY_TOP_Z, so this 0.8 mm leg has 0.8 mm to spare — no collision, purely
+# cosmetic accuracy for the phantom.
+LEG_W = 1.0            # mm; square post, tiny — no listing/datasheet reference, just calipers
+LEG_H = 0.8            # mm; above the body top
+
 SHAFT_TOP_Z = BODY_TOP_Z + SHAFT_LEN       # 37.0 with the assumed 20 mm
 BUSHING_TOP_Z = BODY_TOP_Z + BUSHING_H     # 22.0
 
@@ -72,7 +79,9 @@ def build_ec11(trimmed: bool = True) -> Part:
         (ex - BODY_LUG_W / 2, ey - BODY_W * 0.25, C.PCB_TOP_Z))
     bushing = Solid.make_cylinder(BUSHING_DIA / 2, BUSHING_H).translate((ex, ey, BODY_TOP_Z))
     shaft = Solid.make_cylinder(SHAFT_DIA / 2, shaft_len).translate((ex, ey, BODY_TOP_Z))
-    part = cast(Part, body + lugs + bushing + shaft)
+    leg = Solid.make_box(LEG_W, LEG_W, LEG_H).translate(
+        (ex - LEG_W / 2, ey - BODY_W / 2, BODY_TOP_Z))
+    part = cast(Part, body + lugs + bushing + shaft + leg)
 
     for dx in (-2.5, 0.0, 2.5):
         part = cast(Part, part + Solid.make_box(PIN_W, PIN_W, PIN_LEN).translate(
