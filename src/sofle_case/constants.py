@@ -610,8 +610,10 @@ ENCODER_SHELL_CAVITY_CLEAR = 0.4  # mm/side; cavity grows past the plate cutout 
                                   # 16.5 mm plateau, so widening it costs nothing.
 ENCODER_SHAFT_HOLE_DIA = 7.5   # mm; shaft hole: clears the 6 mm shaft + 7 mm bushing
 ENCODER_PLATEAU_H      = 4.5   # mm; plateau height above the cover surface
-ENCODER_SHELL_TOP_Z    = COVER_TOP_Z + ENCODER_PLATEAU_H            # 20.5; plateau top
-ENCODER_CAVITY_TOP_Z   = ENCODER_SHELL_TOP_Z - ENCODER_SHELL_ROOF   # 19.0; roof underside (clears box)
+ENCODER_SHELL_TOP_Z    = COVER_TOP_Z + ENCODER_PLATEAU_H            # derived; plateau top, tracks COVER_TOP_Z
+ENCODER_CAVITY_TOP_Z   = ENCODER_SHELL_TOP_Z - ENCODER_SHELL_ROOF   # derived; roof underside (clears box) —
+                                                                     # do not hardcode a number here, it has
+                                                                     # already gone stale once (was "19.0")
 # Tangent blends so the plateau reads as a mound, not a box:
 ENCODER_BEZEL_FOOT_R   = 1.5   # mm; concave foot radius (plateau → cover)
 ENCODER_BEZEL_TOP_R    = 1.5   # mm; convex round-over of the plateau top edge

@@ -69,23 +69,28 @@ def build_ec11(trimmed: bool = True) -> Part:
 
     No ``side``: the case itself is built right-handed and mirrored as a whole, so phantoms follow
     the same rule and the caller mirrors them. Mirroring here as well would put the encoder back on
-    the wrong half of a left build."""
+    the wrong half of a left build.
+
+    Pins exit on the −X edge, toward the case's west wall (SW_ENCODER_POS sits 23 mm from the west
+    wall vs 50 mm from the thumb cluster to the south — west is the near, physical wall the real
+    board's pin row backs onto). Was modeled on the −Y edge, facing the thumb cluster; corrected
+    from the user's own read of the assembled board."""
     ex, ey = C.pcb_to_case(*C.SW_ENCODER_POS)
     shaft_len = shaft_len_trimmed() if trimmed else SHAFT_LEN
 
     body = Solid.make_box(BODY_W, BODY_W, BODY_H).translate(
         (ex - BODY_W / 2, ey - BODY_W / 2, C.PCB_TOP_Z))
-    lugs = Solid.make_box(BODY_LUG_W, BODY_W * 0.5, BODY_LUG_H).translate(
-        (ex - BODY_LUG_W / 2, ey - BODY_W * 0.25, C.PCB_TOP_Z))
+    lugs = Solid.make_box(BODY_W * 0.5, BODY_LUG_W, BODY_LUG_H).translate(
+        (ex - BODY_W * 0.25, ey - BODY_LUG_W / 2, C.PCB_TOP_Z))
     bushing = Solid.make_cylinder(BUSHING_DIA / 2, BUSHING_H).translate((ex, ey, BODY_TOP_Z))
     shaft = Solid.make_cylinder(SHAFT_DIA / 2, shaft_len).translate((ex, ey, BODY_TOP_Z))
     leg = Solid.make_box(LEG_W, LEG_W, LEG_H).translate(
-        (ex - LEG_W / 2, ey - BODY_W / 2, BODY_TOP_Z))
+        (ex - BODY_W / 2, ey - LEG_W / 2, BODY_TOP_Z))
     part = cast(Part, body + lugs + bushing + shaft + leg)
 
-    for dx in (-2.5, 0.0, 2.5):
+    for dy in (-2.5, 0.0, 2.5):
         part = cast(Part, part + Solid.make_box(PIN_W, PIN_W, PIN_LEN).translate(
-            (ex + dx, ey - BODY_W / 2, C.PCB_TOP_Z - PIN_LEN)))
+            (ex - BODY_W / 2, ey + dy, C.PCB_TOP_Z - PIN_LEN)))
     part.label = "ec11" if trimmed else "ec11(as bought)"
     return part
 
