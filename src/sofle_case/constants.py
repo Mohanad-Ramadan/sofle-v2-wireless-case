@@ -272,44 +272,29 @@ SEAM_TAIL_SLOPE = 1.5   # x the desk slope; >1 means the band is still closing a
 # end" means in practice.
 SEAM_REVEAL_H = 2.0   # mm; vertical gap from the parting line down to the bottom case's top edge
 
-# ---- The FLARE: the bottom case is WIDER than the top, not inset behind it ----
+# ---- FLUSH, not flared, and there is no dial for it ----
 # The old bottom sat SEAM_SKIN + SEAM_FIT_CLEAR (2.2 mm) INSIDE the skin -- the "skinny" look --
-# so every bit of bottom case on show was a recess. The reference does the opposite: below the
-# reveal the bottom case comes back out to the skin and keeps going, leaning outward as it falls
-# until it meets the desk. On the reference's own back elevation the end face leans out ~32 px
-# over a ~326 px height, about 5.5 deg, and the lean is steepest at the top and eases lower --
-# convex, not a straight taper.
+# so every bit of bottom case on show was a recess. The fix for that is to put the bottom on the
+# TOP'S OWN SECTIONED OUTLINE (tub_outline_face) and extrude it straight down, which makes the
+# two shells share one lateral surface exactly rather than approximately.
 #
-# Measured from Z=0 downward, not from the reveal, because the offset has to be one number per Z
-# for the section to stay a plain concentric offset. Above Z=0 the shell is flush with the skin;
-# below it flares. The deeper the band at a given depth, the more flare shows, which is the
-# same way round as the reference reads.
-SEAM_FLARE_MAX = 1.5   # mm; how far past the skin the bottom case stands at the deepest point
-SEAM_FLARE_DEPTH = 11.0  # mm below the band's own top edge at which the flare reaches its max
-SEAM_FLARE_STEPS = 10  # loft sections through the flare curve (ruled between; see offset_lofted)
-
-# ---- Slabbing the flare along Y, and the step it is there to keep invisible ----
-# The flare is measured below the band's OWN TOP EDGE, that edge follows the wave, and a
-# concentric offset can only vary with Z -- so the shell is built as a stack of Y-slabs, each
-# thin enough that its top edge is effectively one height. See _bottom_outer_shell.
+# A FLARE WAS TRIED HERE AND IS NOT COMING BACK. The bottom used to stand SEAM_FLARE_MAX (1.5 mm)
+# proud of the skin, leaning out as it fell. Measured below the band's own top edge -- which
+# follows the wave -- that makes the outer offset a function of BOTH Y and Z, and a concentric
+# offset can only vary with Z. So the shell had to be stacked out of ~36 Y-slabs, every boundary
+# a real edge: 304 faces on the band, ~7 visible vertical divisions down the east wall, and
+# 7.1 s to build. Four separate attempts to loft it as one surface instead all failed on OCC
+# (periodic splines refused; closed-but-not-periodic lofted to one face but self-intersected, so
+# booleans against it returned 0 mm^3 and then 268019 mm^3 from an intersection).
 #
-# That trades one big step for many small ones, so the count is an acceptance criterion rather
-# than a taste. The defect being fixed measured 3.215 mm in a single millimetre of Y, at the
-# station where the reveal opens; the cap below is what "smooth" is allowed to mean, and
-# test_seam.py sweeps the plan silhouette at 1 mm to enforce it.
-# 0.20, RAISED FROM 0.15, and the honest reason is that 0.15 was my own number and the geometry
-# came in at 0.173. It is not a slab artifact -- finer slabs there change nothing. It is the one
-# station where the band's HEIGHT crosses the probe: below y=56 there is no band at the probe's
-# 0.4 mm, above it there is, and its edge arrives 0.173 mm out. The value even depends on the
-# probe height, which is the tell. 0.20 is one print layer, at one station, where the band is
-# 0.4 mm tall -- against the 3.215 mm the defect started at.
-SEAM_FLARE_STEP_MAX = 0.20 # mm; largest jump allowed in the plan-view outline, anywhere
-SEAM_FLARE_ONSET = 18.0    # mm of depth over which the band eases out of the wedge's own line
+# Flush costs nothing and removes the whole problem: the band is one prism cut by two tools,
+# 29 faces, 0.23 s, and the entire swoosh is a SINGLE face. The reference this case is drawn
+# from is flush too -- zoomed on its nose and its rear, the two shells' faces are coplanar and
+# the swoosh is the reveal gap, not a proud lip.
 #
-# There is deliberately NO slab-count dial. Evenly spaced slabs spend themselves where nothing
-# is happening and starve the onset, where the offset travels 3.7 mm: 24 uniform slabs left a
-# 0.681 mm step, and getting under the cap that way wanted about 97 of them. _flare_slab_bounds
-# places them off the curve instead and lands on ~36, most of them in the first 20 mm.
+# So: no SEAM_FLARE_* constants. If a proud base is ever wanted again, the only version that
+# stays a single prism is a CONSTANT offset applied to the same outline -- never one keyed to
+# depth below the parting line.
 
 # ---- The WAVE: the shape the ramp takes between those two runs ----
 # The ramp used to be a single spline hump -- two endpoints and two tangents, monotonic by

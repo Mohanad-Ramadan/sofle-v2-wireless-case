@@ -127,17 +127,22 @@ def test_total_height_is_exactly_the_wedge():
 
 # ------------------------------------------------------------------- fit and finish
 
-def test_the_bottom_stands_PROUD_of_the_skin_where_it_shows():
-    """The inversion. This test used to assert the exact opposite and the opposite was the bug.
+def test_the_bottom_is_FLUSH_with_the_skin_where_it_shows():
+    """The bottom's outer face and the top's are the SAME plane. Not inset, and not proud.
 
-    The bottom case rode the PLATE's rim profile everywhere, so it sat SEAM_SKIN + SEAM_FIT_CLEAR
-    (2.2 mm) behind the tub's outer face — the "skinny" look — and every millimetre of bottom
-    case on show was therefore the floor of a recess. Against the reference that reads as a lid
-    on a smaller box. There the bottom is WIDER than the top and leans outward as it falls, so
-    the two shells read as one body split along the wave.
+    This test has now asserted three different things, and the history is the point. First that
+    the bottom was inset — it rode the PLATE's rim profile everywhere, 2.2 mm behind the tub's
+    outer face, so every millimetre on show was the floor of a recess: a lid on a smaller box.
+    Then that it stood 1.5 mm PROUD, which fixed the recess but cost the band its smoothness —
+    a flare keyed to depth below the wave-following top edge cannot be a concentric offset, so
+    the band had to be stacked out of ~36 Y-slabs and arrived with ~7 visible divisions in it.
 
-    Two different claims now, at two different heights, and both have to hold:
-      * BELOW the reveal, where the bottom shows, it stands proud of the skin;
+    Flush is the resolution, and it is stronger than either: the band is extruded from
+    ``tub_outline_face()`` itself, so the two shells do not merely agree to a tolerance, they
+    share one surface. Measured here at 2.8e-14 mm — floating-point zero, not a fitted number.
+
+    Two claims, at two different heights, and both have to hold:
+      * BELOW the reveal, where the bottom shows, it is flush with the skin;
       * ABOVE it the plate rim is still inset, because that is the rabbet — it has to slide
         into the tub's pocket, and nothing about the outside changes that."""
     top, bottom = build_top_part("right"), build_bottom_part("right")
@@ -146,25 +151,25 @@ def test_the_bottom_stands_PROUD_of_the_skin_where_it_shows():
         sl = part & Solid.make_box(400.0, s, s).translate((-100.0, y - s / 2, z - s / 2))
         return None if sl.volume < 1e-9 else sl.bounding_box().max.X
 
-    skin = east(top, 90.0, C.SEAM_LEDGE_Z + 3.0)
-    assert skin is not None, "no tub skin to measure against"
-
     def proud(y):
+        # SKIN SAMPLED AT THE SAME Y, not once at y=90. The outline is not straight back there —
+        # it draws in by 0.029 mm between y=90 and y=110 — so a fixed reference reports the
+        # outline's own curvature as an error. The flare's 1.5 mm swamped that; flushness at
+        # 0.01 mm does not.
+        ref = east(top, y, C.SEAM_LEDGE_Z + 3.0)
         got = east(bottom, y, tent_ground_z(y) + 0.6)    # just above the desk
+        assert ref is not None, f"no tub skin to measure against at y={y}"
         assert got is not None, f"no bottom case at y={y}"
-        return got - skin
+        return got - ref
 
-    # Grows through the onset, then sits at the flare's ceiling. It does NOT keep growing to the
-    # back, and asserting that it did was a leftover from keying the flare to absolute Z: the
-    # flare follows the BAND'S OWN DEPTH now, and the band is deepest around y=100 (10.7 mm),
-    # easing to 9.2 mm by the back edge. So y=110 comes back a hair under y=90, by 0.024 mm.
-    assert proud(70.0) > 0.0, "bottom is still inside the skin at y=70"
-    assert proud(80.0) > proud(70.0), "the flare is not growing through the onset"
-    for y in (80.0, 90.0, 100.0, 110.0):
-        assert C.SEAM_FLARE_MAX - 0.1 <= proud(y) <= C.SEAM_FLARE_MAX + 1e-3, \
-            f"y={y}: stands {proud(y):.3f} mm proud, off the {C.SEAM_FLARE_MAX} mm ceiling"
+    # 0.01 mm is two orders under a print layer. The measured value is ~3e-14; the tolerance is
+    # there for the probe's own arithmetic, not to leave the design any room to drift.
+    for y in (70.0, 80.0, 90.0, 100.0, 110.0):
+        assert abs(proud(y)) <= 0.01, \
+            f"y={y}: bottom sits {proud(y):+.4f} mm off the skin, expected flush"
 
     # ...and the rabbet is untouched: the plate rim is still inset up at ledge height.
+    skin = east(top, 90.0, C.SEAM_LEDGE_Z + 3.0)
     rim = east(bottom, 90.0, C.SEAM_LEDGE_Z - 1.0)
     assert rim is not None and abs((skin - rim) - (C.SEAM_SKIN + C.SEAM_FIT_CLEAR)) < 0.05, \
         f"plate rim sits {skin - rim:.3f} mm in, expected {C.SEAM_SKIN + C.SEAM_FIT_CLEAR}"

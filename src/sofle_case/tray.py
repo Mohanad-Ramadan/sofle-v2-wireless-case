@@ -160,63 +160,6 @@ def offset_lofted(levels, kind: Kind = Kind.ARC, rounded: bool = False) -> Part:
     return cast(Part, bp.part)
 
 
-def face_lofted(face: Face, levels, kind: Kind = Kind.ARC) -> Part:
-    """Like ``offset_lofted``, but offsetting a SUPPLIED face instead of the PCB polygon.
-
-    The polygon is the right outline for anything that has to nest with the plate — the rabbet
-    is built from concentric offsets of it. It is the WRONG outline for anything that has to
-    register with the tub when the case is seen from below: the tub carries the +Y relief bump
-    and its NW corner fillet, and the polygon knows nothing about either, so the two silhouettes
-    part company north of y≈112.
-
-    Hand this ``tub_outline_face()`` and the bottom case follows the top's own edge instead.
-
-    ``levels`` is ``(z, amount)``, increasing in z, exactly as ``offset_lofted`` takes it."""
-    # LOFTED IN RUNS OF CONSTANT SIGN, because `offset` changes this outline's TOPOLOGY across
-    # zero and a ruled loft cannot span two topologies — OCC answers "BRep_API: command not
-    # done", which is all it ever says.
-    #
-    # The split is by sign, not size: outward by any amount keeps 22 edges, inward by any amount
-    # gives 27. The five extra are arcs raised at the concave corners, and their radius IS the
-    # inward distance — so at net zero they collapse and OCC merges them away. That is geometry,
-    # not bookkeeping: rebuilding the face from its wire, or offsetting from a pre-shifted base,
-    # both still flip at exactly net zero. Both were tried.
-    #
-    # So the levels are cut into runs either side of zero, each run lofted on its own, and the
-    # runs unioned. The two lofts meet at the crossing height, one arriving at -EPS and the other
-    # leaving at +EPS — a 0.2 um mismatch in outline, which is four orders under the print.
-    EPS = 1e-4
-    lv = [(z, a if abs(a) > EPS else EPS) for z, a in levels]
-    runs, cur = [], [lv[0]]
-    for (z0, a0), (z1, a1) in zip(lv, lv[1:]):
-        if (a0 > 0) != (a1 > 0):
-            zc = z0 + (z1 - z0) * (0.0 - a0) / (a1 - a0)
-            cur.append((zc, EPS if a0 > 0 else -EPS))
-            runs.append(cur)
-            cur = [(zc, EPS if a1 > 0 else -EPS)]
-        cur.append((z1, a1))
-    runs.append(cur)
-
-    parts = []
-    for run in runs:
-        if len({round(z, 9) for z, _ in run}) < 2:
-            continue                                   # zero-height run, nothing to loft
-        sections = [cast(Face, Pos(0, 0, z) * offset(face, amount=a, kind=kind))
-                    for z, a in run]
-        with BuildPart() as bp:
-            # UNRULED. Ruled makes every gap between neighbouring sections its own conical band,
-            # so the wall arrives as a stack of flats with a visible line at each level — 199
-            # faces where unruled gives 47, on identical input and in the same 0.1 s. The band
-            # is a smooth curve in Z (see band_offset / seam_flare); the surface should be too.
-            loft(sections, ruled=False)
-        assert bp.part is not None
-        parts.append(cast(Part, bp.part))
-    out = parts[0]
-    for p in parts[1:]:
-        out = cast(Part, out + p)
-    return out
-
-
 def _inner_extruded(z_lo: float, z_hi: float) -> Part:
     """PCB polygon offset by +PCB_XY_CLEARANCE, Kind.INTERSECTION, extruded z_lo→z_hi."""
     wire = _polygon_wire()

@@ -204,5 +204,20 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     #     threshold AND a build input, so moving it moves the part.
     #   * +8.66 more when face_lofted went UNRULED. A ruled loft chords between its sections, so
     #     it cut the corner on a wall that curves outward — the smooth surface bulges back out to
-    #     where band_offset actually says it should be. More material, and the right amount.
-    assert abs(build_bottom_part(side).volume - 197446.855543) < 2e-2
+    #     where the flare law actually says it should be. More material, and the right amount.
+    # Rebased -2296.88 mm³ (-1.16%) when the band went FLUSH and stopped being flared. Broken out,
+    # because the total is three separate effects and only the first is the intended one:
+    #   * -2242.72  the band's own volume, 8754.72 -> 6512.00. It no longer stands 1.5 mm proud
+    #               of the skin, and no longer overhangs to y=127.5.
+    #   *   -65.06  the elephant-foot counter-chamfer on the ground rim, WHICH WAS DOING NOTHING
+    #               BEFORE. _chamfer_wedge_ground_edge cut exactly 0.000000 mm³ at HEAD — it was
+    #               falling through both legs to its silent no-op, because the flared band's
+    #               ground rim defeated OCC's chamfer. On the flush rim it lands on the full
+    #               BOTTOM_CHAMFER leg. So the printed part gets its counter-chamfer back, and
+    #               this is the number proving it rather than a fallback pretending to succeed.
+    #     +9.28  the fuse sealing coincident faces: the band's inner face and the wedge's outer
+    #               face are both at rim_outer, and OCC closes the hairline between them.
+    #   (-2242.72 - 65.06 + 9.28 = -2298.50 against -2296.88 measured; the 1.6 mm³ residual is
+    #    0.0008% and is boolean float noise.)
+    # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
+    assert abs(build_bottom_part(side).volume - 195149.967198) < 2e-2
