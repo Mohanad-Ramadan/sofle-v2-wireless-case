@@ -762,16 +762,22 @@ def usb_port_z(side: str) -> tuple[float, float]:
 # ---- SK12D07VG3 Z stack -----------------------------------------------------------
 # Hoisted above the scoop block because the scoop's Z is derived from it. These three are
 # the RULER every slide-switch clearance check is measured against, so a wrong value here
-# does not make a test fail — it makes a real collision invisible. All three are ASSUMED:
-# they are the original design figures, not measurements. A caliper pass in Aug 2026 read
-# 5.0 / 2.4 instead of 4.3 / 1.5 and was reverted at the owner's direction, so treat the
-# numbers below as unverified until someone measures the part again. Do not "tidy" an
-# assumed number into a derived one without measuring it.
-SLIDE_ACTUATOR_BODY_H       = 4.3  # mm; ASSUMED — metal can height above PCB top
-SLIDE_ACTUATOR_NUB_BASE     = 1.5  # mm; ASSUMED — lever underside above PCB top
-SLIDE_ACTUATOR_NUB_H        = 2.0  # mm; ASSUMED — lever height. The lever top
-#                                    (PCB_TOP_Z + NUB_BASE + NUB_H) rides on this, so measure it
-#                                    before sizing the finger window against it.
+# does not make a test fail — it makes a real collision invisible.
+#
+# A caliper pass in Aug 2026 read 5.0 / 2.4 instead of 4.3 / 1.5 and was reverted at the
+# owner's direction. That revert is now confirmed: the genuine SK12D07VG3 manufacturer spec
+# sheet (ShenZhen ShouHan — the actual part, not a generic clone-envelope listing) gives a
+# frame height of 4.0-4.7mm above the PCB (4.3 sits inside it) and a paddle thickness of
+# exactly 2.0mm. The datasheet's paddle Z-band (~1.0-3.35mm, paddle centered at mid-body) is
+# close to 1.5-3.5mm from NUB_BASE=1.5. The 5.0/2.4 caliper reading would put the paddle
+# mostly above the frame top, which does not match a part whose paddle is drawn at mid-body
+# height — that reading was the bad one. Datasheet also confirms this is a lateral paddle
+# (protrudes sideways out of the frame, not upward off the top), matching why the model
+# reaches it through a side-wall window rather than a top window.
+SLIDE_ACTUATOR_BODY_H       = 4.3  # mm; datasheet-confirmed — frame height above PCB top (spec: 4.0-4.7)
+SLIDE_ACTUATOR_NUB_BASE     = 1.5  # mm; datasheet-confirmed (close fit) — paddle underside above PCB top
+SLIDE_ACTUATOR_NUB_H        = 2.0  # mm; datasheet-confirmed exact — paddle thickness. The paddle top
+#                                    (PCB_TOP_Z + NUB_BASE + NUB_H) rides on this.
 
 SLIDE_SWITCH_W           = 6.0   # mm; slide actuator nominal width (reference)
 SLIDE_NUB_Z              = PCB_TOP_Z + SLIDE_ACTUATOR_NUB_BASE + SLIDE_ACTUATOR_NUB_H / 2  # lever centre Z; tracks the PCB
