@@ -20,10 +20,11 @@ _MCU_W         = 18.0  # nice!nano width along case X
 # Pin span from drill data: local X = -2.1 .. +6.1 → center at +2.0
 _SK12_BODY_L   =  8.7  # metal can length along pin row (local X)
 _SK12_BODY_W   =  4.4  # metal can width perpendicular to pins (local Y)
-_SK12_BODY_H   =  4.3  # metal can height above PCB
+_SK12_BODY_H   =  4.3  # metal can height above PCB — ASSUMED, not measured
 _SK12_NUB_L    =  3.5  # actuator nub length along pin row (local X)
 _SK12_NUB_D    =  3.0  # actuator protrusion beyond body edge (local -Y)
-_SK12_NUB_H    =  2.0  # actuator height above metal can
+_SK12_NUB_BASE =  1.5  # lever underside above PCB top — ASSUMED, not measured
+_SK12_NUB_H    =  2.0  # actuator lever height — ASSUMED, not measured
 _SK12_PIN_CENTER_X = 2.0  # body center offset from footprint origin (local X)
 
 # SW31 pin holes from SofleKeyboard-PTH.drl (inch→mm). All at PCB X≈2.944.
@@ -124,7 +125,7 @@ def _slide_switch_body() -> Part:
     cx, cy, rot = slide_switch_placement()
 
     body_z = C.PCB_TOP_Z + _SK12_BODY_H / 2
-    nub_z = C.PCB_TOP_Z + 1.5 + _SK12_NUB_H / 2
+    nub_z = C.PCB_TOP_Z + _SK12_NUB_BASE + _SK12_NUB_H / 2
 
     bdx, bdy = rotate_2d(_SK12_PIN_CENTER_X, 0.0, rot)
     ndx, ndy = rotate_2d(

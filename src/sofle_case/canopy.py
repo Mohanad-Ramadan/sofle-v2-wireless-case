@@ -113,8 +113,8 @@ CANOPY_NORTH_FACET_DROP = CANOPY_NORTH_ROUND_R
 # on the right half, 66.9 on the left — the shorter left ramp climbs slower per mm of Y).
 # Heights. The ramp foot merges at the cover surface; the body base drops one cover thickness
 # (to MAIN_RIM_Z) so it overlaps the cover/walls for a clean fuse into the TOP.
-CANOPY_FOOT_Z       = C.COVER_TOP_Z                                # 13.5; ramp foot = cover surface
-CANOPY_FUSE_BASE_Z  = C.MAIN_RIM_Z                                 # 12.5; base overlaps the cover for the fuse
+CANOPY_FOOT_Z       = C.COVER_TOP_Z                                # ramp foot = cover surface
+CANOPY_FUSE_BASE_Z  = C.MAIN_RIM_Z                                 # base overlaps the cover for the fuse
 # ---------------------------------------------------------------------------
 # USB port STEPPED bore: overmold pocket (outer) → shell neck (inner).
 # See constants.USB_PLUG_SHELL_L for why: the jack mouth sits well behind the outer face, so

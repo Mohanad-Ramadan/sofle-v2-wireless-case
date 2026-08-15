@@ -9,7 +9,7 @@ def test_slide_scoop_is_a_solid():
 from typing import cast
 
 import pytest
-from build123d import Part, Solid, Box, Location, BuildPart, Locations
+from build123d import Part, Solid, Box, Location, BuildPart, Locations, Pos
 
 from sofle_case import constants as C
 from sofle_case.pcb_geometry import slide_switch_placement, rotate_2d
@@ -30,7 +30,7 @@ def _switch_body() -> Part:
 def _switch_nub() -> Part:
     """Actuator nub solid, built from OWNED structural constants + SW31 placement."""
     cx, cy, rot = slide_switch_placement()
-    nub_z = C.PCB_TOP_Z + 1.5 + C.SLIDE_ACTUATOR_NUB_H / 2
+    nub_z = C.PCB_TOP_Z + C.SLIDE_ACTUATOR_NUB_BASE + C.SLIDE_ACTUATOR_NUB_H / 2
     ndx, ndy = rotate_2d(
         C.SLIDE_ACTUATOR_PIN_CENTER_X,
         -(C.SLIDE_ACTUATOR_BODY_W / 2 + C.SLIDE_ACTUATOR_NUB_D / 2),
@@ -74,8 +74,14 @@ def test_top_part_single_valid_solid_with_cavity(side):
 
 
 def test_slide_switch_clears_top_solid():
-    """The physical switch (can + nub) has ZERO overlap with the TOP solid — the
-    drop-in pocket gives ≥0.5 mm clearance all round (the nub previously collided)."""
+    """The physical switch (can + nub) has ZERO overlap with the TOP solid.
+
+    KNOW WHAT THIS DOES NOT PROVE. It measures the case against the SK12 phantom, and every
+    dimension of that phantom is assumed rather than measured. A can taller than the modelled
+    4.3 mm collides with the printed case while this still reads 0.000 mm^3 — trialled at 5.0
+    it reported 0.175 mm^3, a 1.40 x 8.70 mm strip surviving between _slide_actuator_cavity's
+    cap and _slide_scoop's inboard reach because neither cut owned it. The assertion is sound;
+    the ruler behind it is not verified, and re-running this can never tell you that."""
     from tests.shared_builds import build_top_part
     top = build_top_part("right")
     body_hit = cast(Part, _switch_body() & top).volume
@@ -84,11 +90,32 @@ def test_slide_switch_clears_top_solid():
     assert nub_hit < 1e-6, f"actuator nub collides TOP by {nub_hit:.4f} mm^3"
 
 
+def test_slide_switch_clearance_is_real_not_coincident():
+    """Zero interference is NOT the same claim as clearance, and conflating them is what let
+    this ship twice. Coincident faces measure 0.000 mm^3 while touching — the switch reads
+    "clear" with nothing between it and the lid, so any print error at all is a hard stop.
+
+    Raise the whole switch and require it to STAY clear. If this fails while
+    test_slide_switch_clears_top_solid passes, the pocket is kissing the can, not clearing it."""
+    from tests.shared_builds import build_top_part
+    top = build_top_part("right")
+    margin = 0.3
+    for name, body in (("can", _switch_body()), ("nub", _switch_nub())):
+        lifted = cast(Part, Pos(0, 0, margin) * body)
+        hit = top & lifted
+        vol = 0.0 if hit is None else cast(Part, hit).volume
+        assert vol < 1e-6, (
+            f"slide switch {name} has less than {margin} mm of Z clearance — it fouls the TOP by "
+            f"{vol:.4f} mm^3 when raised {margin} mm, so the nominal 0.000 is coincident contact"
+        )
+
+
 def test_slide_actuator_pad_gap_is_real():
     """A grown probe (footprint + 0.4 mm, INSIDE the 0.5 mm pad) still has zero
     overlap with the TOP solid — proving the clearance gap is genuine, not coincident.
     Checked over the pocket's OWN Z extent (floor → SLIDE_ACTUATOR_TOP_Z cap); the can's
-    clearance up to its full 12.2 top is covered separately by test_slide_switch_clears_top_solid."""
+    clearance up to its full measured top is covered separately by
+    test_slide_switch_clears_top_solid (currently xfail — the cap does not reach it)."""
     from tests.shared_builds import build_top_part
     top = build_top_part("right")
     x0, x1, y0, y1 = _footprint_bbox()
@@ -105,16 +132,24 @@ def test_slide_actuator_pad_gap_is_real():
 
 def test_slide_drop_in_channel_is_clear():
     """Switch clearance column: across the switch footprint grid, the TOP solid has NO
-    material anywhere over the switch body's Z span (PCB top 7.9 → 12.2), so the tub
-    lowers over the switch (or the switch drops in) without collision.
+    material anywhere over the Z span the pocket actually promises, so the tub lowers over
+    the switch (or the switch drops in) without collision.
 
     NB the lower bound is the switch-body base (PCB_TOP_Z), not the cavity floor: the
     tub now owns the full outer skin to the ground, so the −X wall is legitimately
-    solid BELOW the switch (Z < 7.9) where part of the footprint bbox overlaps the wall
-    band — that material never touches the switch, which sits entirely above PCB top."""
+    solid BELOW the switch where part of the footprint bbox overlaps the wall band —
+    that material never touches the switch, which sits entirely above PCB top.
+
+    The upper bound was a hardcoded 12.2 — stale twice over. It came from FLOOR_THICKNESS
+    3.8 (PCB_TOP_Z is 10.4 now) and it assumed a 4.3 mm can. It is now derived, and clamped
+    to SLIDE_ACTUATOR_TOP_Z: the band from the cap up to the real can top (14.5 → 15.4) is a
+    known interference, so asserting clearance there would just duplicate the xfail on
+    test_slide_switch_clears_top_solid, which owns that claim for the whole can."""
     from tests.shared_builds import build_top_part
     top = build_top_part("right")
     x0, x1, y0, y1 = _footprint_bbox()
+    can_top = C.PCB_TOP_Z + C.SLIDE_ACTUATOR_BODY_H
+    z_hi = min(can_top, C.SLIDE_ACTUATOR_TOP_Z)
 
     def solid_at(x, y, z, e=0.1):
         b = Solid.make_box(2 * e, 2 * e, 2 * e).translate((x - e, y - e, z - e))
@@ -122,16 +157,17 @@ def test_slide_drop_in_channel_is_clear():
 
     xs = [x0 + (x1 - x0) * i / 6 for i in range(1, 6)]
     ys = [y0 + (y1 - y0) * i / 8 for i in range(1, 8)]
-    zs = [C.PCB_TOP_Z + (12.2 - C.PCB_TOP_Z) * i / 8 for i in range(9)]
+    zs = [C.PCB_TOP_Z + (z_hi - C.PCB_TOP_Z) * i / 8 for i in range(9)]
     for z in zs:
         hits = sum(1 for x in xs for y in ys if solid_at(x, y, z))
         assert hits == 0, f"channel blocked: {hits} solid hits at Z={z:.3f}"
 
 
 def test_slide_cavity_does_not_perforate_lid():
-    """The pocket is capped at the cover underside (SLIDE_ACTUATOR_TOP_Z=12.5) so it
-    CANNOT perforate the 1.0 mm lid: the cutter has zero material at/above 12.5, and
-    the TOP still carries solid (cover/wall) material above 12.5 over the footprint —
+    """The pocket is capped at SLIDE_ACTUATOR_TOP_Z so it CANNOT perforate the lid: the cap is
+    derived from the measured can (+SLIDE_ACTUATOR_CAP_CLEAR) but clamped to leave at least
+    SLIDE_ACTUATOR_LID_MIN of solid cover above it. The cutter has zero material at/above the cap, and
+    the TOP still carries solid (cover/wall) material above the cap over the footprint —
     that band is provably untouched by a cut that lives entirely below it.
 
     (The slide switch sits in the open MCU/OLED/slide bay notch and behind the
@@ -225,5 +261,20 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # volume moved +303.81 of the +316.81, and the remaining +13.00 is the ground-rim chamfer
     # cutting a slightly different rim. No dimension changed; the line just takes a different
     # route between the same crest and the same back edge.
+    # Rebased +5.97 mm³ (+0.003%) when the standoff pins were recessed below the plate
+    # (STANDOFF_PIN_RECESS). Two effects, opposite signs, and the net is small because they very
+    # nearly cancel: MX_BODY_CLEAR 3.0 -> 3.7 lifts PLATE_SEAT_Z by 0.7, which would have made
+    # each of the 5 pins 0.7 mm TALLER, and the 0.6 mm recess gives back all but 0.1 of that.
+    # 5 pins x 0.1 mm of Ø3.9 shaft, less the tap bore that follows them down, is the residual.
+    # No outer dimension moved: the wedge, band and parting line are all below the seam and are
+    # untouched by anything above PCB_SEAT_Z.
+    # Rebased −17.90 mm³ (−0.009%) when MX_BODY_CLEAR went 3.7 -> 3.40 (the derived ai03 plate
+    # datum, 5.0 − PLATE_THICKNESS). PLATE_SEAT_Z drops 0.3, so every standoff pin top drops 0.3
+    # with it. The loss is the FULL Ø3.9 shaft section, not shaft-minus-bore, because the tap bore
+    # is drilled down from the pin top and translates with it — bore length is unchanged, the pin
+    # simply starts 0.3 mm lower. 5 pins x 0.3 x π/4 x 3.9² = 17.92 predicted vs 17.90 measured;
+    # the 0.02 residual is the entry chamfer meeting a shorter pin.
+    # No outer dimension moved: everything the wedge, band and parting line touch is below the
+    # seam, and nothing above PCB_SEAT_Z reaches them.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 195466.777850) < 2e-2
+    assert abs(build_bottom_part(side).volume - 195454.848638) < 2e-2

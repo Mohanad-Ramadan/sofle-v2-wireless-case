@@ -174,8 +174,9 @@ def test_bottom_part_z_range(side):
 
     The floor is no longer Z=0: the bottom case now carries the tent wedge, which hangs
     TENT_WEDGE_MAX_H below the old bottom face at the north and TENT_WEDGE_MIN_H at the
-    south. The top stays at PLATE_SEAT_Z — the standoffs stop under the switch plate, so
-    the part is taller than the rabbet ledge by design."""
+    south. The top is the standoff pin tops, which now stop STANDOFF_PIN_RECESS BELOW
+    PLATE_SEAT_Z — the plate is located by the switches, not by the pins — so the part is
+    taller than the rabbet ledge by design but no longer reaches the plate."""
     import math
     bb = build_bottom_part(side).bounding_box()
     # A hair above the nominal deep end: the elephant-foot counter-chamfer trims the ground
@@ -187,7 +188,7 @@ def test_bottom_part_z_range(side):
     lift = C.BOTTOM_CHAMFER * math.tan(math.radians(C.TENT_ANGLE_DEG))
     assert bottom_deep_z() <= bb.min.Z <= bottom_deep_z() + lift + 1e-3, \
         f"floor at {bb.min.Z:.4f}, expected the wedge's deep end {wedge_deep_z():.4f}"
-    assert abs(bb.max.Z - C.PLATE_SEAT_Z) < 0.01
+    assert abs(bb.max.Z - (C.PLATE_SEAT_Z - C.STANDOFF_PIN_RECESS)) < 0.01
 
 
 @pytest.mark.parametrize("side", ["right", "left"])

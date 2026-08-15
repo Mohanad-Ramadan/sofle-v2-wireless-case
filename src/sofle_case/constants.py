@@ -17,13 +17,40 @@ FLOOR_THICKNESS = 6.3   # was 3.8
 # Named vertical gaps (invariant — these reproduce the original stack at FLOOR=3.8):
 STANDOFF_SHOULDER_H = 2.5   # PCB seat above the floor top (standoff lower shoulder)
 PCB_THICKNESS       = 1.6   # main PCB thickness
-MX_BODY_CLEAR       = 3.0   # measured MX switch-body gap: plate seat above PCB top
+# MX switch-body gap: plate UNDERSIDE above PCB top. This is a HARDWARE datum — the switch
+# body bottoms on the PCB and the plate clips onto its shoulder, so nothing the case does can
+# change it. Two independent derivations and one measurement disagree, and the spread is real:
+#
+#   Cherry datasheet, total height   0.60 in = 15.24 mm from PCB, no keycap
+#                                    15.24 - PLATE_THICKNESS 1.6 - _UPPER_H 6.6 - _STEM_H 3.5
+#                                                                              -> 3.54
+#   ai03 wiki, plate TOP at 5.0      5.0 - PLATE_THICKNESS 1.6                 -> 3.40
+#   measured on the real Sofle                                                 -> ~4.0
+#
+# Set to the DERIVED value, by decision: the plate-datum route is the only one that measures the
+# surface this constant actually names (plate underside), and it agrees with the datasheet route
+# to 0.14 mm. The ~4.0 caliper reading is not discarded as noise — see the risk note below.
+#
+# The old value was 3.0 — below every one of the three — and it is what made the printed sandwich
+# refuse to close: the standoff pins topped out 0.4-1.0 mm BELOW where the switches actually hold
+# the plate, so the plate never touched them, the screws bowed it down, and the cover rode up off
+# the tub's rim.
+#
+# RISK, STATED NOT HIDDEN: if the real gap is the calipered ~3.9, this value is 0.5 mm LOW and
+# that is the same failure direction as the old 3.0 — the switches would hold the plate 0.5 above
+# the modelled rim and the tub would not come down. STANDOFF_PIN_RECESS protects the plate from
+# the pins below; NOTHING protects the rim from a plate that rides high. The absorber for that
+# direction is SEAM_LEDGE_CLEAR, which is currently 0.3 — i.e. this value tolerates a real gap up
+# to 3.7 before the seam gaps. Re-measure PCB-top-to-plate-underside with the switches fully
+# seated (an unseated hotswap switch reads high) before committing a print.
 PLATE_THICKNESS     = 1.6   # switch-plate thickness (12.5 − 10.9 at the old floor)
+MX_PLATE_TOP_ABOVE_PCB = 5.0  # mm; THE datum: plate TOP surface above PCB top (ai03 wiki, MX std)
+MX_BODY_CLEAR       = MX_PLATE_TOP_ABOVE_PCB - PLATE_THICKNESS  # 3.40 — derived, tracks the plate
 
 PCB_SEAT_Z   = FLOOR_THICKNESS + STANDOFF_SHOULDER_H  # 8.8  (was 6.3 at FLOOR=3.8)
 PCB_TOP_Z    = PCB_SEAT_Z + PCB_THICKNESS             # 10.4 (was 7.9)
-PLATE_SEAT_Z = PCB_TOP_Z + MX_BODY_CLEAR              # 13.4 (was 10.9)
-PLATE_TOP_Z  = PLATE_SEAT_Z + PLATE_THICKNESS         # 15.0 (was 12.5)
+PLATE_SEAT_Z = PCB_TOP_Z + MX_BODY_CLEAR              # 13.8 (was 13.4 at MX_BODY_CLEAR=3.0)
+PLATE_TOP_Z  = PLATE_SEAT_Z + PLATE_THICKNESS         # 15.4 (was 15.0)
 
 # Minimal short case: perimeter walls end flush with the plate's top surface —
 # no proud lip above the plate. The MCU hill still rises above this (excluded).
@@ -581,6 +608,26 @@ STANDOFF_TAP_DIA   = 1.8   # M2 self-tap bore (sized for FDM tolerance)
 STANDOFF_TAP_DEPTH = 4.0
 STANDOFF_TAP_CHAMFER = 0.3  # 45° entry chamfer at bore top
 
+# ---------- The pins are screw bosses, NOT a plate seat ----------
+# The switch plate's height is set by the SWITCHES (PCB top + MX_BODY_CLEAR) — a hardware datum
+# the case cannot argue with. The standoff pins used to top out at exactly PLATE_SEAT_Z, making
+# them a SECOND datum for the same surface. Two datums for one face is an over-constraint, and
+# it only resolves if MX_BODY_CLEAR is exact; it was out by 0.4-1.0 mm, so the pins and the
+# switches fought and the case would not shut.
+#
+# The pins are now RECESSED below the plate. They carry the M2 thread and nothing else: the
+# screw pulls the cover down onto the plate and the plate onto the switch shoulders, which is
+# the load path that already existed in the hardware. Keypress force never runs through the
+# plate (the switch body bottoms on the PCB), so the pins support nothing structural.
+#
+# Sized for the WORST case, which is MX_BODY_CLEAR being too HIGH: if the true gap is 3.4 the
+# plate sits 0.3 below nominal and a flush pin would spear it. 0.6 covers that 0.3, plus ~0.3
+# of FDM Z error on a printed pin — i.e. the case still assembles for any true gap from 3.1 up.
+# There is no penalty at the other end: at a true gap of 4.0 the pin simply sits 0.9 clear.
+# The tap bore follows the pin down, so thread engagement (STANDOFF_TAP_DEPTH) is unchanged;
+# the screw crosses 0.6 mm more air, which is inside M2 head-to-thread slack.
+STANDOFF_PIN_RECESS = 0.6  # mm; pin top below PLATE_SEAT_Z — the plate must never touch it
+
 # ---------- Clearances ----------
 PCB_XY_CLEARANCE = 0.5
 PCB_HOLE_DIA     = 4.1
@@ -696,10 +743,28 @@ def usb_port_z(side: str) -> tuple[float, float]:
 # lowers both the wall and the cover in one op. It is a TOP-only feature (the BOTTOM is a separate
 # inset plate below the rabbet ledge); access is from the top/side, not from below, so the plate
 # never blocks. See docs and the plan slide-scoop-decrement.md.
+# ---- SK12D07VG3 Z stack -----------------------------------------------------------
+# Hoisted above the scoop block because the scoop's Z is derived from it. These three are
+# the RULER every slide-switch clearance check is measured against, so a wrong value here
+# does not make a test fail — it makes a real collision invisible. All three are ASSUMED:
+# they are the original design figures, not measurements. A caliper pass in Aug 2026 read
+# 5.0 / 2.4 instead of 4.3 / 1.5 and was reverted at the owner's direction, so treat the
+# numbers below as unverified until someone measures the part again. Do not "tidy" an
+# assumed number into a derived one without measuring it.
+SLIDE_ACTUATOR_BODY_H       = 4.3  # mm; ASSUMED — metal can height above PCB top
+SLIDE_ACTUATOR_NUB_BASE     = 1.5  # mm; ASSUMED — lever underside above PCB top
+SLIDE_ACTUATOR_NUB_H        = 2.0  # mm; ASSUMED — lever height. The lever top
+#                                    (PCB_TOP_Z + NUB_BASE + NUB_H) rides on this, so measure it
+#                                    before sizing the finger window against it.
+
 SLIDE_SWITCH_W           = 6.0   # mm; slide actuator nominal width (reference)
-SLIDE_NUB_Z              = PCB_TOP_Z + 2.5   # actuator nub centre Z (finger-access height); tracks the PCB
+SLIDE_NUB_Z              = PCB_TOP_Z + SLIDE_ACTUATOR_NUB_BASE + SLIDE_ACTUATOR_NUB_H / 2  # lever centre Z; tracks the PCB
 SLIDE_SCOOP_W            = 10.0  # mm; scoop width in Y (wider than its Z depth)
-SLIDE_SCOOP_FLOOR_Z      = SLIDE_NUB_Z - 1.4  # mm; scoop floor just below the nub; tracks the PCB (was literal 9.0)
+# 1.4 below the lever centre: the window's lower edge sits under the lever so a fingernail can
+# catch it. Derived rather than pinned, but note the coupling — it moves the moment the lever
+# height does, which is a geometry change riding in on a measurement. If SLIDE_ACTUATOR_NUB_BASE
+# is ever re-measured, size this floor deliberately instead of letting it follow.
+SLIDE_SCOOP_FLOOR_Z      = SLIDE_NUB_Z - 1.4  # mm; scoop floor = 11.5
 SLIDE_SCOOP_INNER_MARGIN = 0.25  # mm; reach past the inner wall face to bare the nub (no PCB)
 SLIDE_SCOOP_FLOOR_R      = 2.0   # mm; floor rounding (reads as a valley, not a box)
 SLIDE_SCOOP_SIDE_R       = 2.5   # mm; plan-corner rounding at the scoop ends
@@ -714,8 +779,11 @@ SLIDE_SCOOP_X_SHIFT      = 0.4   # mm; slide the WHOLE cutter toward −X (out t
 # tub lowers over the PCB+switch assembly. Subtracted in build_top_part AFTER the scoop;
 # it is a TOP-only feature (the BOTTOM is a separate inset plate below the rabbet ledge —
 # untouched). No retaining lip: a plain clearance pocket. The top is capped at the cover
-# underside so the 1.0 mm lid is NOT
-# perforated (the can top is 12.2, leaving 0.3 mm of cover above it).
+# underside so the 1.0 mm lid is NOT perforated.
+#
+# The cap is sized off the CAN, not off the rim — see SLIDE_ACTUATOR_TOP_Z below for why that
+# distinction is the whole ballgame. (The old note here read "the can top is 12.2, leaving
+# 0.3 mm of cover above it" — stale: 12.2 came from FLOOR_THICKNESS 3.8.)
 #
 # These are STRUCTURAL mirrors of the datasheet-derived can/nub dims. The pcb_phantom
 # _SK12_* dims are marked "phantom-only, not structural" — do NOT import them here;
@@ -724,16 +792,26 @@ SLIDE_SCOOP_X_SHIFT      = 0.4   # mm; slide the WHOLE cutter toward −X (out t
 # tracks the switch exactly without coupling structure to the phantom module.
 SLIDE_ACTUATOR_BODY_W       = 4.4  # mm; metal can width (perp. to pin row, local Y)
 SLIDE_ACTUATOR_BODY_L       = 4.0  # mm; metal can length (along pin row, local X)
-SLIDE_ACTUATOR_BODY_H       = 4.3  # mm; metal can height above the PCB (reference)
 SLIDE_ACTUATOR_NUB_L        = 3.5  # mm; actuator nub length along pin row (local X)
 SLIDE_ACTUATOR_NUB_D        = 3.0  # mm; actuator protrusion beyond the can edge (local -Y)
-SLIDE_ACTUATOR_NUB_H        = 2.0  # mm; actuator height above the can top (reference)
 SLIDE_ACTUATOR_PIN_CENTER_X = 2.0  # mm; can centre offset from footprint origin (local X)
+# BODY_H / NUB_BASE / NUB_H are defined with the measured Z stack ABOVE — the scoop needs them
+# first. They are the same OWNED structural values this block has always carried, only hoisted.
 SLIDE_ACTUATOR_PAD          = 0.5  # mm; clearance grown on every X/Y face of the pocket
 SLIDE_ACTUATOR_FLOOR_Z      = 0.0   # mm; pour depth for the drop-in channel (decoupled from the
 #                                      seam — the tub is now open below this anyway; kept as a
 #                                      registered clearance floor for the switch can/nub)
-SLIDE_ACTUATOR_TOP_Z        = MAIN_RIM_Z - 0.5   # mm; cover underside — do NOT perforate the lid (tracks the rim; was literal 12)
+# Pocket cap. It tracked MAIN_RIM_Z − 0.5, which is a datum the CAN knows nothing about: the
+# pocket is over the switch, not over the plate, so tying it to the plate stack made its
+# clearance an accident of MX_BODY_CLEAR. That accident was 0.9 mm of INTERFERENCE at the old
+# 4.3 mm can, and only ~0.15 mm of air at MX_BODY_CLEAR = 3.40. Now derived from the can it
+# actually has to clear, and clamped so the lid keeps at least SLIDE_ACTUATOR_LID_MIN of solid.
+SLIDE_ACTUATOR_CAP_CLEAR    = 0.3  # mm; air above the measured can — an FDM face lands ±0.2
+SLIDE_ACTUATOR_LID_MIN      = 0.5  # mm; solid cover that must survive above the pocket
+SLIDE_ACTUATOR_TOP_Z        = min(
+    PCB_TOP_Z + SLIDE_ACTUATOR_BODY_H + SLIDE_ACTUATOR_CAP_CLEAR,  # clear the can
+    COVER_TOP_Z - SLIDE_ACTUATOR_LID_MIN,                          # never perforate the lid
+)
 
 # ---------- Battery pocket (405070 LiPo cell: 50x70mm footprint) ----------
 # The footprint sits UNDER 12 switches, so the hotswap sockets (~2 mm below the PCB)

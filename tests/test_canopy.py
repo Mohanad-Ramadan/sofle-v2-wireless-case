@@ -112,7 +112,13 @@ def test_canopy_west_top_facet_runs_the_whole_shoulder(side):
         assert _solid_at(c, xw + 0.35, y, rz - 3.2, s=0.2), \
             f"{side}: west wall gone below the facet at Y={y} (cut too deep)"
     # The fuse overlap under the ramp foot must survive the facet's lead-in.
-    assert _solid_at(c, xw + 0.4, 60.0, 15.4), "facet ate the fuse overlap at the ramp foot"
+    # Derived, not a literal. This read 15.4 — which was MAIN_RIM_Z + 0.4 back when the rim was
+    # 15.0, and silently stopped tracking it. The fuse overlap is the band CANOPY_FUSE_BASE_Z
+    # (= MAIN_RIM_Z) -> COVER_TOP_Z, so the probe belongs just inside its floor; when the rim
+    # moved with MX_BODY_CLEAR the old number fell below the canopy entirely and the test read a
+    # missing part as an eaten facet.
+    assert _solid_at(c, xw + 0.4, 60.0, C.MAIN_RIM_Z + 0.4), \
+        "facet ate the fuse overlap at the ramp foot"
     east_top = [f for f in _curved_faces(c) if abs(f.center().X - xe) < 2.0
                 and f.center().Z > C.COVER_TOP_Z + 2 and f.center().Y > CAN.CANOPY_RAMP_TOP_Y]
     assert not east_top, "east top edge should stay sharp"
@@ -194,8 +200,13 @@ def test_canopy_nw_corner_is_rounded(side):
     which is what the geom_type assertion below pins, so a regression to the kink fails loudly."""
     c = build_canopy(side=side)
     xw, yn, r = CAN.CANOPY_WEST_OUTER_X, CAN.CANOPY_NORTH_OUTER_Y, CAN.CANOPY_CORNER_R
-    assert not _solid_at(c, xw + 0.3, yn - 0.3, 16.0), "NW corner is sharp, not rounded"
-    assert _solid_at(c, xw + 0.3, 100.0, 16.0), "west wall missing away from the corner"
+    # Derived, not a literal. This read 16.0 — which was COVER_TOP_Z back when the rim was 15.0,
+    # so the probe sat exactly ON the canopy's top face and stopped tracking the ladder the moment
+    # MX_BODY_CLEAR moved. Probe a fixed height up the canopy wall instead, well clear of both
+    # its base and its roof.
+    z = CAN.CANOPY_FUSE_BASE_Z + 0.6
+    assert not _solid_at(c, xw + 0.3, yn - 0.3, z), "NW corner is sharp, not rounded"
+    assert _solid_at(c, xw + 0.3, 100.0, z), "west wall missing away from the corner"
     corner_faces = [f for f in c.faces() if f.center().X < xw + r and f.center().Y > yn - r]
     kinds = sorted({str(f.geom_type).split(".")[-1] for f in corner_faces})
     assert kinds == ["CYLINDER"], \
