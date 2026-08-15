@@ -255,7 +255,15 @@ TENT_SEAM_RAMP_FRAC  = 0.64   # fraction of depth the wave takes to climb and co
 # harmless and was not: the desk keeps falling away under a level line, so the band re-opened
 # over the last stretch and the wave turned back up right at the end -- the one thing the
 # reference's sweep never does. It rises, peaks, and descends all the way out.
-SEAM_TAIL_SLOPE = 1.5   # x the desk slope; >1 means the band is still closing at the back edge
+#
+# NOT A FREE DIAL ANY MORE. Since the tail became a shoulder followed by a STRAIGHT run (see
+# SEAM_WAVE_KNOTS), the end tangent has to be the straight run's own gradient or the spline
+# curves out of the line it just spent 40 mm establishing. It is therefore derived:
+#     m * (crest_z - SEAM_NORTH_RISE_Z) / (OUTER_DEPTH - crest_y) / tan(TENT_ANGLE_DEG)
+#   = 1.4815 * 6.628 / 41.15 / 0.10510  =  2.27
+# Left as a literal because crest_y comes from the spline, which needs this value to exist --
+# regenerate it alongside the knots rather than editing either alone.
+SEAM_TAIL_SLOPE = 2.27   # x the desk slope; matches the straight run's gradient (was 1.5, an arc)
 
 # ---- The REVEAL: the two shells do not touch, and the gap is the design ----
 # The reference's parting line is not one line, it is TWO -- the top case's lower edge and the
@@ -354,17 +362,45 @@ SEAM_REVEAL_H = 2.0   # mm; vertical gap from the parting line down to the botto
 #   0.890   0.8500                 12.11           -0.68      rear skirt: the skin is back below Z=0
 #   0.950   0.8150                 11.61           -1.99
 #   1.000   (end)                  11.22           -3.02      the BACK EDGE, and still falling
+# THE TAIL KNOTS (u > 0.67) ARE NOT DIGITISED POINTS, they are a fitted curve, and that is a
+# deliberate difference from the climb above them. The climb's knots are read off the reference
+# directly. The tail's could not be: the reference's whole post-crest descent is 49 px in a
+# 3186 px image, so tracing noise is ~1 px = 2% of the drop and the individual points are mush.
+#
+# What survives the noise is the CHARACTER, and it is not an arc. Traced column by column, the
+# reference holds almost flat for the first third past the crest -- 12% of its total drop in the
+# first 30% of the run -- and then descends on a near-constant gradient the rest of the way. A
+# shoulder, then a straight. The old knots traced a symmetric arc instead: steepest in the
+# middle, easing at both ends, already twice as far down as the reference by 30% of the run.
+#
+# So the tail is generated from a model fitted to the trace rather than from the trace:
+#
+#     drop(s) = m * s^2 / (2*s0)      for s <= s0        (gradient ramps linearly 0 -> m)
+#     drop(s) = m * (s - s0/2)        for s >  s0        (gradient holds at m)
+#     s = fraction of the run from the crest to the back edge, drop = fraction of the total fall
+#     s0 = 0.65 (the shoulder), m = 1/(1 - s0/2) = 1.4815 (the straight-run gradient)
+#
+# Fitted at rms 0.028 of the drop against the trace, near its 0.020 noise floor. A power-law
+# family fits marginally better (0.018) but describes a curve that steepens forever and is never
+# straight, so it loses the one feature this change exists to reproduce -- and the difference is
+# 0.07 mm on a 6.63 mm fall, well under the print. The shape was chosen, not the residual.
+#
+# Knots are placed ON that model at even u, then the through-fit spline is checked back against
+# it: max error 0.076 mm, rms 0.056 mm. Move the model, regenerate the knots -- do not hand-edit
+# them, or the spline and the law it came from will drift apart.
 SEAM_WAVE_KNOTS = (
     (0.406, 0.0716),
     (0.485, 0.2992),
     (0.558, 0.6159),
     (0.598, 0.7690),
     (0.670, 0.9459),
-    (0.710, 0.9565),
-    (0.749, 0.9256),
-    (0.820, 0.8800),
-    (0.890, 0.8500),
-    (0.950, 0.8150),
+    (0.700, 0.9706),
+    (0.740, 0.9892),
+    (0.780, 0.9920),
+    (0.820, 0.9788),
+    (0.860, 0.9498),
+    (0.900, 0.9058),
+    (0.950, 0.8467),
 )
 
 # ---- How far the skirt stops SHORT of the desk: the reveal ----

@@ -219,5 +219,11 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     #               face are both at rim_outer, and OCC closes the hairline between them.
     #   (-2242.72 - 65.06 + 9.28 = -2298.50 against -2296.88 measured; the 1.6 mm³ residual is
     #    0.0008% and is boolean float noise.)
+    # Rebased +316.81 mm³ (+0.16%) when the wave's tail became a shoulder-then-straight instead
+    # of an arc. Holding the parting line high past the crest means the desk keeps dropping away
+    # under it, so the visible band is up to 1.38 mm taller through y≈100-110 — the band's own
+    # volume moved +303.81 of the +316.81, and the remaining +13.00 is the ground-rim chamfer
+    # cutting a slightly different rim. No dimension changed; the line just takes a different
+    # route between the same crest and the same back edge.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 195149.967198) < 2e-2
+    assert abs(build_bottom_part(side).volume - 195466.777850) < 2e-2

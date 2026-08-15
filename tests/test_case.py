@@ -80,23 +80,38 @@ def test_pocket_mouth_has_starter_chamfer():
     to air near the mouth, so the plate rim self-guides in and the mouth can't
     elephant-foot-pinch. Probed on a plain −X wall span."""
     from build123d import Solid
+
+    # Borrowed rather than duplicated: this is the same curve, and a second crossing-finder here
+    # would be one more thing to keep in step with the wave.
+    from tests.test_seam import _zero_crossings
     top = build_top_part("right")
-    # It used to sit at y2 + 5, on the old short ramp's northern run. The wave's ramp reaches
-    # y2 = 123.5 of a 126 mm case, so that station is now off the back of the part.
+    # DERIVED, NOT HARD-CODED, and it had to become so. The station must satisfy three things at
+    # once: a PLAIN −X wall span (the MCU hill and slide scoop own roughly y=72..104, where there
+    # is no skin to probe at this depth), SOUTH of the +Y relief bump at y=115 (north of it the
+    # wall is pushed out and its inner face is not the nominal offset computed below), and inside
+    # the REAR-SKIRT stretch where the parting line has dropped back under Z=0 — which is the case
+    # the mouth clamp below exists for.
     #
-    # y=110 is chosen against two constraints, both of which rule out most of the −X wall: it must
-    # be a PLAIN span (the MCU hill and slide scoop own roughly y=72..104, where there is no skin
-    # at this depth to probe), and it must be SOUTH of the +Y relief bump at y=115, where the wall
-    # is pushed out and its inner face is not the nominal offset computed here. It is also in the
-    # rear-skirt stretch, where the parting line runs below Z=0 and the mouth is back at Z=0 —
-    # which is the case the clamp below exists for.
-    y = 110.0
+    # y=110 satisfied all three until the wave grew its shoulder. Holding the line high past the
+    # crest moved the second Z=0 crossing from y≈108.9 back to y≈113.3, so y=110 is now ABOVE the
+    # line, its skin is cut away, and the test failed on a geometry that is perfectly correct.
+    # The window is real but narrow (≈1.7 mm), so it is computed and asserted rather than guessed,
+    # and the probe is sized to fit inside it.
+    BUMP_Y = 115.0
+    zc = _zero_crossings()[1]
+    lo, hi = zc + 0.3, BUMP_Y - 0.3
+    assert hi - lo > 0.6, (
+        f"the rear-skirt window has closed to {hi - lo:.2f} mm (crossing y={zc:.2f}, bump "
+        f"y={BUMP_Y}). There is nowhere left on a plain wall to probe the mouth from below the "
+        f"parting line — widen it or move the probe north of the bump and measure the wall")
+    y = (lo + hi) / 2.0
+    depth = min(3.0, hi - lo)
     # −X wall: outer face, then SEAM_SKIN inward = seated skirt-inner face.
     skin_inner = C.pcb_to_case(0, 0)[0] - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE + C.SEAM_SKIN
     probe_x = skin_inner - 0.15   # 0.15 inside the skin from the seated inner face
 
     def solid_at(z, s=0.12):
-        b = Solid.make_box(s, 3.0, s).translate((probe_x - s / 2, y - 1.5, z - s / 2))
+        b = Solid.make_box(s, depth, s).translate((probe_x - s / 2, y - depth / 2, z - s / 2))
         return (top & b).volume > 1e-6
 
     # Measured from the MOUTH, not from Z=0, because the mouth moves with the parting line —
