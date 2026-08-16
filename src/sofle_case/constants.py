@@ -847,6 +847,80 @@ SLIDE_ACTUATOR_TOP_Z        = min(
     COVER_TOP_Z - SLIDE_ACTUATOR_LID_MIN,                          # never perforate the lid
 )
 
+# ---------- Battery JST at J2 (S2B-XH-A-1, side entry) ----------
+# THE PART THE MODEL COULD NOT SEE. This is the wireless build's battery connector, and until
+# now it existed nowhere except a sentence: canopy.py's ramp-foot comment claims the slip
+# "starts climbing early enough to clear the JST beneath it" — an explicit clearance promise
+# with no constant, no phantom and no test behind it. Nothing ever checked it, and the case
+# would not shut.
+#
+# It is invisible to the data too, and that is not the CPL's fault. data/raw/CPL-SofleKeyboard.csv
+# is the shared Sofle v2 placement file (U1's ProMicro footprint is what a nice!nano drops into),
+# and it lists J2 as a generic Conn_01x03_Female / PinSocket_1x03_P2.54mm_Vertical. The part
+# actually soldered there is a 2-circuit JST XH. No footprint, no envelope, and above all no
+# HEIGHT — so no data-driven check could have caught this. Only a datum can.
+#
+# HEIGHT, AND WHY IT IS 7.6. JST's own eXH.pdf, side-entry header table (page 5): the two
+# 2-circuit variants differ only in dimension C — S2B-XH-A is C:9.2, S2B-XH-A-1 is C:7.6. The
+# owner's part is the -1 (per the vendor URL), hence 7.6. Read the drawing, not the listing:
+#   * the vendor page advertises "assembled height 9.8 mm" — 9.8 is the TOP-ENTRY (B2B) figure,
+#     header 7.0 plus a mated XHP-2 housing. Wrong variant for an S-prefix part;
+#   * (6.1) is NOT a height. It is a horizontal dimension on the side view — and a 6.1 also
+#     appears in the Contact table as a crimp-terminal length. Two different things, neither
+#     of them this.
+# Every candidate reading of C busts the ABOVE-PCB budget, which is what forced the move below:
+# wafer 7.0 left 0.40 mm (under JST_CLEAR), C=7.6 fouled by 0.20, C=9.2 by 1.80. The owner's bench
+# observation — it touches the cover — settled that the real part is over 7.40.
+#
+# MOUNTED UNDER THE PCB, like the hotswap sockets. Standing on top it fouled the cover by
+# 34.2 mm^3 (2.016 mm thick, Z 15.98..18.00) — the only hardware fouling either printed part. The
+# fix is not to reshape the canopy around it but to move it out from under the canopy entirely,
+# into a blind pocket in the floor. The fastback is then untouched, and the trough between the
+# encoder plateau (underside 19.40, ends Y 59.80) and the ramp (19.20 by Y 69.0) stops mattering.
+#
+# WHICH WAY THE PLUG FACES IS A CLEARANCE DECISION, NOT A PREFERENCE. It enters from the NORTH so
+# the wire run leaves north and turns east at case Y ~72. Routing south instead puts the wires
+# 0.46 mm from the standoff at case (53.32, 58.79); north clears it by 10.46 mm.
+#
+# ASSUMED, NOT MEASURED — and DELIBERATELY OVERSIZED. C might be an overall height including the
+# legs rather than the height above the board; the datasheet drawing does not disambiguate it and
+# a caliper would. That ambiguity decided things when this was a 0.2 mm interference. It costs
+# almost nothing now: the pocket sits in ~14.5 mm of material (the tent wedge, not the nominal
+# floor) and still leaves ~8.9 mm beneath. The slack here is BUYING OFF the ambiguity — do not
+# "tighten" it back without measuring the installed part first.
+JST_POS       = (12.855, -48.735)  # PCB coords; the CPL's J2 row, not retyped by hand
+#               No rotation constant: the CPL's 90 deg describes the 1x03 socket originally
+#               footprinted at J2, not the XH re-soldered underneath. BODY_W/BODY_D below name
+#               their case axes outright, so a stale placement angle has nothing to act on.
+JST_BODY_H    = 7.6   # mm; hangs BELOW the PCB. Datasheet C for S2B-XH-A-1. See the note above.
+JST_BODY_W    = 7.4   # mm; datasheet B, 2 circuits (across the pitch) — lies along case X
+JST_BODY_D    = 9.5   # mm; side-view depth, (6.1) + (3.4) — the mating axis, along case Y
+JST_PLUG_RUN  = 4.8   # mm; how far the mated plug stands proud of the header. Datasheet-derived:
+#                       side-entry ASSEMBLY length (14.3) minus the header footprint (9.5).
+JST_WIRE_OD   = 1.9   # mm; JST's own max insulation OD. Two conductors run side by side.
+JST_WIRE_BEND = 3.0   # mm; room past the plug for the leads to turn without being pinched
+JST_CLEAR     = 0.5   # mm; air around the connector. Matches SLIDE_ACTUATOR_CAP_CLEAR's logic —
+#                       an FDM face lands +/-0.2.
+JST_BOTTOM_Z  = PCB_SEAT_Z - JST_BODY_H  # 1.20; PCB-anchored per the ENCODER_BODY_H fix (429adc9).
+#                                          It hangs off the BOARD, so the floor that has to clear
+#                                          it cannot be what defines its height.
+
+# Pocket: a blind recess cut down from the floor's top face, exactly like the battery pocket.
+JST_POCKET_PAD      = 0.5   # mm; per-side XY clearance around the connector envelope
+JST_POCKET_FLOOR_Z  = JST_BOTTOM_Z - JST_CLEAR             # 0.70; pocket floor
+JST_POCKET_DEPTH    = FLOOR_THICKNESS - JST_POCKET_FLOOR_Z  # 5.60; tracks the floor, as
+#                                                             BATTERY_POCKET_DEPTH does
+JST_POCKET_CORNER_R = 1.5   # mm; plan-corner fillet (battery uses 2.0; this pocket is smaller)
+
+# Wire channel: JST pocket -> battery pocket. NOT optional. Only STANDOFF_SHOULDER_H (2.5 mm) of
+# air exists under the PCB and the hotswap sockets already eat ~2.0 of it, so a 1.9 mm lead has
+# nowhere to cross the switch field without a channel cut into the floor.
+JST_CHANNEL_W       = 2 * JST_WIRE_OD + 1.2   # 5.0; two conductors side by side, plus slack
+JST_CHANNEL_DEPTH   = JST_WIRE_OD + 0.6       # 2.5; deep enough for wire, not for the connector
+JST_CHANNEL_FLOOR_Z = FLOOR_THICKNESS - JST_CHANNEL_DEPTH   # 3.80
+JST_CHANNEL_Y       = 76.0  # case Y of the run east. North of the pocket mouth and 17 mm clear of
+#                             the standoff at case (53.32, 58.79) — see the routing note above.
+
 # ---------- Battery pocket (405070 LiPo cell: 50x70mm footprint) ----------
 # The footprint sits UNDER 12 switches, so the hotswap sockets (~2 mm below the PCB)
 # hang over it. The pocket is now a DEEP recess in the thickened floor: it holds a

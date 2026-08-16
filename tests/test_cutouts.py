@@ -276,5 +276,18 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # the 0.02 residual is the entry chamfer meeting a shorter pin.
     # No outer dimension moved: everything the wedge, band and parting line touch is below the
     # seam, and nothing above PCB_SEAT_Z reaches them.
+    # Rebased −1186.87 mm³ (−0.61%) when the battery JST moved UNDER the PCB. Standing on the
+    # board it fouled the cover by 34.2 mm³ and was the only hardware holding the case open; the
+    # fix put it in a blind floor pocket with a wire channel to the battery, so the bottom loses
+    # that material. The delta is fully accounted for and worth checking rather than trusting:
+    #   jst_pocket             850.016
+    #   jst_wire_channel     + 361.813
+    #   shared overlap       −  12.500   (_CHANNEL_OVERLAP, 1.0 x 5.0 x 2.5, counted once)
+    #   union                = 1199.329
+    #   already-void         −  12.46    (the channel's east end reaches INTO the battery pocket,
+    #                                     which is air already — the same 1.0 x 5.0 x 2.5 slug)
+    #   removed              = 1186.87   measured −1186.867 (right) / −1186.862 (left)
+    # Still no outer dimension moved: the pocket bottoms at Z 0.70 and the channel at 3.80, both
+    # far above the wedge's own surfaces, so the ground plane and parting line are untouched.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 195454.848638) < 2e-2
+    assert abs(build_bottom_part(side).volume - 194267.983808) < 2e-2

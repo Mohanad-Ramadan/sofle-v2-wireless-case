@@ -21,7 +21,7 @@ from . import constants as C
 from .pcb_geometry import slide_switch_placement, rotate_2d
 from .tray import build_tray, offset_extruded
 from .standoffs import stepped_standoff
-from .battery import battery_pocket
+from .battery import battery_pocket, jst_pocket, jst_wire_channel
 from .top_cover import build_top_cover, _load_plate_cutouts
 from .canopy import build_canopy, usb_port_cutter, CANOPY_RIDGE_TOP_Z
 
@@ -167,6 +167,8 @@ def build_case_half(side: Side) -> Part:
     shell = cast(Part, shell)
 
     shell -= battery_pocket()
+    shell -= jst_pocket()
+    shell -= jst_wire_channel()
 
     shell = _as_part(shell)
 
@@ -758,6 +760,8 @@ def build_bottom_part(side: Side) -> Part:
         bottom = cast(Part, bottom + stepped_standoff(at=(cx, cy)))
 
     bottom = cast(Part, bottom - battery_pocket())
+    bottom = cast(Part, bottom - jst_pocket())
+    bottom = cast(Part, bottom - jst_wire_channel())
     bottom = cast(Part, bottom - _foot_recesses())
     bottom = _chamfer_wedge_ground_edge(_as_part(bottom))
     bottom = _as_part(bottom)

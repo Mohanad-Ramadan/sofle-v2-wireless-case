@@ -200,7 +200,7 @@ def test_split_conserves_volume(side):
     from typing import cast
     from tests.shared_builds import build_tray
     from sofle_case.standoffs import stepped_standoff
-    from sofle_case.battery import battery_pocket
+    from sofle_case.battery import battery_pocket, jst_pocket, jst_wire_channel
     from tests.shared_builds import build_top_cover
     from sofle_case.case import (_encoder_shell, _slide_scoop, _slide_actuator_cavity,
                                  _foot_recesses, tent_wedge, skirt_extension, seam_skirt_tub,
@@ -224,6 +224,12 @@ def test_split_conserves_volume(side):
     for hx, hy in C.MOUNTING_HOLES:
         ref = cast(Part, ref + stepped_standoff(at=C.pcb_to_case(hx, hy)))
     ref = cast(Part, ref - battery_pocket())
+    # The JST pocket and its wire channel are floor recesses like the battery's. Omitting them
+    # here does not fail as "missing pocket" — it fails as a 2939 mm³ SEAM GAP, because this test
+    # can only see the difference between the reference and the split halves, not where it came
+    # from. Any future floor recess has to be added here too or it will masquerade as seam loss.
+    ref = cast(Part, ref - jst_pocket())
+    ref = cast(Part, ref - jst_wire_channel())
     ref = cast(Part, ref - _foot_recesses())   # anti-slip feet are cut from the bottom plate
 
     # The RECESS is a void by design, not a seam gap: north of the sweep the parting line rides

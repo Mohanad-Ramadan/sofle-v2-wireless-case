@@ -144,6 +144,42 @@ def _slide_switch_body() -> Part:
     return bp.part
 
 
+def _jst_body() -> Part:
+    """Battery JST at J2 (S2B-XH-A-1, side entry) with its mated plug — hung UNDER the PCB.
+
+    Drawn so the viewer SHOWS it. This connector was clearance-critical and invisible for the
+    whole life of the design: standing on top of the board it fouled the cover by 34.2 mm^3 and
+    was the only hardware holding the case open, while ``canopy.py``'s ramp-foot comment *claimed*
+    to clear it. A phantom is the difference between a fit-check that can catch that and one that
+    cannot, which is the entire reason this function exists.
+
+    It now hangs below ``PCB_SEAT_Z`` like the hotswap sockets, into a floor pocket. The plug is
+    drawn too, at the full body section rather than its true smaller housing: this box is a
+    CLEARANCE ENVELOPE and the pocket is blind with ~8.9 mm of material under it, so erring large
+    costs nothing and erring small is how the original bug happened.
+
+    Reads its dims from ``constants``, unlike the ``_SK12_*`` block above. Those are marked
+    phantom-only because structure keeps its own copy; the JST envelope IS the structural datum —
+    the pocket and the clearance test measure against these same numbers.
+
+    No ``JST_ROT``: the CPL rotation describes the 1x03 socket originally footprinted at J2, not
+    the XH re-soldered underneath. ``JST_BODY_W``/``JST_BODY_D`` name their case axes directly, so
+    applying a stale placement angle on top would rotate the envelope off the part it represents.
+    """
+    cx, cy = C.pcb_to_case(*C.JST_POS)
+    body_z = C.JST_BOTTOM_Z + C.JST_BODY_H / 2
+    plug_y = cy + C.JST_BODY_D / 2 + C.JST_PLUG_RUN / 2   # plug enters from the NORTH
+
+    with BuildPart() as bp:
+        with Locations((cx, cy, body_z)):
+            Box(C.JST_BODY_W, C.JST_BODY_D, C.JST_BODY_H)
+        with Locations((cx, plug_y, body_z)):
+            Box(C.JST_BODY_W, C.JST_PLUG_RUN, C.JST_BODY_H)
+
+    assert bp.part is not None
+    return bp.part
+
+
 def build_pcb_phantom(side: str = "right", include_encoder: bool = True) -> Part:
     """PCB plate + MCU daughter board + USB-C jack stub + slide-switch body + pin holes + EC11 & knob.
 
@@ -154,7 +190,7 @@ def build_pcb_phantom(side: str = "right", include_encoder: bool = True) -> Part
     switch) and this module never picked it up, so the encoder was invisible in every fit-check.
     Pass ``include_encoder=False`` if something else in the scene already draws it."""
     children = [_pcb_plate(), _mcu_block(), _usb_c_stub(side),
-                _slide_switch_body(), _slide_switch_pin_holes()]
+                _slide_switch_body(), _slide_switch_pin_holes(), _jst_body()]
     if include_encoder:
         from .encoder_phantom import build_encoder_phantom
         children.append(build_encoder_phantom())      # EC11 + its knob
