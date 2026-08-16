@@ -7,9 +7,16 @@ is a global property and nothing asserted it:
   * the encoder plateau clipped the EC11 body            (fixed, 7a54949)
   * the cover windows bound on 29 switch collars         (fixed, d60d25d)
   * the plate rode on the switches, not the standoffs    (fixed, MX_BODY_CLEAR + PIN_RECESS)
+  * the battery JST fouled the cover by 34.2 mm^3        (fixed by moving it under the PCB)
 
 Each one held the TOP off the switch plate on its own, and each one passed every test that
-existed at the time. All three were found by printing the case, not by running the suite.
+existed at the time. All four were found by printing the case, not by running the suite.
+
+The JST is the sharpest lesson of the four. It was not a number that drifted — it was a part with
+NO datum anywhere, absent from the CPL (J2 is footprinted as a generic 1x03 socket) and present in
+the source only as a sentence in ``canopy.py`` promising the ramp "starts climbing early enough to
+clear the JST beneath it". Nothing could check a claim about a part the model did not represent.
+A phantom that does not exist cannot foul anything, and that reads exactly like success.
 
 This module asserts the property directly: with every piece of hardware at its modelled height,
 no hardware may touch either printed part, and it must not merely miss — it must miss with room
@@ -27,11 +34,12 @@ file can see that. The SK12 slide-switch dims in particular are ASSUMED, not mea
 from typing import cast
 
 import pytest
-from build123d import Part, Plane, Pos, mirror
+from build123d import Part, Plane, Pos, Solid, mirror
 
 from sofle_case import constants as C
 from sofle_case import knob as K
 from sofle_case.pcb_phantom import (
+    _jst_body,
     _mcu_block,
     _pcb_plate,
     _slide_switch_body,
@@ -54,6 +62,11 @@ MIN_CLEARANCE = 0.3
 # extrusion width there is nothing a printer could lay down, so there is nothing to collide with.
 MIN_OBSTRUCTION = 0.05
 
+# Solid floor that must survive beneath the JST pocket. Set against BATTERY_FLOOR_BASE (2.0), which
+# is what the battery pocket keeps — the JST pocket goes deeper, so it gets the same duty of care
+# rather than a looser one just because the wedge happens to be generous where it lands.
+JST_MIN_FLOOR_UNDER = 2.0
+
 
 def _mirrored(part: Part, side: str) -> Part:
     """Phantoms are authored in RIGHT-hand coords, as the case is; the left half is the mirror."""
@@ -71,8 +84,38 @@ def _hardware(side: str) -> list[tuple[str, Part]]:
         ("nice!nano", _mirrored(_mcu_block(), side)),
         ("USB-C jack", _mirrored(_usb_c_stub(side), side)),
         ("slide switch", _mirrored(_slide_switch_body(), side)),
+        ("battery JST", _mirrored(_jst_body(), side)),
         ("EC11 knob", _mirrored(K.place_knob(bottomed=True), side)),
     ]
+
+
+def _solid_at(part: Part, x: float, y: float, z: float, s: float = 0.3) -> bool:
+    probe = Solid.make_box(s, s, s).translate((x - s / 2, y - s / 2, z - s / 2))
+    hit = part & probe
+    return hit is not None and cast(Part, hit).volume > 1e-6
+
+
+def _solid_run_down(part: Part, x: float, y: float, z_start: float, z_min: float,
+                    step: float = 0.1) -> float:
+    """Thickness of the first CONTIGUOUS band of material found walking DOWN from ``z_start``.
+
+    Contiguous on purpose. Taking ``z_start`` minus the deepest solid point anywhere below would
+    count voids as material and report a floor that is not there — which is the exact class of
+    false pass this module exists to stop.
+
+    Probes the built solid rather than computing a thickness from the constants that produced it;
+    the material here comes from the tent wedge, not from the floor constants, so arithmetic over
+    those constants would be measuring the wrong feature.
+    """
+    z = z_start
+    while z > z_min and not _solid_at(part, x, y, z):
+        z -= step
+    if z <= z_min:
+        return 0.0
+    top = z
+    while z > z_min and _solid_at(part, x, y, z):
+        z -= step
+    return top - z
 
 
 def _overlap(part: Part, body: Part) -> tuple[float, float, str]:
@@ -125,6 +168,76 @@ def test_hardware_clearance_is_real_not_coincident(side):
                              f"clearance is under that")
     assert not tight, (
         "hardware clears by less than " + f"{MIN_CLEARANCE} mm:\n  " + "\n  ".join(tight))
+
+
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_the_floor_carries_real_material_under_the_jst_pocket(side):
+    """The JST pocket is deep, and what stops it becoming a hole is the tent wedge, not the floor.
+
+    ``JST_POCKET_FLOOR_Z`` sits 0.70 mm above Z=0 — against the nominal 6.3 mm floor alone that
+    would be a near-breakthrough. It is safe only because the wedge carries ~14.5 mm of material
+    here. That margin belongs to a DIFFERENT feature than the one that consumes it, so it is
+    asserted by probing the built solid rather than by arithmetic over the constants that built
+    the pocket. If the tent angle, the wedge, or the pocket depth ever move, this is what notices.
+    """
+    bottom = build_bottom_part(side)
+    x, y = C.pcb_to_case(*C.JST_POS)
+    if side == "left":
+        x = C.OUTER_WIDTH - x          # phantoms are right-handed; so is this point
+
+    thickness = _solid_run_down(bottom, x, y, C.JST_POCKET_FLOOR_Z - 0.05, -20.0)
+    assert thickness >= JST_MIN_FLOOR_UNDER, (
+        f"only {thickness:.2f} mm of material survives under the JST pocket at case "
+        f"({x:.2f}, {y:.2f}); {JST_MIN_FLOOR_UNDER} mm is the floor. The pocket bottoms at "
+        f"Z {C.JST_POCKET_FLOOR_Z:.2f} and relies on the tent wedge to be there — check whether "
+        f"the wedge moved, not the pocket"
+    )
+
+
+def test_the_wire_channel_actually_joins_the_two_pockets():
+    """A channel that stops short of either pocket is a groove in the floor, not a wire route.
+
+    Both pockets are separate cutters, so nothing forces them to meet; if they merely abutted,
+    OCC could read a zero-width face as no intersection and the render would show an open path
+    the leads cannot actually take. Asserted on the cutter geometry itself, since that is where
+    the join is decided.
+    """
+    from sofle_case.battery import _jst_pocket_bounds, battery_pocket, jst_wire_channel
+
+    ch = jst_wire_channel().bounding_box()
+    _, pocket_x_hi, pocket_y_lo, pocket_y_hi = _jst_pocket_bounds()
+    bat = battery_pocket().bounding_box()
+
+    assert ch.min.X < pocket_x_hi, (
+        f"channel starts at X {ch.min.X:.2f}, east of the JST pocket's edge {pocket_x_hi:.2f} — "
+        f"the leads would have to cross solid floor to reach it")
+    assert ch.max.X > bat.min.X, (
+        f"channel ends at X {ch.max.X:.2f}, short of the battery pocket at {bat.min.X:.2f}")
+    assert pocket_y_lo < ch.min.Y and ch.max.Y < pocket_y_hi, (
+        f"channel mouth (Y {ch.min.Y:.2f}..{ch.max.Y:.2f}) is not inside the JST pocket's span "
+        f"(Y {pocket_y_lo:.2f}..{pocket_y_hi:.2f})")
+
+
+def test_the_wire_channel_misses_every_standoff():
+    """Routing north was a clearance decision, not a preference — this is what records it.
+
+    A run south of the pocket passes 0.46 mm from the standoff at case (53.32, 58.79), which is
+    inside the standoff's own wall. Nothing about the geometry prevents someone re-routing it
+    there later to shorten the leads.
+    """
+    from sofle_case.battery import jst_wire_channel
+
+    ch = jst_wire_channel().bounding_box()
+    r = C.STANDOFF_OD_LOWER / 2
+    for hx, hy in C.MOUNTING_HOLES:
+        cx, cy = C.pcb_to_case(hx, hy)
+        if not (ch.min.X - r < cx < ch.max.X + r):
+            continue
+        gap = min(abs(cy - ch.min.Y), abs(cy - ch.max.Y)) - r
+        overlaps = ch.min.Y - r < cy < ch.max.Y + r
+        assert not overlaps and gap >= 1.0, (
+            f"standoff at case ({cx:.2f}, {cy:.2f}) is {gap:.2f} mm from the wire channel "
+            f"(Y {ch.min.Y:.2f}..{ch.max.Y:.2f}) — the channel cuts into its base")
 
 
 def test_seam_ledge_gap_absorbs_the_plate_stack():
