@@ -120,9 +120,9 @@ Query them with `C.usb_jack_z(side)` and `canopy.canopy_usb_z(side)`; never hard
 
 #### The port is a STEPPED bore, not a straight hole
 
-The jack mouth sits **4.41 mm behind the canopy's outer face**. A USB-C plug only owns
+The jack mouth sits **3.32 mm behind the canopy's outer face**. A USB-C plug only owns
 6.65 mm of shell (`USB_PLUG_SHELL_L`), so a straight shell-sized hole would leave
-`6.65 − 4.41 =` **2.24 mm of engagement (34%)** — and its 4.66 mm height would stop the
+`6.65 − 3.32 =` **3.33 mm of engagement (50%)** — and its 4.66 mm height would stop the
 cable's overmold dead on the outer face anyway. That port would not accept a standard
 cable at all.
 
@@ -131,8 +131,16 @@ which is why a seated plug *looks* fully inserted. So the bore is stepped:
 
 | section | size | depth |
 |---|---|---|
-| overmold **pocket** (outer) | 12.85 × 7.00 | 2.76 mm |
-| shell **neck** (inner) | 11.00 × 4.66 | 1.65 mm |
+| overmold **pocket** (outer) | 12.85 × 7.00 | 1.67 mm |
+| shell **neck** (inner) | 11.00 × 4.66 | 1.08 mm |
+
+> The travel used to read 4.41 mm (2.24 mm / 34% engagement) against a 4.0 mm north wall.
+> Both numbers moved at once and for the same reason: the board's north face was anchored to
+> the wrong pin (see `MCU_PIN_TO_SOUTH_EDGE`), which put the jack 1.09 mm further south than
+> it really sits, and the canopy's north wall was 1.25 mm proud of the tray's own cavity face.
+> Fixing the anchor and landing the wall on `BAY_NORTH_INNER_Y` shortened the travel to 3.32
+> and the wall to 2.75. The pocket got shallower because the plug now has less wall to cross —
+> engagement is unchanged at the 5.0 mm target.
 
 The pocket lets the overmold sink into the wall and the shell picks that depth up
 one-for-one, giving `USB_PORT_ENGAGE_TARGET` = **5.0 mm (75%)**. The pocket is sized to the

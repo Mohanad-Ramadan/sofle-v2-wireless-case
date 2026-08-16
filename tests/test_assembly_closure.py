@@ -179,6 +179,68 @@ def test_hardware_clearance_is_real_not_coincident(side):
 
 
 @pytest.mark.parametrize("side", ["right", "left"])
+def test_the_mcu_has_air_in_front_of_it_not_just_beside_it(side):
+    """The nano and its jack must clear the bay's north wall in +Y, not merely miss it in Z.
+
+    Every other clearance test here lifts a body in Z, because that is the direction the case
+    closes. The MCU's problem is the other axis: its north face and the jack overhanging it run
+    at the wall, and the wall is what the board grows into when MCU_BODY_L grows. Push both
+    bodies NORTH by MIN_CLEARANCE and they must still miss — the Y-axis twin of
+    test_hardware_clearance_is_real_not_coincident.
+    """
+    top = build_top_part(side)
+    tight = []
+    for name, body in (("nice!nano", _mirrored(_mcu_block(), side)),
+                       ("USB-C jack", _mirrored(_usb_c_stub(side), side))):
+        pushed = cast(Part, Pos(0, MIN_CLEARANCE, 0) * body)
+        vol, thin, where = _overlap(top, pushed)
+        if thin > MIN_OBSTRUCTION:
+            tight.append(f"{name}: fouls by {vol:.3f} mm^3 ({thin:.3f} mm thick) at {where} "
+                         f"when pushed {MIN_CLEARANCE} mm north")
+    assert not tight, ("the MCU has under " + f"{MIN_CLEARANCE} mm in front of it:\n  "
+                       + "\n  ".join(tight))
+
+
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_the_north_bay_wall_is_one_flush_plane(side):
+    """Nothing may step inboard of ``BAY_NORTH_INNER_Y`` anywhere in the bay.
+
+    The tray cavity, the ceiling band above the plate top, and the canopy's north wall all bound
+    the same bay on the same side. They used to pick three different Y (118.75 / 116.09 / 117.50),
+    and the middle one was derived from ``MCU_BODY_N_Y`` — the ceiling band's face sat on exactly
+    the board's own north face, zero air by construction. That left a 1 mm-tall ledge running the
+    full width of the bay under the USB funnel, which the MCU has to be threaded past on the way
+    in and which no clearance test could see: the resting position measured 0.00 mm, and 0.00 mm
+    reads as a pass.
+
+    So this asserts the PROPERTY rather than the three numbers — walk a plane of probes just
+    south of the wall and require air everywhere. Any future feature that steps into the bay
+    trips it, whichever module grows it.
+    """
+    from sofle_case import canopy as CAN
+
+    top = build_top_part(side)
+    y = C.BAY_NORTH_INNER_Y - 0.2                      # just inboard of the wall: must be air
+    # Stay inside the bay: east of the west wall's inner face, west of the roof shell, and below
+    # the cavity's own roof underside (the roof itself is legitimately solid at this Y).
+    x_lo = CAN.CANOPY_WEST_OUTER_X + CAN.CANOPY_WEST_WALL + 1.0
+    x_hi = CAN.CANOPY_EAST_X - CAN.CANOPY_ROOF_WALL - 1.0
+    z_hi = CAN.canopy_ridge_top_z(side) - CAN.CANOPY_ROOF_WALL - 0.3
+
+    proud = []
+    xs = [x_lo + (x_hi - x_lo) * i / 5 for i in range(6)]
+    zs = [C.MAIN_RIM_Z + 0.2 + 0.8 * i for i in range(int((z_hi - C.MAIN_RIM_Z - 0.2) / 0.8) + 1)]
+    for x in xs:
+        px = C.OUTER_WIDTH - x if side == "left" else x
+        for z in zs:
+            if _solid_at(top, px, y, z):
+                proud.append(f"x={x:.1f} z={z:.1f}")
+    assert not proud, (
+        f"material stands proud of the bay's north face ({C.BAY_NORTH_INNER_Y:.2f}) at:\n  "
+        + "\n  ".join(proud))
+
+
+@pytest.mark.parametrize("side", ["right", "left"])
 def test_the_floor_carries_real_material_under_the_jst_pocket(side):
     """The JST pocket is deep, and what stops it becoming a hole is the tent wedge, not the floor.
 

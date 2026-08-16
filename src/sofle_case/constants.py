@@ -699,9 +699,9 @@ USB_JACK_H    = 3.16   # mm; mid-mount shell height (was 4.0 — a guess, 0.84 m
 USB_JACK_SINK = 1.00   # mm; shell depth BELOW the board's component-side face
 USB_JACK_PROUD = USB_JACK_H - USB_JACK_SINK   # 2.16; shell height above that face
 USB_JACK_Y_PROTRUDE = 1.0   # mm; measured: the jack's +Y face sits this far past the
-#                            nano board's +Y edge. The jack stops ~0.4 mm short of the
-#                            canopy north wall's inner face — only the plug bridges the
-#                            wall. (The pcb_phantom stub depth uses this.)
+#                            nano board's +Y edge. The jack stops 0.57 mm short of the
+#                            canopy north wall's inner face (BAY_NORTH_INNER_Y) — only the
+#                            plug bridges the wall. (The pcb_phantom stub depth uses this.)
 
 # Port-mouth DESIGN MARGINS around the jack body (NOT measurements — the values above are
 # the hardware; these are the slack the printed port adds). The canopy port cutter is the
@@ -720,10 +720,13 @@ USB_PORT_W_CLEAR  = 2.0   # mm; port width = USB_C_W + this (jack + plug clearan
 #
 #     engagement = USB_PLUG_SHELL_L − (wall outer face → jack mouth)
 #
-# Here the jack mouth sits 4.41 mm behind the canopy's outer face, so a straight shell-sized
-# hole leaves 2.24 mm of engagement (34%) AND blocks the overmold outright — that port would
+# Here the jack mouth sits 3.32 mm behind the canopy's outer face, so a straight shell-sized
+# hole leaves 3.33 mm of engagement (50%) AND blocks the overmold outright — that port would
 # not take a standard cable at all. The fix is a stepped bore: a wide outer POCKET that
 # admits the overmold for part of the wall, then a narrow NECK sized for the shell.
+# (That travel was 4.41 mm / 2.24 mm of engagement while the board's north face was anchored
+# to the wrong pin. Correcting the anchor moved the jack 1.09 mm toward the wall, which is a
+# problem for the CASE — see BAY_NORTH_INNER_Y — but a gift to the plug.)
 USB_PLUG_SHELL_L = 6.65   # mm; USB-IF plug shell insertion depth (shell itself 8.34 × 2.56)
 USB_OVERMOLD_W   = 12.35  # mm; USB-IF MAXIMUM plug overmold width.  Overmolds are NOT
 USB_OVERMOLD_H   = 6.50   # mm; USB-IF MAXIMUM plug overmold height. standardised, so sizing
@@ -1138,21 +1141,30 @@ SHOW_TOP_COVER      = True # True: adds the sandwich top cover to case.py __main
 # moved UP to the "MCU physical stack" block above the USB-C section: the jack bands are
 # now derived from the nano's board faces, so they must be declared before that block.
 
-# ---------- MCU board Y extent (anchored to the pin array, NOT centred on it) ----------
-# The nano is located by its 24 pin holes, so the board's Y faces must be derived from the
-# northmost pin — never from ``MCU_POS ± MCU_BODY_L/2``. That centred form happened to give
-# the right answer only while MCU_BODY_L was the nice!nano's 33.0, which IS centred on the
-# pins; at the SuperMini's 34.1 it silently walks the USB end 0.55 mm north and manufactures
-# a collision with the canopy wall. The extra 1.1 mm is at the FAR end (the SuperMini's extra
-# breakout pads): the footprint here is stock Pro Micro (0.600" rows, 2.54 pitch, 27.94 span,
-# see MCU_POS), and the board would not be Pro-Micro-drop-in if its USB end had moved.
-MCU_PIN_SPAN_Y      = 27.94   # mm; 11 × 2.54 between the outer pins — from the drill file
-MCU_PIN_TO_USB_EDGE = 2.53    # mm; northmost pin centre → the board's USB-end edge
-#                               (33.0 nice!nano centred on a 27.94 span ⇒ (33.0 − 27.94)/2)
-MCU_BODY_N_Y = pcb_to_case(*MCU_POS)[1] + MCU_PIN_SPAN_Y / 2 + MCU_PIN_TO_USB_EDGE  # 116.09
-MCU_BODY_S_Y = MCU_BODY_N_Y - MCU_BODY_L                                            # 81.99
+# ---------- MCU board Y extent (anchored to the SOUTH pin, NOT centred on the array) ----------
+# The nano is located by its 24 pin holes, so the board's Y faces must be derived from a PIN —
+# never from ``MCU_POS ± MCU_BODY_L/2``. That centred form happened to give the right answer
+# only while MCU_BODY_L was the nice!nano's 33.0, which IS centred on the pins; at any other
+# length it drifts, and it drifts on the end that matters. That trap is still live — see
+# tests/test_constants.py.
+#
+# WHICH pin is the anchor is the second half of the question, and it was answered wrong. This
+# used to derive the USB-end face from the NORTHMOST pin, which spends the SuperMini's extra
+# 1.1 mm (34.1 vs the nice!nano's 33.0) at the far/south end. Backwards. A Pro-Micro-footprint
+# board is 33.02 mm = the 27.94 mm pin span plus 2.54 mm of edge at EACH end, so it is the far
+# edge that the pin row pins down; a board longer than 33.0 grows NORTH, out over the USB end.
+# That is exactly why a SuperMini fouls a case cut for a nice!nano — the north face (board and
+# the jack overhanging it) lands in the canopy's north wall, and the case will not close over
+# it. Anchor south, let the length run north, and the collision is visible instead of invented
+# somewhere it is harmless.
+MCU_PIN_SPAN_Y        = 27.94   # mm; 11 × 2.54 between the outer pins — from the drill file
+MCU_PIN_TO_SOUTH_EDGE = 2.54    # mm; southmost pin centre → the board's FAR (non-USB) edge.
+#                                 Stock Pro Micro footprint: 27.94 + 2 × 2.54 = 33.02 ⇒ the
+#                                 33.0 mm board. This end is the datum; MCU_BODY_L sets the other.
+MCU_BODY_S_Y = pcb_to_case(*MCU_POS)[1] - MCU_PIN_SPAN_Y / 2 - MCU_PIN_TO_SOUTH_EDGE  # 83.08
+MCU_BODY_N_Y = MCU_BODY_S_Y + MCU_BODY_L                                              # 117.18
 # For reference: the PCB's own north edge at this column is 115.75, so the board overhangs
-# it by 0.34 mm — that overhang is the unsupported B+/B- pad end (see the relief below).
+# it by 1.43 mm — that overhang is the unsupported B+/B- pad end (see the relief below).
 
 # ---------- MCU +Y cover relief (B+/B- clearance) ----------
 # The nice!nano's B+/B- pads (unsoldered — meant for direct battery wire, no leg
@@ -1181,6 +1193,23 @@ MCU_Y_RELIEF_OVERLAP   = 1.0   # mm, fusion overlap into existing wall material
 # air. 20.0 (case X≈36.5) is the plate's own switch/bay boundary and sits ~1.5 mm
 # clear of the nice!nano's right edge (case X≈35).
 MCU_Y_RELIEF_CEILING_X = 20.0  # mm, PCB coords — east limit of the ceiling-band cavity
+
+# ---------- The north bay's inner face — ONE plane, tray floor to canopy roof ----------
+# The tray cavity, the ceiling band above the plate top, and the canopy's north wall all bound
+# the same bay on the same side, and each used to pick its own Y: 118.75, 116.09 and 117.50.
+# Three faces on one wall means two steps, and a step in the bay is a ledge the MCU has to be
+# threaded past on the way in. The middle one was the worst of them — bounding the ceiling band
+# at MCU_BODY_N_Y put its face on exactly the board's north face, zero air by construction, and
+# left a 1 mm-tall lip running the full width of the bay under the USB funnel.
+#
+# So they all land here instead. Anything that bounds the bay on the north consumes this and
+# nothing steps inboard of anything else; the MCU slides past one flat wall. Derived from the
+# relief target, so raising MCU_Y_RELIEF_TARGET_Y moves the wall, the cavity and the canopy
+# together (that is the escape hatch if the board ever measures longer than MCU_BODY_L).
+BAY_NORTH_INNER_Y = pcb_to_case(0, MCU_Y_RELIEF_TARGET_Y)[1] + PCB_XY_CLEARANCE   # 118.75
+assert BAY_NORTH_INNER_Y - (MCU_BODY_N_Y + USB_JACK_Y_PROTRUDE) >= 0.3, (
+    f"the north bay leaves {BAY_NORTH_INNER_Y - (MCU_BODY_N_Y + USB_JACK_Y_PROTRUDE):.2f} mm "
+    f"in front of the USB jack — the MCU will not go in")
 
 # ---------- Slide-switch slot X reach (−X wall) ----------
 # Inner-X bound the slide-switch slot cutter extrudes to. Derived from the −X wall

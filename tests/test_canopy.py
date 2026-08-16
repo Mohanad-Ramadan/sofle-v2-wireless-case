@@ -363,7 +363,7 @@ def test_canopy_usb_bands_differ_between_halves():
     Probed in each half's exclusive band (they overlap only through 19.6–21.1)."""
     left, right = build_canopy(side="left"), build_canopy(side="right")
     ncx = _mcu_cx()
-    yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_SIDE_WALL / 2
+    yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_NORTH_WALL / 2
     z_left_only, z_right_only = 17.5, 23.5
     assert not _solid_at(left, ncx, yw, z_left_only), "left port missing in its own band"
     assert _solid_at(right, ncx, yw, z_left_only), "right port reaches into the flipped band"
@@ -386,14 +386,22 @@ def test_canopy_fused_into_top_single_solid(side):
 def test_usb_jack_stops_short_of_the_north_wall():
     """The mid-mount jack must NOT reach the canopy's north wall — only the plug bridges it.
 
-    This is the guard for the MCU_BODY_L trap: the nano's USB-end face is anchored to its pin
-    array, so a longer board grows southward. Centring it on MCU_POS instead drives the jack
-    into the wall (0.14 mm at MCU_BODY_L = 34.1), which no geometry test would otherwise catch.
+    This is the guard for the MCU_BODY_L trap. The board is anchored at its SOUTH pin, so extra
+    length over the nice!nano's 33.0 grows NORTH, out over the USB end — which is exactly the
+    end that has a wall in front of it. At the SuperMini's 34.1 that is 1.09 mm of growth into a
+    0.41 mm gap, and it shipped: the printed case would not close over the board. Nothing else
+    in the suite sees it, because the phantom is built from the same anchor and a phantom in the
+    wrong place cannot foul anything.
+
+    The wall it is measured against is derived too (CANOPY_NORTH_WALL lands on the bay's one
+    north face), so this asserts the pair agree, not that either number was typed correctly.
     """
     jack_end   = C.MCU_BODY_N_Y + C.USB_JACK_Y_PROTRUDE
-    wall_inner = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_SIDE_WALL
+    wall_inner = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_NORTH_WALL
     assert jack_end < wall_inner, f"jack reaches the wall: {jack_end:.2f} >= {wall_inner:.2f}"
     assert wall_inner - jack_end > 0.3, "air gap under 0.3 mm — re-check the board Y anchor"
+    assert abs(wall_inner - C.BAY_NORTH_INNER_Y) < 1e-9, \
+        "the canopy's north wall has stepped off the bay's north face again"
 
 
 @pytest.mark.parametrize("side", ["right", "left"])

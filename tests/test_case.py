@@ -493,7 +493,7 @@ def test_top_usb_window_is_side_specific():
         inter = part & box
         return inter is not None and sum(ss.volume for ss in inter.solids()) > 1e-6
 
-    yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_SIDE_WALL / 2
+    yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_NORTH_WALL / 2
     z_left_only, z_right_only, z_shared = 17.5, 23.5, 20.4
     for side, open_z, solid_z in (("left", z_left_only, z_right_only),
                                   ("right", z_right_only, z_left_only)):

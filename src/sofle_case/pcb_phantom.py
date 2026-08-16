@@ -96,13 +96,13 @@ def _usb_c_stub(side: str = "right") -> Part:
     """USB-C jack body stub at the +Y face of the MCU block, at this half's measured band.
 
     The stub protrudes ``C.USB_JACK_Y_PROTRUDE`` (1.0 mm, measured) past the board's +Y
-    edge — the real jack stops ~0.4 mm short of the canopy north wall's inner face, so
+    edge — the real jack stops 0.57 mm short of the canopy north wall's inner face, so
     the viewer shows that air gap (only the plug bridges the wall). It was a 7.0 mm
     tongue that poked ~1.6 mm PAST the wall's outer face — a visual lie. On the FLIPPED
     half the jack hangs under the nano board: its Z band (17.64→20.80) falls inside
     ``_mcu_block``'s Z span, so only the 1.0 mm tongue shows there — expected."""
     cx, _ = C.pcb_to_case(*C.MCU_POS)
-    mcu_y_face = C.MCU_BODY_N_Y           # +Y (USB-end) face of the board = 116.09 case-Y
+    mcu_y_face = C.MCU_BODY_N_Y           # +Y (USB-end) face of the board = 117.18 case-Y
     stub_center_y = mcu_y_face + C.USB_JACK_Y_PROTRUDE / 2
     jack_lo, jack_hi = C.usb_jack_z(side)
     stub_h = jack_hi - jack_lo

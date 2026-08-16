@@ -259,22 +259,25 @@ def _mcu_y_relief_widen(rim_z: float = C.MAIN_RIM_Z) -> Part:
     Ceiling band (sandwich TOP only, rim_z > MAIN_RIM_Z): below the plate top the
     full X-span is hollowed as before (clearance for the nice!nano + B+/B- wires).
     Above the plate top — the band that becomes the TOP part's ceiling — the hollow
-    is bounded on TWO axes so the top closes down to just the battery-wire channel:
-      • X ≤ bay_x — the switch-column side (east of the bay) keeps its solid bump
-        material as ceiling; without this the switch column next to the MCU was
-        left open to air.
-      • Y ≤ board_y_hi (the nice!nano's +Y face) — the +Y relief strip out toward
-        the USB-C jack is NOT hollowed, so the ceiling closes over it. The USB-C
-        jack exits sideways over the +Y wall (into open air above the rim) and
-        needs no ceiling hole; the battery wire routes inward under the board and
-        drops through the bay, which stays open over the board footprint.
-    bay_x is the plate's own switch/bay boundary (MCU_Y_RELIEF_CEILING_X), which
-    also clears the nice!nano's right edge; board_y_hi is the module's +Y edge so
-    the ceiling starts exactly where the board ends (no board-edge interference)."""
+    is bounded on X only: X ≤ bay_x keeps the switch-column side (east of the bay)
+    solid, so it still reads as ceiling rather than being open to air. bay_x is the
+    plate's own switch/bay boundary (MCU_Y_RELIEF_CEILING_X), which also clears the
+    nice!nano's right edge.
+
+    On Y the band runs all the way out to ``BAY_NORTH_INNER_Y``, same as the base
+    box. It used to stop at ``MCU_BODY_N_Y`` — "the ceiling starts exactly where the
+    board ends" — on the grounds that the +Y strip out toward the jack needed closing.
+    It does not: everything above that strip is canopy interior under the canopy's own
+    roof, so leaving it solid closed nothing and opening it exposes nothing. What it
+    DID do was stand a 1 mm-tall ledge (MAIN_RIM_Z→COVER_TOP_Z) across the full width
+    of the bay, its face on exactly the board's north face — zero clearance by
+    construction, right under the USB funnel, precisely where the MCU has to pass on
+    the way in. Bounding a cavity by a component's own face is not a fit, it is a
+    collision that happens to measure 0.00."""
     _, x_full_hi = _mcu_y_relief_x_range()
     inner_x     = C.pcb_to_case(0, 0)[0] - C.PCB_XY_CLEARANCE          # −X inner wall face
     corner_y    = C.pcb_to_case(0, 0)[1]                              # polygon vertex Y; −X wall face ends here
-    y_new_inner = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.PCB_XY_CLEARANCE
+    y_new_inner = C.BAY_NORTH_INNER_Y                                  # the bay's one north face
     _, y_safe_lo = C.pcb_to_case(0, C.MCU_POS[1])                      # safely inside cavity
     z_mid = C.MAIN_RIM_Z + 0.01                                       # plate top: full-X clearance up to here
     base   = _axis_box(inner_x + 0.3, x_full_hi, y_safe_lo, y_new_inner, C.FLOOR_THICKNESS, z_mid)
@@ -282,10 +285,9 @@ def _mcu_y_relief_widen(rim_z: float = C.MAIN_RIM_Z) -> Part:
     widen  = cast(Part, base + corner)
     if rim_z > C.MAIN_RIM_Z + 1e-6:
         bay_x = C.pcb_to_case(C.MCU_Y_RELIEF_CEILING_X, 0)[0]
-        board_y_hi = C.MCU_BODY_N_Y                                    # nano's USB-end (+Y) face
         z_hi  = rim_z + 0.01
-        u_base   = _axis_box(inner_x + 0.3, bay_x, y_safe_lo, board_y_hi, z_mid, z_hi)
-        u_corner = _axis_box(inner_x, inner_x + 0.35, corner_y, board_y_hi, z_mid, z_hi)
+        u_base   = _axis_box(inner_x + 0.3, bay_x, y_safe_lo, y_new_inner, z_mid, z_hi)
+        u_corner = _axis_box(inner_x, inner_x + 0.35, corner_y, y_new_inner, z_mid, z_hi)
         widen = cast(Part, widen + u_base + u_corner)
     return widen
 
