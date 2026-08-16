@@ -860,17 +860,31 @@ SLIDE_ACTUATOR_TOP_Z        = min(
 # actually soldered there is a 2-circuit JST XH. No footprint, no envelope, and above all no
 # HEIGHT — so no data-driven check could have caught this. Only a datum can.
 #
-# HEIGHT, AND WHY IT IS 7.6. JST's own eXH.pdf, side-entry header table (page 5): the two
-# 2-circuit variants differ only in dimension C — S2B-XH-A is C:9.2, S2B-XH-A-1 is C:7.6. The
-# owner's part is the -1 (per the vendor URL), hence 7.6. Read the drawing, not the listing:
-#   * the vendor page advertises "assembled height 9.8 mm" — 9.8 is the TOP-ENTRY (B2B) figure,
-#     header 7.0 plus a mated XHP-2 housing. Wrong variant for an S-prefix part;
-#   * (6.1) is NOT a height. It is a horizontal dimension on the side view — and a 6.1 also
-#     appears in the Contact table as a crimp-terminal length. Two different things, neither
-#     of them this.
-# Every candidate reading of C busts the ABOVE-PCB budget, which is what forced the move below:
-# wafer 7.0 left 0.40 mm (under JST_CLEAR), C=7.6 fouled by 0.20, C=9.2 by 1.80. The owner's bench
-# observation — it touches the cover — settled that the real part is over 7.40.
+# HEIGHT: 6.5, MEASURED, and the datasheet agrees at (6.1). Read this before touching the number,
+# because it was wrong once and the error is instructive.
+#
+# eXH.pdf's side-entry pages carry two figures side by side, and they are DIFFERENT VIEWS:
+#   * LEFT is a plan view — "the PC board layout figure shown is viewed from the connector
+#     mounting surface". Dimension (C) lives here, running from the pin-hole row to the "Side
+#     edge of header on PCB". C is therefore a FOOTPRINT dimension in the plane of the board.
+#     It is what distinguishes S2B-XH-A (C:9.2) from S2B-XH-A-1 (C:7.6);
+#   * RIGHT is the side elevation. There (14.3), 4.5 and 7 run HORIZONTALLY, and the single
+#     vertical dimension is (6.1). That is the height above the PCB.
+#
+# This constant was first set to 7.6 by reading C as a height — a plan-view footprint number used
+# as an elevation. It survived because 7.6 was plausible and every check downstream was built on
+# it, so the model was self-consistent and confidently wrong. The owner's calipers caught it: 6.5
+# against the datasheet's 6.1, and the two agree. The vendor listing is wrong in the other
+# direction — it advertises "assembled height 9.8 mm", which is the TOP-ENTRY (B2B) figure (header
+# 7.0 plus a mated XHP-2 sitting on top of it), meaningless for an S-prefix side-entry part.
+#
+# The lesson is not "read more carefully". It is that a dimension letter is worthless without the
+# view it was drawn in, and a datasheet that puts a plan and an elevation next to each other will
+# hand you the wrong one without complaint.
+#
+# Above the PCB this fouled the cover no matter which figure was believed: the headroom at J2 is
+# 6.70 mm and every candidate (6.1, 6.5, 7.6) needs more than that once JST_CLEAR is counted. That
+# is what forced the move underneath, and it is why the wrong height did not change the decision.
 #
 # MOUNTED UNDER THE PCB, like the hotswap sockets. Standing on top it fouled the cover by
 # 34.2 mm^3 (2.016 mm thick, Z 15.98..18.00) — the only hardware fouling either printed part. The
@@ -882,21 +896,25 @@ SLIDE_ACTUATOR_TOP_Z        = min(
 # the wire run leaves north and turns east at case Y ~72. Routing south instead puts the wires
 # 0.46 mm from the standoff at case (53.32, 58.79); north clears it by 10.46 mm.
 #
-# ASSUMED, NOT MEASURED — and DELIBERATELY OVERSIZED. C might be an overall height including the
-# legs rather than the height above the board; the datasheet drawing does not disambiguate it and
-# a caliper would. That ambiguity decided things when this was a 0.2 mm interference. It costs
-# almost nothing now: the pocket sits in ~14.5 mm of material (the tent wedge, not the nominal
-# floor) and still leaves ~8.9 mm beneath. The slack here is BUYING OFF the ambiguity — do not
-# "tighten" it back without measuring the installed part first.
+# ALL THREE BODY DIMENSIONS ARE MEASURED on the installed connector (6.5 x 8.0 x 8.0). They
+# replace a datasheet-derived set that was wrong in BOTH directions at once, which is the part
+# worth remembering: the height ran 1.1 mm over and the length 1.5 mm over — harmless, they only
+# spend floor — but the WIDTH ran 0.6 mm UNDER. At the earlier 7.4 the pocket came out 8.4 mm
+# across for an 8.0 mm part: 0.2 mm a side, against an FDM face that lands +/-0.2. The pocket
+# would very likely not have accepted the connector at all, and nothing in the model could have
+# said so, because every check was built from the same wrong number.
+#
+# So: oversizing is NOT a substitute for measuring. Generous depth hid a tight width, and only a
+# caliper on the real part separated them.
 JST_POS       = (12.855, -48.735)  # PCB coords; the CPL's J2 row, not retyped by hand
 #               No rotation constant: the CPL's 90 deg describes the 1x03 socket originally
 #               footprinted at J2, not the XH re-soldered underneath. BODY_W/BODY_D below name
 #               their case axes outright, so a stale placement angle has nothing to act on.
-JST_BODY_H    = 7.6   # mm; hangs BELOW the PCB. Datasheet C for S2B-XH-A-1. See the note above.
-JST_BODY_W    = 7.4   # mm; datasheet B, 2 circuits (across the pitch) — lies along case X
-JST_BODY_D    = 9.5   # mm; side-view depth, (6.1) + (3.4) — the mating axis, along case Y
-JST_PLUG_RUN  = 4.8   # mm; how far the mated plug stands proud of the header. Datasheet-derived:
-#                       side-entry ASSEMBLY length (14.3) minus the header footprint (9.5).
+JST_BODY_H    = 6.5   # mm; MEASURED on the installed part. Datasheet corroborates: (6.1).
+JST_BODY_W    = 8.0   # mm; MEASURED, across the circuits — lies along case X
+JST_BODY_D    = 8.0   # mm; MEASURED, the mating axis — along case Y
+JST_PLUG_RUN  = 6.3   # mm; how far the mated plug stands proud of the header. Datasheet-derived:
+#                       side-entry ASSEMBLY length (14.3) minus the measured 8.0 body.
 JST_WIRE_OD   = 1.9   # mm; JST's own max insulation OD. Two conductors run side by side.
 JST_WIRE_BEND = 3.0   # mm; room past the plug for the leads to turn without being pinched
 JST_CLEAR     = 0.5   # mm; air around the connector. Matches SLIDE_ACTUATOR_CAP_CLEAR's logic —
