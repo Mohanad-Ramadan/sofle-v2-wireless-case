@@ -20,7 +20,8 @@ X width (case Y, south → north):
              edge chamfer (``_chamfer_west_top`` — an edge chamfer cannot survive the ramp
              spline's density). The USB-C port is cut
              through the north wall (required — the plug must pass; the jack itself stops
-             ~0.4 mm short of the wall's inner face, see C.USB_JACK_Y_PROTRUDE).
+             0.57 mm short of the wall's inner face, see C.USB_JACK_Y_PROTRUDE). The wall's
+             thickness is DERIVED, not chosen — see CANOPY_NORTH_WALL.
   • East   — plain vertical wall on the switch-column boundary.
 
 There is deliberately NO reset poke-hole. The roof over RSW1 is unbroken: a bore there could not
@@ -54,7 +55,7 @@ _YZ = Plane(origin=(0, 0, 0), x_dir=(0, 1, 0), z_dir=(1, 0, 0))
 # base drops one cover thickness so it OVERLAPS the cover/walls for a clean OCC union.
 # ---------------------------------------------------------------------------
 CANOPY_ROOF_WALL    = 1.5                       # roof + east-wall shell thickness
-CANOPY_SIDE_WALL    = 4.0                       # N + W wall thickness (case-like; thinned from 4.75
+CANOPY_WEST_WALL    = 4.0                       # W wall thickness (case-like; thinned from 4.75
                                                #   so the west cavity clears the nice!nano's west edge)
 CANOPY_ROOF_CLEAR   = 0.6                       # headroom over the USB-C body top
 # N/W walls land FLUSH on the drafted rim facet's top line (outer wall face pulled IN by the
@@ -64,6 +65,15 @@ CANOPY_WEST_OUTER_X = (C.pcb_to_case(0, 0)[0] - C.WALL_THICKNESS - C.PCB_XY_CLEA
                        + C.RIM_FACET_RUN)                                                   # ≈ 10.5
 CANOPY_NORTH_OUTER_Y = (C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1]
                         + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE - C.RIM_FACET_RUN)           # ≈ 121.5
+# The north wall is NOT free to pick its own thickness: its inner face is the bay's one north
+# face (C.BAY_NORTH_INNER_Y), so the canopy continues the tray wall upward instead of stepping
+# inboard of it. It used to share the west wall's 4.0, which put this face 1.25 mm proud of the
+# tray's and drove the wall into the USB jack. Thickness is what falls out — 2.75 — not what is
+# chosen. Still thicker than CANOPY_ROOF_WALL, and the overmold pocket is checked against it
+# below (CANOPY_USB_OM_DEPTH) so the port cannot bore through into the bay.
+CANOPY_NORTH_WALL   = CANOPY_NORTH_OUTER_Y - C.BAY_NORTH_INNER_Y                             # 2.75
+assert CANOPY_NORTH_OUTER_Y - CANOPY_NORTH_WALL \
+       - (C.MCU_BODY_N_Y + C.USB_JACK_Y_PROTRUDE) >= 0.5, "the jack is back in the wall"
 CANOPY_EAST_X       = 34.6                       # switch-column boundary (bay east edge)
 # Ramp foot: the slip merges DOWN into the cover surface (tangent, no raised tongue) AND lands
 # on the encoder plateau's north face, so the open bay strip in front of the plateau is CLOSED
@@ -113,8 +123,8 @@ CANOPY_NORTH_FACET_DROP = CANOPY_NORTH_ROUND_R
 # on the right half, 66.9 on the left — the shorter left ramp climbs slower per mm of Y).
 # Heights. The ramp foot merges at the cover surface; the body base drops one cover thickness
 # (to MAIN_RIM_Z) so it overlaps the cover/walls for a clean fuse into the TOP.
-CANOPY_FOOT_Z       = C.COVER_TOP_Z                                # 13.5; ramp foot = cover surface
-CANOPY_FUSE_BASE_Z  = C.MAIN_RIM_Z                                 # 12.5; base overlaps the cover for the fuse
+CANOPY_FOOT_Z       = C.COVER_TOP_Z                                # ramp foot = cover surface
+CANOPY_FUSE_BASE_Z  = C.MAIN_RIM_Z                                 # base overlaps the cover for the fuse
 # ---------------------------------------------------------------------------
 # USB port STEPPED bore: overmold pocket (outer) → shell neck (inner).
 # See constants.USB_PLUG_SHELL_L for why: the jack mouth sits well behind the outer face, so
@@ -124,13 +134,19 @@ CANOPY_USB_OM_W = C.USB_OVERMOLD_W + C.USB_OVERMOLD_CLEAR      # 12.85; pocket w
 CANOPY_USB_OM_H = C.USB_OVERMOLD_H + C.USB_OVERMOLD_CLEAR      # 7.00;  pocket height
 # How far the plug must travel from the outer face before it reaches the jack, and how deep
 # the pocket must therefore be so USB_PORT_ENGAGE_TARGET of shell ends up inside the jack.
-CANOPY_USB_TRAVEL    = CANOPY_NORTH_OUTER_Y - (C.MCU_BODY_N_Y + C.USB_JACK_Y_PROTRUDE)       # 4.41
-CANOPY_USB_OM_DEPTH  = C.USB_PORT_ENGAGE_TARGET - (C.USB_PLUG_SHELL_L - CANOPY_USB_TRAVEL)   # 2.76
+CANOPY_USB_TRAVEL    = CANOPY_NORTH_OUTER_Y - (C.MCU_BODY_N_Y + C.USB_JACK_Y_PROTRUDE)       # 3.32
+CANOPY_USB_OM_DEPTH  = C.USB_PORT_ENGAGE_TARGET - (C.USB_PLUG_SHELL_L - CANOPY_USB_TRAVEL)   # 1.67
 # Minimum solid wall left above the pocket, measured where the north wall's top round-over
 # starts eating material (at CANOPY_RIDGE_TOP_Z − CANOPY_NORTH_ROUND_R). Without this term
 # a 7 mm-tall pocket breaks out through the rounded top shoulder and the port stops being a
 # closed hole.
 CANOPY_USB_OM_ROOF_MIN = 0.5
+# The pocket is cut inward from the outer face, so it has to stop inside the wall — otherwise it
+# breaks through into the bay and the "stepped bore" is just a hole. Free while the wall was 4.0;
+# an assert now that the wall's thickness is derived rather than chosen.
+assert CANOPY_USB_OM_DEPTH < CANOPY_NORTH_WALL, (
+    f"the overmold pocket ({CANOPY_USB_OM_DEPTH:.2f}) bores through a "
+    f"{CANOPY_NORTH_WALL:.2f} mm north wall")
 
 
 def canopy_usb_om_z(side: str) -> tuple[float, float]:
@@ -168,7 +184,7 @@ CANOPY_RIDGE_TOP_Z = max(canopy_ridge_top_z(s) for s in ("left", "right"))   # 2
 # NW corner radius = the case's own rounded corner AT the facet's rim line.
 CANOPY_CORNER_R     = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE - C.RIM_FACET_RUN                # ≈ 3.25
 # USB-C port through the north wall — REQUIRED: the plug must pass the wall (the jack itself
-# stops ~0.4 mm short of the inner face — C.USB_JACK_Y_PROTRUDE; it used to sit open over the
+# stops 0.57 mm short of the inner face — C.USB_JACK_Y_PROTRUDE; it used to sit open over the
 # +Y wall). Centred on the MCU X column. The BAND is per-half: the two MCU orientations put
 # the jack at different Z, so left and right are NOT mirror images here (left 16.84→21.5,
 # right 19.6→24.26; they overlap through 19.6→21.5). The design margins live in constants.py
@@ -410,7 +426,7 @@ def usb_port_cutter(side: str) -> Part:
     # boolean never leaves a skin).
     lo, hi = canopy_usb_z(side)
     neck = _bore(CANOPY_USB_W, lo, hi,
-                 (CANOPY_NORTH_OUTER_Y - CANOPY_SIDE_WALL) - 1.0, CANOPY_NORTH_OUTER_Y + 1.0)
+                 (CANOPY_NORTH_OUTER_Y - CANOPY_NORTH_WALL) - 1.0, CANOPY_NORTH_OUTER_Y + 1.0)
     # POCKET — overmold-sized, only the outer CANOPY_USB_OM_DEPTH of the wall. This is what
     # buys the shell its engagement: without it the overmold stops dead on the outer face.
     plo, phi = canopy_usb_om_z(side)
@@ -775,7 +791,7 @@ def build_canopy(hollow: bool = True, side: str = "right", puzzle: bool = True) 
     x_w, x_e = CANOPY_WEST_OUTER_X, CANOPY_EAST_X
     y_n = CANOPY_NORTH_OUTER_Y
     z_base, z_ridge = CANOPY_FUSE_BASE_Z, canopy_ridge_top_z(side)
-    w_roof, w_side = CANOPY_ROOF_WALL, CANOPY_SIDE_WALL
+    w_roof, w_west, w_north = CANOPY_ROOF_WALL, CANOPY_WEST_WALL, CANOPY_NORTH_WALL
     chamfer_v, chamfer_h = canopy_top_chamfer(side)
 
     ramp_span = (CANOPY_RAMP_FOOT_Y, CANOPY_RAMP_TOP_Y)
@@ -790,15 +806,16 @@ def build_canopy(hollow: bool = True, side: str = "right", puzzle: bool = True) 
 
     if hollow:
         # Roofline-following cavity, open at the bottom (over the bay). Roof/east wall =
-        # CANOPY_ROOF_WALL; the N/W walls stay CANOPY_SIDE_WALL thick (match the case). The
-        # cavity starts at the ramp foot and its floor is open, so the fuse-overlap band below
-        # the cover top is left solid to merge into the cover.
-        y_n_inner = y_n - w_side
+        # CANOPY_ROOF_WALL; the west wall keeps CANOPY_WEST_WALL and the north wall lands on the
+        # bay's one north face (CANOPY_NORTH_WALL). The cavity starts at the ramp foot and its
+        # floor is open, so the fuse-overlap band below the cover top is left solid to merge
+        # into the cover.
+        y_n_inner = y_n - w_north
         cav_roof = [(y, z - w_roof) for (y, z) in roof
                     if CANOPY_RAMP_FOOT_Y - 1e-6 <= y <= y_n_inner]
         cav_roof.append((y_n_inner, z_ridge - w_roof))
         cav = _yz_prism(_dedup(cav_roof), z_base=z_base - 3.0,
-                        x_lo=x_w + w_side, x_width=(x_e - w_roof) - (x_w + w_side),
+                        x_lo=x_w + w_west, x_width=(x_e - w_roof) - (x_w + w_west),
                         spline_range=ramp_span)
         shell = cast(Part, shell - cav)
 

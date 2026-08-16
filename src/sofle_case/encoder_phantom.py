@@ -27,20 +27,38 @@ from build123d import Part, Solid
 
 from . import constants as C
 
-# --- measured, already in constants.py -------------------------------------
-BODY_TOP_Z = C.ENCODER_BODY_TOP_Z          # 17.0 — measured on the real board
-BODY_H = BODY_TOP_Z - C.PCB_TOP_Z          # 6.6  — follows from the measurement
+# --- PCB-anchored, already in constants.py ----------------------------------
+BODY_H = C.ENCODER_BODY_H                  # 7.0 — see constants.py note: held above two
+                                            # vendor-datasheet readings (~6.0-6.5) as a margin
+BODY_TOP_Z = C.ENCODER_BODY_TOP_Z          # PCB top + BODY_H
 
 # --- standard EC11E envelope (assumed; verify with calipers) ---------------
 BODY_W = 12.4          # mm; square body
 BODY_LUG_W = 13.9      # mm; across the two mounting lugs (wider than the body in X)
 BODY_LUG_H = 1.2       # mm; lug thickness, sitting at the body's base
-BUSHING_DIA = 7.0      # mm; threaded collar, M7 × 0.75
-BUSHING_H = 5.0        # mm; above the body top
+BUSHING_DIA = 7.0      # mm; threaded collar, M7 × 0.75 — diameter only, see BUSHING_H
+BUSHING_H = 0.0        # mm; ABSENT on this part. Was 5.0, assumed off the ALPS panel-mount
+                       #   envelope, and it was load-bearing: knob.knob_hem_z treated the collar as
+                       #   the floor the knob rests on. It cannot be there. The knob's Ø6 bore takes
+                       #   16 mm of the 20 mm shaft (measured), and a Ø6 bore cannot pass a Ø7
+                       #   collar — a 5 mm collar would cap coverage at 15 mm. The user also looked
+                       #   for a collar on the assembled board and found only the locating LEG on
+                       #   the box edge. The generic ALPS drawing does show a stepped section at the
+                       #   shaft base, but that drawing is the panel-mount variant and already
+                       #   disagrees with this clone on body height (4.5 vs ~6.5), so it does not
+                       #   describe this part. 0.0 draws no collar at all; anything up to 3.5 would
+                       #   not change the seating anyway (the plateau top is the taller floor).
 SHAFT_DIA = 6.0        # mm; knurled
 SHAFT_LEN = 20.0       # mm; from the mounting face (= body top), per the listing's "20 mm"
 PIN_LEN = 3.5          # mm; below the PCB
 PIN_W = 0.8
+
+# Measured: a small metal locating leg standing up from the body top, on the same edge the
+# 3 solder pins exit from, in line with the shaft (X-centered). At BODY_H=7.0 it lands 1.6 mm
+# short of ENCODER_CAVITY_TOP_Z, so this 0.8 mm leg has 0.8 mm to spare — no collision, purely
+# cosmetic accuracy for the phantom.
+LEG_W = 1.0            # mm; square post, tiny — no listing/datasheet reference, just calipers
+LEG_H = 0.8            # mm; above the body top
 
 SHAFT_TOP_Z = BODY_TOP_Z + SHAFT_LEN       # 37.0 with the assumed 20 mm
 BUSHING_TOP_Z = BODY_TOP_Z + BUSHING_H     # 22.0
@@ -61,21 +79,30 @@ def build_ec11(trimmed: bool = True) -> Part:
 
     No ``side``: the case itself is built right-handed and mirrored as a whole, so phantoms follow
     the same rule and the caller mirrors them. Mirroring here as well would put the encoder back on
-    the wrong half of a left build."""
+    the wrong half of a left build.
+
+    Pins exit on the −X edge, toward the case's west wall (SW_ENCODER_POS sits 23 mm from the west
+    wall vs 50 mm from the thumb cluster to the south — west is the near, physical wall the real
+    board's pin row backs onto). Was modeled on the −Y edge, facing the thumb cluster; corrected
+    from the user's own read of the assembled board."""
     ex, ey = C.pcb_to_case(*C.SW_ENCODER_POS)
     shaft_len = shaft_len_trimmed() if trimmed else SHAFT_LEN
 
     body = Solid.make_box(BODY_W, BODY_W, BODY_H).translate(
         (ex - BODY_W / 2, ey - BODY_W / 2, C.PCB_TOP_Z))
-    lugs = Solid.make_box(BODY_LUG_W, BODY_W * 0.5, BODY_LUG_H).translate(
-        (ex - BODY_LUG_W / 2, ey - BODY_W * 0.25, C.PCB_TOP_Z))
-    bushing = Solid.make_cylinder(BUSHING_DIA / 2, BUSHING_H).translate((ex, ey, BODY_TOP_Z))
+    lugs = Solid.make_box(BODY_W * 0.5, BODY_LUG_W, BODY_LUG_H).translate(
+        (ex - BODY_W * 0.25, ey - BODY_LUG_W / 2, C.PCB_TOP_Z))
     shaft = Solid.make_cylinder(SHAFT_DIA / 2, shaft_len).translate((ex, ey, BODY_TOP_Z))
-    part = cast(Part, body + lugs + bushing + shaft)
+    leg = Solid.make_box(LEG_W, LEG_W, LEG_H).translate(
+        (ex - BODY_W / 2, ey - LEG_W / 2, BODY_TOP_Z))
+    part = cast(Part, body + lugs + shaft + leg)
+    if BUSHING_H > 0:      # absent on this part — see BUSHING_H
+        part = cast(Part, part + Solid.make_cylinder(
+            BUSHING_DIA / 2, BUSHING_H).translate((ex, ey, BODY_TOP_Z)))
 
-    for dx in (-2.5, 0.0, 2.5):
+    for dy in (-2.5, 0.0, 2.5):
         part = cast(Part, part + Solid.make_box(PIN_W, PIN_W, PIN_LEN).translate(
-            (ex + dx, ey - BODY_W / 2, C.PCB_TOP_Z - PIN_LEN)))
+            (ex - BODY_W / 2, ey + dy, C.PCB_TOP_Z - PIN_LEN)))
     part.label = "ec11" if trimmed else "ec11(as bought)"
     return part
 

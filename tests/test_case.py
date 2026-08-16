@@ -63,11 +63,14 @@ def test_top_part_z_range(side):
     the fused bay-canopy ridge, now THIS half's own (the ridge is derived per half, so left tops
     out 2.76 mm lower than right)."""
     from sofle_case import canopy as CAN
-    from sofle_case.case import tent_ground_z
-    want = tent_ground_z(C.TENT_SEAM_Y1) + C.TENT_SKIRT_LIFT
+    from sofle_case.case import seam_profile_min_z
+    # NOT tent_ground_z(y1) + lift. That is where the southern RUN ends; the sweep leaves it
+    # tangentially and so keeps descending a little further before it climbs. seam_profile_min_z
+    # is the profile's real minimum and the tolerance can be tight because of it.
+    want = seam_profile_min_z()
     bb = build_top_part(side).bounding_box()
-    assert abs(bb.min.Z - want) < 0.05, \
-        f"tub floor at {bb.min.Z:.3f}, expected the lifted run at y1 {want:.3f}"
+    assert abs(bb.min.Z - want) < 0.005, \
+        f"tub floor at {bb.min.Z:.4f}, expected the seam profile's minimum {want:.4f}"
     assert abs(bb.max.Z - CAN.canopy_ridge_top_z(side)) < 0.01
 
 
@@ -77,21 +80,48 @@ def test_pocket_mouth_has_starter_chamfer():
     to air near the mouth, so the plate rim self-guides in and the mouth can't
     elephant-foot-pinch. Probed on a plain −X wall span."""
     from build123d import Solid
+
+    # Borrowed rather than duplicated: this is the same curve, and a second crossing-finder here
+    # would be one more thing to keep in step with the wave.
+    from tests.test_seam import _zero_crossings
     top = build_top_part("right")
-    # This probe must be on the northern flat run, not at TENT_SEAM_Y1 where the sweep starts.
-    y = C.TENT_SEAM_Y2 + 5.0
+    # DERIVED, NOT HARD-CODED, and it had to become so. The station must satisfy three things at
+    # once: a PLAIN −X wall span (the MCU hill and slide scoop own roughly y=72..104, where there
+    # is no skin to probe at this depth), SOUTH of the +Y relief bump at y=115 (north of it the
+    # wall is pushed out and its inner face is not the nominal offset computed below), and inside
+    # the REAR-SKIRT stretch where the parting line has dropped back under Z=0 — which is the case
+    # the mouth clamp below exists for.
+    #
+    # y=110 satisfied all three until the wave grew its shoulder. Holding the line high past the
+    # crest moved the second Z=0 crossing from y≈108.9 back to y≈113.3, so y=110 is now ABOVE the
+    # line, its skin is cut away, and the test failed on a geometry that is perfectly correct.
+    # The window is real but narrow (≈1.7 mm), so it is computed and asserted rather than guessed,
+    # and the probe is sized to fit inside it.
+    BUMP_Y = 115.0
+    zc = _zero_crossings()[1]
+    lo, hi = zc + 0.3, BUMP_Y - 0.3
+    assert hi - lo > 0.6, (
+        f"the rear-skirt window has closed to {hi - lo:.2f} mm (crossing y={zc:.2f}, bump "
+        f"y={BUMP_Y}). There is nowhere left on a plain wall to probe the mouth from below the "
+        f"parting line — widen it or move the probe north of the bump and measure the wall")
+    y = (lo + hi) / 2.0
+    depth = min(3.0, hi - lo)
     # −X wall: outer face, then SEAM_SKIN inward = seated skirt-inner face.
     skin_inner = C.pcb_to_case(0, 0)[0] - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE + C.SEAM_SKIN
     probe_x = skin_inner - 0.15   # 0.15 inside the skin from the seated inner face
 
     def solid_at(z, s=0.12):
-        b = Solid.make_box(s, 3.0, s).translate((probe_x - s / 2, y - 1.5, z - s / 2))
+        b = Solid.make_box(s, depth, s).translate((probe_x - s / 2, y - depth / 2, z - s / 2))
         return (top & b).volume > 1e-6
 
-    # Measured from the MOUTH, not from Z=0. This probe sits north of the sweep, where the mouth
-    # rides at SEAM_NORTH_RISE_Z — a fixed 0.7/0.1 pair would be probing the empty space below
-    # the parting line entirely. At frac 0 the mouth is back at Z=0 and these are the old numbers.
-    mouth_z = C.SEAM_NORTH_RISE_Z
+    # Measured from the MOUTH, not from Z=0, because the mouth moves with the parting line —
+    # a fixed 0.7/0.1 pair would probe empty space below the line entirely.
+    #
+    # CLAMPED AT ZERO, and that is the part the negative dial changed. The mouth is the pocket's
+    # own chamfered edge at Z=0; the parting line can only take it HIGHER, by cutting the skin
+    # back up the wall. When the line drops BELOW Z=0 — the rear skirt — the skin descends past
+    # the mouth and the mouth stays where the pocket put it.
+    mouth_z = max(0.0, C.SEAM_NORTH_RISE_Z)
     assert solid_at(mouth_z + C.SEAM_LEAD_IN + 0.3), "seated skirt is missing skin — probe off the wall"
     assert not solid_at(mouth_z + 0.1), "pocket mouth is not chamfered — no tub-side starter"
 
@@ -144,18 +174,21 @@ def test_bottom_part_z_range(side):
 
     The floor is no longer Z=0: the bottom case now carries the tent wedge, which hangs
     TENT_WEDGE_MAX_H below the old bottom face at the north and TENT_WEDGE_MIN_H at the
-    south. The top stays at PLATE_SEAT_Z — the standoffs stop under the switch plate, so
-    the part is taller than the rabbet ledge by design."""
+    south. The top is the standoff pin tops, which now stop STANDOFF_PIN_RECESS BELOW
+    PLATE_SEAT_Z — the plate is located by the switches, not by the pins — so the part is
+    taller than the rabbet ledge by design but no longer reaches the plate."""
     import math
     bb = build_bottom_part(side).bounding_box()
     # A hair above the nominal deep end: the elephant-foot counter-chamfer trims the ground
     # rim inboard by BOTTOM_CHAMFER, and 0.5 mm inboard on a 2 deg plane lifts the deepest
     # surviving point by 0.5*tan(2 deg) ~ 0.017 mm. Never below, though.
-    from sofle_case.case import wedge_deep_z
+    # bottom_deep_z(), not wedge_deep_z(): the flared band reaches past the tub's skin, so the
+    # part's footprint runs ~3.7 mm further north than the wedge's and the desk is lower there.
+    from sofle_case.case import bottom_deep_z
     lift = C.BOTTOM_CHAMFER * math.tan(math.radians(C.TENT_ANGLE_DEG))
-    assert wedge_deep_z() <= bb.min.Z <= wedge_deep_z() + lift + 1e-3, \
+    assert bottom_deep_z() <= bb.min.Z <= bottom_deep_z() + lift + 1e-3, \
         f"floor at {bb.min.Z:.4f}, expected the wedge's deep end {wedge_deep_z():.4f}"
-    assert abs(bb.max.Z - C.PLATE_SEAT_Z) < 0.01
+    assert abs(bb.max.Z - (C.PLATE_SEAT_Z - C.STANDOFF_PIN_RECESS)) < 0.01
 
 
 @pytest.mark.parametrize("side", ["right", "left"])
@@ -167,11 +200,11 @@ def test_split_conserves_volume(side):
     from typing import cast
     from tests.shared_builds import build_tray
     from sofle_case.standoffs import stepped_standoff
-    from sofle_case.battery import battery_pocket
+    from sofle_case.battery import battery_pocket, jst_pocket, jst_wire_channel
     from tests.shared_builds import build_top_cover
     from sofle_case.case import (_encoder_shell, _slide_scoop, _slide_actuator_cavity,
-                                 _foot_recesses, tent_wedge, skirt_extension,
-                                 _plate_pocket, _below_seam_cutter)
+                                 _foot_recesses, tent_wedge, skirt_extension, seam_skirt_tub,
+                                 _bottom_outer_shell, _plate_pocket, _below_seam_cutter)
     from tests.shared_builds import build_canopy
 
     ref = build_tray(rim_z=C.COVER_TOP_Z, bottom_chamfer=False)
@@ -179,7 +212,10 @@ def test_split_conserves_volume(side):
     # wedge, and the TOP's skin extension over the southern stretch. Without them here the
     # split looks like it invented ~50 cm^3 and the sign check below fires.
     ref = cast(Part, ref + tent_wedge())
-    ref = cast(Part, ref + skirt_extension())
+    ref = cast(Part, ref + skirt_extension(seam_skirt_tub()))
+    # ...and the flared band outboard of the wedge, which is the third thing that exists in
+    # neither the tray nor the cover. Without it the split looks like it invented ~8 cm^3.
+    ref = cast(Part, ref + _bottom_outer_shell())
     ref = cast(Part, ref + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     ref = cast(Part, ref + _encoder_shell())
     ref = cast(Part, ref + build_canopy())   # the canopy is fused into the TOP now
@@ -188,6 +224,12 @@ def test_split_conserves_volume(side):
     for hx, hy in C.MOUNTING_HOLES:
         ref = cast(Part, ref + stepped_standoff(at=C.pcb_to_case(hx, hy)))
     ref = cast(Part, ref - battery_pocket())
+    # The JST pocket and its wire channel are floor recesses like the battery's. Omitting them
+    # here does not fail as "missing pocket" — it fails as a 2939 mm³ SEAM GAP, because this test
+    # can only see the difference between the reference and the split halves, not where it came
+    # from. Any future floor recess has to be added here too or it will masquerade as seam loss.
+    ref = cast(Part, ref - jst_pocket())
+    ref = cast(Part, ref - jst_wire_channel())
     ref = cast(Part, ref - _foot_recesses())   # anti-slip feet are cut from the bottom plate
 
     # The RECESS is a void by design, not a seam gap: north of the sweep the parting line rides
@@ -262,21 +304,83 @@ def test_encoder_bezel_base_is_plateau_not_box():
     assert (top & wall).volume < 1e-4, "straight wall as wide as the foot — no ogee flare"
 
 
-def test_encoder_window_is_exact_cutout():
-    """The encoder cover window follows the exact plate cutout (no MX housing
-    margin): material remains just past the cutout edge where the enlarged MX
-    window would have removed it."""
+def test_encoder_window_matches_the_plateau_cavity():
+    """The encoder window is the plate cutout grown by ``ENCODER_SHELL_CAVITY_CLEAR``, so
+    the membrane window and the plateau's internal cavity are ONE aperture — no step, and
+    no MX-housing margin either (it is not an MX switch).
+
+    It used to be the EXACT cutout, on the grounds that the EC11 body already passes
+    through that opening. It does in FR4; a printed copy of it does not — the cutout is
+    only 0.07 mm/side clear of the 12.4 mm body on its −Y face, and printed holes come out
+    undersize. The window sits entirely under the 16.5 mm plateau, so the old value bought
+    invisibility that was already free and paid for it in a pinch."""
     from build123d import Solid
     from tests.shared_builds import build_top_cover
-    from sofle_case.case import _encoder_bbox
-    enc_cx, enc_cy, bw, _ = _encoder_bbox()
+    from sofle_case.top_cover import _load_plate_cutouts, _is_encoder_cutout
+    clr = C.ENCODER_SHELL_CAVITY_CLEAR
+    edge_x = cy = None
+    for cut in _load_plate_cutouts():
+        pts = [C.pcb_to_case(x, y) for x, y in cut]
+        if len(pts) >= 3 and _is_encoder_cutout(pts):
+            edge_x = max(q[0] for q in pts)
+            cy = sum(q[1] for q in pts) / len(pts)
+            break
+    assert edge_x is not None, "encoder cutout not found"
     cover = build_top_cover()
-    # 0.5 mm past the exact cutout edge — inside the old +COVER_WINDOW_OFFSET window.
-    probe = Solid.make_box(0.6, 0.6, 0.4).translate(
-        (enc_cx + bw / 2 + 0.5, enc_cy, C.MAIN_RIM_Z + 0.3))
-    assert (cover & probe).volume > 1e-3, (
-        "encoder window is enlarged — should be the exact plate cutout"
-    )
+
+    def probe(x: float) -> float:
+        b = Solid.make_box(0.2, 0.2, 0.4).translate(
+            (x - 0.1, cy - 0.1, C.MAIN_RIM_Z + C.COVER_THICKNESS / 2 - 0.2))
+        return (cover & b).volume
+
+    assert probe(edge_x + clr - 0.2) < 1e-4, (
+        "encoder window is narrower than the plateau cavity — it will pinch the EC11 body")
+    assert probe(edge_x + clr + 0.3) > 1e-4, (
+        "encoder window is wider than the plateau cavity — the plateau wall loses its seat")
+
+
+def test_encoder_plateau_clears_the_ec11_body():
+    """The plateau must pass DOWN over the EC11's proud 12.4 mm box, not land on it.
+
+    Regression, and it is the defect that made the printed case unassemblable with the
+    keyboard inside. ``_encoder_shell`` picked the R3.0 plan round-over by edge length
+    alone, which also caught the CAVITY's four vertical corners (4.2 mm tall). Rounding a
+    concave corner refills it: the cavity corners came back to 8.32 mm from the encoder
+    centre against the body's 8.77 mm — 0.45 mm of interference on each of the four
+    corners, over the box's whole proud height (Z 15.0 → 17.0), 2.03 mm³ measured on the
+    built TOP. The plateau sat on the encoder and held the entire TOP off the switch
+    plate, so the shell seated at the north OR the south and rocked about it while the
+    empty shells mated perfectly.
+
+    Nothing caught it: every other encoder test probes the roof, the shaft hole or the
+    ogee foot — none of them the box the plateau exists to clear."""
+    from build123d import Solid
+    from sofle_case.encoder_phantom import BODY_W, BODY_H
+    top = build_top_part("right")
+    ex, ey = C.pcb_to_case(*C.SW_ENCODER_POS)
+    body = Solid.make_box(BODY_W, BODY_W, BODY_H).translate(
+        (ex - BODY_W / 2, ey - BODY_W / 2, C.PCB_TOP_Z))
+    assert (top & body).volume < 1e-3, (
+        "encoder plateau intersects the EC11 body — the TOP cannot seat on the plate")
+
+
+def test_encoder_plateau_outer_corners_stay_rounded():
+    """The radial filter that spared the CAVITY corners must not have spared the OUTER
+    ones — the rounded-rectangle plan is the plateau's whole style, and a filter that
+    caught nothing would pass the clearance test above for the wrong reason."""
+    from build123d import Solid
+    from sofle_case.case import _encoder_bbox
+    top = build_top_part("right")
+    ex, ey, bw, bh = _encoder_bbox()
+    half_x = bw / 2 + C.ENCODER_SHELL_CAVITY_CLEAR + C.ENCODER_SHELL_WALL
+    half_y = bh / 2 + C.ENCODER_SHELL_CAVITY_CLEAR + C.ENCODER_SHELL_WALL
+    # Straight-wall band: clear of the ogee foot below and the top round-over above.
+    z = C.COVER_TOP_Z + C.ENCODER_BEZEL_FOOT_R + 0.5
+    assert z < C.ENCODER_SHELL_TOP_Z - C.ENCODER_BEZEL_TOP_R, "probe Z is inside a blend"
+    corner = Solid.make_box(0.4, 0.4, 0.3).translate(
+        (ex + half_x - 0.5, ey + half_y - 0.5, z))
+    assert (top & corner).volume < 1e-4, (
+        "outer plateau corner is square — the plan round-over was lost")
 
 
 def test_top_windows_clear_switch_housings():
@@ -325,12 +429,25 @@ def test_split_bottom_left_equals_right():
     # 1e-5 rel tolerates OCC mirror/heal float noise; a real asymmetry is far larger.
     assert abs(left.volume - right.volume) / left.volume < 1e-5
     lbb, rbb = left.bounding_box(), right.bounding_box()
+    # 1e-5 on the box, raised from 1e-6 when the tent went 3 deg -> 7 deg. The deeper wedge gives
+    # OCC's mirror/heal more geometry to accumulate noise over and the X pair went to 2.9e-6.
+    # Verified as noise and not asymmetry before the number was touched: minX and maxX shift by
+    # the SAME 2.9e-6 (a rigid translation of the mirrored copy, not a change of size), the
+    # volumes agree to 5e-8 relative, and Y and Z are bit-identical. A real asymmetry moves one
+    # edge and not the other, and shows in the volume first.
+    # X IS COMPARED MIRRORED, the others directly. The left half is the right one reflected about
+    # x = OUTER_WIDTH/2, so its min.X pairs with the right's MAX.X, not its min. Comparing them
+    # straight only ever worked because the old bottom happened to be bbox-symmetric about that
+    # line: it was a plain offset of the outline, inset the same 2.2 mm all round. The flared
+    # band is not — it exists only north of where the reveal opens, and the outline is narrower
+    # there — so the box is now 2.20..155.45 and a direct comparison reports a 3.6 mm asymmetry
+    # that is really just the mirror working correctly.
     for a, b in (
-        (lbb.min.X, rbb.min.X), (lbb.max.X, rbb.max.X),
+        (lbb.min.X, C.OUTER_WIDTH - rbb.max.X), (lbb.max.X, C.OUTER_WIDTH - rbb.min.X),
         (lbb.min.Y, rbb.min.Y), (lbb.max.Y, rbb.max.Y),
         (lbb.min.Z, rbb.min.Z), (lbb.max.Z, rbb.max.Z),
     ):
-        assert abs(a - b) < 1e-6
+        assert abs(a - b) < 1e-5
 
 
 def test_split_top_same_footprint_different_height_and_window():
@@ -376,7 +493,7 @@ def test_top_usb_window_is_side_specific():
         inter = part & box
         return inter is not None and sum(ss.volume for ss in inter.solids()) > 1e-6
 
-    yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_SIDE_WALL / 2
+    yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_NORTH_WALL / 2
     z_left_only, z_right_only, z_shared = 17.5, 23.5, 20.4
     for side, open_z, solid_z in (("left", z_left_only, z_right_only),
                                   ("right", z_right_only, z_left_only)):

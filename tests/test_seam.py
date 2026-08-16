@@ -2,22 +2,40 @@
 
 Over the southern ``TENT_SEAM_SOUTH_FRAC`` of the depth the TOP case's skin carries on below
 Z=0 and runs parallel to the desk, ``TENT_SKIRT_LIFT`` above it, so the front reads as one
-piece over a narrow reveal of bottom case. It then sweeps back up to Z=0, and from there north
-the whole wedge is exposed beneath it.
+piece over a reveal so narrow it looks like none. A WAVE then carries it up, crests it above
+Z=0 around u=0.67, and brings it back DOWN THROUGH Z=0 again over the rear, where it lands on
+a short flat run at ``SEAM_NORTH_RISE_Z`` — a negative number, because that rear stretch is
+skirt too.
 
-Seen from the side with the case standing that is the reference's profile exactly: flat along
-the desk at the front, a sweep, then a long run rising at the tilt angle. That last run is not
-built — it IS the Z=0 plane, which slopes at TENT_ANGLE_DEG once the case stands on its wedge.
+Seen from the side with the case standing, the bottom case is a LENS: pinched to almost
+nothing at the front, swelling to a crest around two-thirds back, closing again toward the
+rear. That is the shape the ramp exists to produce, and it is why the ramp is a through-fit
+spline over ``SEAM_WAVE_KNOTS`` rather than the two-point hump it began as — a two-point
+spline between the runs is monotonic by construction, so the band could only ever widen going
+north, and it ended at the full wedge height.
+
+The skirt is therefore TWO bands, not one: the parting line crosses Z=0 twice, and between
+those crossings the top case has nothing below Z=0 at all.
 
 Two headline invariants: this costs NO height (the skin drops into space that already existed
 between Z=0 and the tent plane), and the skin never touches the desk — ground contact belongs
 to the wedge alone, so two separately-printed parts are never fighting over how the case sits."""
 import math
+from typing import cast
 
-from build123d import Solid
+import pytest
+from build123d import Face, Part, Solid
 from sofle_case import constants as C
 from sofle_case.canopy import CANOPY_RIDGE_TOP_Z
-from sofle_case.case import skirt_extension, tent_ground_z, tent_plane, wedge_deep_z
+from sofle_case.case import (_below_seam_cutter, _bottom_outer_shell, _seam_ramp_edge,
+                             _seam_sweep_params, _seam_z_at, bottom_deep_z,
+                             seam_profile_max_z, seam_profile_min_z, seam_skirt_tub,
+                             skirt_extension, tent_ground_z, tent_plane, tub_outline_face,
+                             wedge_deep_z)
+# shared_builds' rule is "never import builders from sofle_case directly", and this is the one
+# sanctioned exception: the mutation test below patches a constant, which the side-keyed cache
+# cannot see. Named so nothing reaches for it by accident.
+from sofle_case.case import build_top_part as uncached_build_top_part
 from tests.shared_builds import build_bottom_part, build_top_part
 
 OUTER = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
@@ -27,6 +45,50 @@ def _seam_z(y: float) -> float:
     """Where the skin's bottom edge belongs over the southern run: parallel to the tent plane,
     lifted clear of it by TENT_SKIRT_LIFT."""
     return tent_ground_z(y) + C.TENT_SKIRT_LIFT
+
+
+def _zero_crossings() -> tuple[float, float]:
+    """The two case-Y values at which the parting line crosses Z=0: climbing, then dropping back.
+
+    These bound the skirt band, which is by definition the skin BELOW Z=0 — it exists south of
+    the first and north of the second, and not between them. The wave crosses twice; the old
+    two-point ramp crossed once, at its own end, which is why the band used to die at y2 and why
+    every test that asserted y2 was really asserting a property of that curve."""
+    edge = _seam_ramp_edge()
+    pts = [edge @ (i / 2000.0) for i in range(2001)]
+    xs = []
+    for a, b in zip(pts, pts[1:]):       # sketch-local .Y is case Z; .X is case Y
+        if (a.Y <= 0.0 <= b.Y) or (b.Y <= 0.0 <= a.Y):
+            t = (0.0 - a.Y) / (b.Y - a.Y) if b.Y != a.Y else 0.0
+            xs.append(a.X + t * (b.X - a.X))
+    assert len(xs) == 2, f"the parting line crosses Z=0 {len(xs)} times, expected exactly 2"
+    return xs[0], xs[1]
+
+
+def _profile_z_at(y: float, s: float = 0.4) -> float:
+    """Where the parting line sits at a given case-Y, read off the installed profile.
+
+    Three stretches, same as the cutter draws them: the lifted tent plane south of y1, the ramp
+    between, the flat rear run north of y2.
+
+    MEASURED OVER THE SAME Y-WINDOW ``_lowest_at`` uses, not at the single station. That probe
+    takes the minimum Z through a slab of thickness ``s``, so on a sloped stretch it reports the
+    slab's lower edge — 0.1 mm below the centre-line value where the rear ramp is falling at
+    0.15 mm/mm. Comparing a slab minimum against a point value is measuring the slab, not the
+    geometry."""
+    lo, hi = y - s / 2, y + s / 2
+
+    def at(yy: float) -> float:
+        if yy <= C.TENT_SEAM_Y1:
+            return _seam_z(yy)
+        if yy >= C.TENT_SEAM_Y2:
+            return C.SEAM_NORTH_RISE_Z
+        edge = _seam_ramp_edge()
+        pts = [edge @ (i / 2000.0) for i in range(2001)]
+        # sketch-local .X is case Y, .Y is case Z
+        return min(pts, key=lambda p: abs(p.X - yy)).Y
+
+    return min(at(lo + (hi - lo) * i / 20.0) for i in range(21))
 
 
 def _lowest_at(part, y: float, s: float = 0.4):
@@ -48,19 +110,66 @@ def test_skin_runs_just_above_the_desk_over_the_southern_stretch():
             f"y={y}: skin bottom at {got:.3f}, expected {C.TENT_SKIRT_LIFT} above the desk ({want:.3f})"
 
 
+def _worst_desk_clearance(side: str, builder=build_top_part) -> float:
+    """Closest the top case comes to the tent plane anywhere, measured perpendicular to it over
+    the whole tessellated skin. Negative means it has gone through the desk.
+
+    ``builder`` is a seam so the mutation test can hand in the UNCACHED build — see there."""
+    o, n = tent_plane()
+    verts, _f = builder(side).tessellate(0.2)
+    return min((v.X - o[0]) * n[0] + (v.Y - o[1]) * n[1] + (v.Z - o[2]) * n[2] for v in verts)
+
+
 def test_the_skin_never_touches_the_desk():
     """THE reason the lift exists, beyond looks. At lift 0 the skirt's underside is coplanar
     with the wedge's ground face, so the top and bottom parts share the desk contact and
     whichever prints proud decides how the keyboard sits. The wedge must own it alone — it is
     the part ground_face() chamfers and the part the foot seats are cut into.
 
-    Measured against the tent plane itself, over the whole tessellated skin, both halves."""
-    o, n = tent_plane()
+    ANCHORED TO TENT_SKIRT_CLEAR_MIN, NOT TO THE LIFT, and that distinction is the whole point
+    of the test. It used to read `worst > TENT_SKIRT_LIFT - 0.06`, which derives the threshold
+    from the very dial that can violate the invariant: at lift 0.0 it relaxed to `worst > -0.06`
+    and passed on a case whose skin sat ON the desk. The physical floor is a constant of the
+    print process, not of the styling."""
     for side in ("right", "left"):
-        verts, _f = build_top_part(side).tessellate(0.2)
-        worst = min((v.X - o[0]) * n[0] + (v.Y - o[1]) * n[1] + (v.Z - o[2]) * n[2] for v in verts)
-        assert worst > C.TENT_SKIRT_LIFT - 0.06, \
-            f"{side}: skin comes within {worst:.4f} mm of the desk, want {C.TENT_SKIRT_LIFT}"
+        worst = _worst_desk_clearance(side)
+        assert worst >= C.TENT_SKIRT_CLEAR_MIN, (
+            f"{side}: skin comes within {worst:.4f} mm of the desk, floor is "
+            f"{C.TENT_SKIRT_CLEAR_MIN} — the wedge no longer owns ground contact alone")
+
+
+def test_the_skin_actually_achieves_the_lift_it_is_set_to():
+    """Separate assertion, deliberately. The one above protects the case from being unbuildable;
+    this one checks it looks the way the dial says — that the reveal really is TENT_SKIRT_LIFT
+    wide and the skin is not sitting somewhere else entirely for an unrelated reason.
+
+    Split apart so that turning the styling dial can never move the safety threshold again."""
+    worst = _worst_desk_clearance("right")
+    assert abs(worst - C.TENT_SKIRT_LIFT) < 0.06, \
+        f"skin's closest approach is {worst:.4f} mm, but TENT_SKIRT_LIFT asks for {C.TENT_SKIRT_LIFT}"
+
+
+def test_the_desk_clearance_guard_is_not_anchored_to_the_dial():
+    """Mutation test on the guard itself: drive TENT_SKIRT_LIFT to 0 and the measurement must
+    actually collapse, proving `test_the_skin_never_touches_the_desk` would FIRE rather than
+    relax alongside it.
+
+    Written because the old form of that guard passed at lift 0 — the failure mode is invisible
+    unless something checks that the threshold and the measurement move independently.
+
+    THE UNCACHED BUILDER, deliberately, against shared_builds' usual rule. That cache is keyed on
+    `side` alone, so a monkeypatched constant does not invalidate it and the shared instance comes
+    back built at the ORIGINAL lift — this test read 0.4973 against a patched 0.0 and failed for
+    that reason before the switch. Any mutation test that patches a constant must rebuild."""
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        monkeypatch.setattr(C, "TENT_SKIRT_LIFT", 0.0)
+        worst = _worst_desk_clearance("right", builder=uncached_build_top_part)
+    finally:
+        monkeypatch.undo()
+    assert worst < C.TENT_SKIRT_CLEAR_MIN, (
+        f"at lift 0 the skin still stands {worst:.4f} mm off the desk — either the lift no longer "
+        f"drives the seam, or the measurement is not seeing the skirt")
 
 
 def test_the_lift_leaves_a_real_skirt_at_the_south():
@@ -76,48 +185,195 @@ def test_the_lift_leaves_a_real_skirt_at_the_south():
             f"y={y}: only {-got:.3f} mm of skirt below Z=0 — it has become a feather edge"
 
 
-def test_skin_is_gone_north_of_the_sweep():
-    """North of y2 the skin stops at the parting line and the bottom case takes over below it.
+def test_the_skin_follows_the_parting_line_across_the_rear():
+    """The skin's bottom edge IS the parting line, at every station, including the rear ones.
 
-    That line used to be Z=0 flat; SEAM_NORTH_RISE_FRAC now dials it up the wall, so this reads
-    the dial rather than the old constant. At frac 0 it is still Z=0 and this is the same test
-    it always was."""
+    This used to be "the skin is gone north of the sweep", which was true while the line sat at
+    or above Z=0 there: nothing of the top case hung below Z=0 past y2 and the wedge showed
+    unaided. The wave's rear knots take the line back UNDER Z=0, so the skin descends again over
+    the last quarter — the rear skirt — and "gone" is the wrong question. What is still exactly
+    true, and is the thing worth guarding, is that the skin stops on the line and nowhere else."""
     top = build_top_part("right")
-    for y in (C.TENT_SEAM_Y2 + 4.0, 110.0, 120.0):
+    for y in (C.TENT_SEAM_Y2 - 20.0, C.TENT_SEAM_Y2 - 5.0, C.OUTER_DEPTH - 1.2):
         got = _lowest_at(top, y)
         assert got is not None, f"no material at y={y}"
-        assert abs(got - C.SEAM_NORTH_RISE_Z) < 0.02, \
-            f"y={y}: skin hangs to {got:.3f}, expected the parting line at {C.SEAM_NORTH_RISE_Z:.3f}"
+        want = _profile_z_at(y)
+        assert abs(got - want) < 0.06, \
+            f"y={y}: skin hangs to {got:.3f}, expected the parting line at {want:.3f}"
 
 
-def test_the_sweep_climbs_monotonically_between_the_two():
-    """Through the blend the edge rises steadily from the desk to Z=0 — no dip, no reversal,
-    and no step at either end. A kink here is exactly what the sweep exists to avoid."""
+def test_the_bottom_s_outline_IS_the_top_s_outline():
+    """Seen from underneath, the two shells must register EXACTLY — same curve, not a near miss.
+
+    This replaces a test that capped how fast the plan silhouette was allowed to STEP (0.20 mm
+    per station). That cap existed because the band was flared: its offset varied along Y, the
+    shell was stacked out of ~36 Y-slabs to approximate it, and every slab boundary was a step
+    to be bounded. The band is now extruded from ``tub_outline_face()`` itself, so there is no
+    approximation left to bound — the right assertion is equality, and it is twenty times
+    tighter than the cap it replaces.
+
+    That also retires the skip-list this test used to need. The tub's outline has a real 35 mm
+    cliff at the north-east corner (y≈115); a flared band ROUNDS convex corners and so was
+    allowed to move faster than the tub near one, which meant skipping those stations. A flush
+    band follows the cliff exactly, so nothing is skipped and the sweep is unbroken.
+
+    PROBED AT MID-BAND HEIGHT. Within ~1 mm of the desk the BOTTOM_CHAMFER (0.5 mm elephant-foot
+    counter-chamfer) insets the outline, and a probe down there reads a false -0.28 mm at y=58
+    where the band is only 1.0 mm tall."""
+    from build123d import extrude
+    bottom = build_bottom_part("right")
+    tub = extrude(tub_outline_face(), amount=1.0)
+
+    def east(part, y, z, s=0.15):
+        sl = part & Solid.make_box(400.0, s, s).translate((-100.0, y - s / 2, z - s / 2))
+        return None if sl.volume < 1e-9 else sl.bounding_box().max.X
+
+    ys, worst, worst_y = [], 0.0, None
+    y = 60.0
+    while y <= C.OUTER_DEPTH - 0.5:
+        # _seam_z_at, NOT this file's _seam_z — the latter is only the southern run's formula
+        # (ground + lift) and is wrong everywhere the wave has left it, which is all of here.
+        mid = (tent_ground_z(y) + (_seam_z_at(y) - C.SEAM_REVEAL_H)) / 2.0   # clear of the rim
+        t, b = east(tub, y, 0.5), east(bottom, y, mid)
+        if t is not None and b is not None:
+            ys.append(y)
+            if abs(b - t) > worst:
+                worst, worst_y = abs(b - t), y
+        y += 0.25
+    assert len(ys) > 200, "the sweep found almost nothing to measure"
+    assert worst <= 0.01, (
+        f"the bottom's outline departs from the top's by {worst:.4f} mm at y={worst_y:.2f}. "
+        f"They are meant to be the same extruded face — this is not a tolerance to widen")
+
+
+def test_the_band_is_one_smooth_wall():
+    """The regression guard the faceting never had, and the reason it kept coming back.
+
+    Four separate attempts to remove the band's visible divisions were made and reverted, and
+    none of them left a test behind — so "smooth" stayed something a person had to notice in a
+    render. It is a number now.
+
+    The band is a plain vertical extrusion of the top's outline cut by two tools, so its face
+    count is structural: one face per outline edge, one ground plane, and a SINGLE face carrying
+    the whole swoosh. Measured at 29, against 304 for the flared version; 146 for the whole
+    bottom part, against 393.
+
+    THE CEILINGS ARE DELIBERATELY LOOSE. The failure being caught is a return to hundreds. A
+    tight bound would flake on any harmless topology change and get raised until it meant
+    nothing, which is exactly how the 0.15 mm step cap this file used to carry ended up at
+    0.20."""
+    band = _bottom_outer_shell()
+    assert len(band.faces()) <= 60, (
+        f"the band came back with {len(band.faces())} faces (expected ~29). Something has "
+        f"reintroduced a per-Y construction — see _bottom_outer_shell")
+    assert len(build_bottom_part("right").faces()) <= 200
+
+    # The swoosh is ONE face. That is the claim the face count is a proxy for, stated directly:
+    # the top surface is what the reveal exposes, and a divided one IS the defect.
+    top_faces = [f for f in band.faces() if f.normal_at(f.center()).Z > 0.1]
+    assert len(top_faces) == 1, (
+        f"the band's top surface is {len(top_faces)} faces, not one — the swoosh is divided")
+
+
+def test_the_bottom_stays_inside_the_top_s_own_outline():
+    """From the bottom plan the two shells must register: the bottom follows the TOP's outline,
+    not the PCB polygon's.
+
+    The polygon knows nothing about the +Y relief bump or the tub's north-east corner, so the
+    old bottom sailed straight past both. Stated as containment rather than a per-Y comparison
+    so that it stays a whole-part claim — its companion above does the station-by-station work.
+
+    THE REFERENCE IS GROWN 0.01 mm, and it has to be. The band is extruded from this very face,
+    so the two surfaces are now exactly coincident; against an ungrown reference the boolean
+    reports numerical slivers along every wall. It used to be grown by SEAM_FLARE_MAX + 0.05,
+    which was the flare's own allowance — the band genuinely stood that far proud."""
+    from build123d import Kind, extrude, offset
+    bottom = build_bottom_part("right")
+    # amount POSITIVE with an explicit -Z dir. A negative amount here cancels the dir and builds
+    # the reference upward instead, leaving the whole bottom "outside" it — 121936 mm³ of it.
+    grown = extrude(cast(Face, offset(tub_outline_face(), amount=0.01, kind=Kind.ARC)),
+                    amount=60.0, dir=(0.0, 0.0, -1.0))
+    below = cast(Part, bottom & Solid.make_box(400.0, 400.0, 60.0)
+                 .translate((-100.0, -100.0, -60.0)))
+    spill = cast(Part, below - grown)
+    assert spill.volume < 1e-3, (
+        f"{spill.volume:.3f} mm³ of bottom case sits outside the top's own outline — the two "
+        f"do not register from below")
+
+
+def test_the_rear_skirt_exists_and_closes_the_lens():
+    """THE point of the rear knots. The band of visible bottom case must be NARROWER at the back
+    than at its crest, or the wave reads as a ripple rather than a lens.
+
+    It cannot be, with the parting line at or above Z=0: the band there is at least the wedge's
+    own height (TENT_WEDGE_MAX_H), which is wider than any crest the rabbet-lap floor allows. So
+    this measures the one thing that made it possible — that the top case really does descend
+    below Z=0 again at the rear."""
     top = build_top_part("right")
-    ys = [C.TENT_SEAM_Y1 + f * (C.TENT_SEAM_Y2 - C.TENT_SEAM_Y1) for f in
-          (0.0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1.0)]
+    rear = _lowest_at(top, C.OUTER_DEPTH - 1.2)
+    assert rear is not None and rear < -0.5, \
+        f"no rear skirt: the skin stops at {rear} near the back, not below Z=0"
+
+    def band(y):
+        return _lowest_at(top, y) - tent_ground_z(y)
+
+    crest = max(band(y) for y in range(70, 100, 2))
+    back = band(C.OUTER_DEPTH - 1.2)
+    assert back < crest, (
+        f"the band is {back:.2f} mm at the back against a {crest:.2f} mm crest — it re-opens, "
+        f"so the lens does not close")
+
+
+def test_the_ramp_crests_once_and_eases_back():
+    """The wave's defining shape, and the assertion that replaced a monotonicity check.
+
+    The ramp used to be a two-point spline, monotonic by construction, and the test said so. The
+    wave is not monotonic and MUST NOT BE — it crests above Z=0 and eases back down to the
+    northern run, which is the whole reason the bottom case reads as a lens rather than a skirt
+    that stops. Asserting "climbs steadily" against this curve tests the old design.
+
+    What still has to hold is that it turns over exactly ONCE. Two crests would be a wobble in
+    the parting line, visible from a metre away, and a through-fit spline over a mis-typed knot
+    is precisely how you would get one."""
+    top = build_top_part("right")
+    ys = [C.TENT_SEAM_Y1 + f * (C.TENT_SEAM_Y2 - C.TENT_SEAM_Y1)
+          for f in (0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)]
     zs = [_lowest_at(top, y) for y in ys]
-    assert all(z is not None for z in zs)
-    for (ya, za), (yb, zb) in zip(zip(ys, zs), zip(ys[1:], zs[1:])):
-        assert zb >= za - 0.02, f"edge dips between y={ya:.1f} and y={yb:.1f} ({za:.3f} -> {zb:.3f})"
-    assert abs(zs[0] - _seam_z(C.TENT_SEAM_Y1)) < 0.06, "sweep does not start where the run ends"
-    assert abs(zs[-1] - C.SEAM_NORTH_RISE_Z) < 0.06, "sweep does not finish on the northern run"
+    assert all(z is not None for z in zs), "the ramp has a hole in it"
+
+    rising = [zb > za for za, zb in zip(zs, zs[1:])]
+    turns = sum(a != b for a, b in zip(rising, rising[1:]))
+    assert turns == 1, (
+        f"the ramp changes direction {turns} times, want exactly 1 (up to the crest, then down). "
+        f"Profile: {['%.2f' % z for z in zs]}")
+    assert rising[0] and not rising[-1], "the ramp must climb first and ease second, not the reverse"
+
+    assert abs(zs[0] - _seam_z(C.TENT_SEAM_Y1)) < 0.06, "ramp does not start where the run ends"
+    assert abs(zs[-1] - C.SEAM_NORTH_RISE_Z) < 0.06, "ramp does not finish on the northern run"
+    assert max(zs) > C.SEAM_NORTH_RISE_Z + 1.0, \
+        "the ramp never rises meaningfully above the northern run — the crest has gone flat"
 
 
 def test_the_handover_costs_no_height():
-    """THE requirement. The skin fills space that already existed between Z=0 and the tent
-    plane, so the envelope must be identical to what the wedge alone produced."""
+    """THE requirement, and it still holds — for the SKIN. The skin fills space that already
+    existed between Z=0 and the tent plane, so it adds nothing.
+
+    The flare is a separate matter and it DOES cost height: the bottom case now reaches
+    SEAM_FLARE_MAX past the tub's skin, so its footprint runs further north and the desk is
+    ~0.4 mm lower by the time it gets there. That is accounted for inside wedge_deep_z(), which
+    is why this compares against that function and not against TENT_WEDGE_MAX_H — the two used
+    to agree and no longer do."""
     top, bottom = build_top_part("right"), build_bottom_part("right")
     tb, bb = top.bounding_box(), bottom.bounding_box()
     lo, hi = min(tb.min.Z, bb.min.Z), max(tb.max.Z, bb.max.Z)
     lift = C.BOTTOM_CHAMFER * math.tan(math.radians(C.TENT_ANGLE_DEG))
-    assert wedge_deep_z() <= lo <= wedge_deep_z() + lift + 1e-3, \
+    assert bottom_deep_z() <= lo <= bottom_deep_z() + lift + 1e-3, \
         f"floor moved to {lo:.4f} — the skin added height"
     assert abs(hi - CANOPY_RIDGE_TOP_Z) < 0.01
     # and the deepest the SKIN itself reaches is the lifted run at y1, well above the wedge's floor
     assert tb.min.Z > wedge_deep_z(), "the skin reaches deeper than the wedge — impossible"
-    assert abs(tb.min.Z - _seam_z(C.TENT_SEAM_Y1)) < 0.05, \
-        f"skin bottoms out at {tb.min.Z:.3f}, expected {_seam_z(C.TENT_SEAM_Y1):.3f} at y1"
+    assert abs(tb.min.Z - seam_profile_min_z()) < 0.005, \
+        f"skin bottoms out at {tb.min.Z:.4f}, expected the profile minimum {seam_profile_min_z():.4f}"
 
 
 def test_skin_stays_outboard_of_the_wedge():
@@ -129,35 +385,64 @@ def test_skin_stays_outboard_of_the_wedge():
         assert len(build_top_part(side).solids()) == 1, f"{side} top fractured"
 
 
-def test_the_sweep_finishes_clear_of_the_relief_bump():
-    """The +Y bump stands proud of the nominal outline offset. If the skin reached it, the band
-    would have to chase the tub's real footprint instead of a plain offset — the complexity
-    that was deliberately designed out. Guarded in constants too; restated here."""
+def test_the_skirt_matches_the_wall_above_it_across_the_relief_bump():
+    """What replaced "the sweep finishes clear of the relief bump".
+
+    That test asserted the skin never reached the +Y bump, because skirt_extension built its band
+    from a polygon offset and the bump stands proud of it — a band reaching the bump would sit
+    INSIDE the wall above and leave a step at Z=0 along its whole face. The rear skirt has to go
+    there, so the band is now sectioned from the tub itself and the restriction is gone.
+
+    This measures the property that made it safe: at a station ON the bump, the skirt's outer
+    face and the wall's outer face are the same face — no step at the handover."""
     from sofle_case.tray import _bump_facet_south_y
-    assert C.TENT_SEAM_Y2 < _bump_facet_south_y(), \
-        f"sweep ends at y={C.TENT_SEAM_Y2:.1f}, into the bump at y={_bump_facet_south_y():.1f}"
+    y = max(_bump_facet_south_y() + 2.0, C.OUTER_DEPTH - 6.0)
+    assert y < C.OUTER_DEPTH, "probe station fell off the back of the case"
+    top = build_top_part("right")
+
+    def east_face(z):
+        slab = top & Solid.make_box(400.0, 1.0, 0.6).translate((-100.0, y - 0.5, z - 0.3))
+        return None if slab.volume < 1e-9 else slab.bounding_box().max.Y
+
+    above = east_face(1.0)                       # the wall, just above the handover
+    below = east_face(C.SEAM_NORTH_RISE_Z / 2)   # the skirt, halfway down the rear band
+    assert above is not None and below is not None, f"no material to measure at y={y}"
+    assert abs(above - below) < 0.02, (
+        f"y={y:.1f}: wall reaches +Y {above:.3f} but the skirt below it reaches {below:.3f} — "
+        f"a {abs(above - below):.3f} mm step at the bump, so the band is not following the wall")
 
 
 def test_skirt_extension_alone_is_a_clean_solid():
     """Guards the builder itself, independent of what it gets fused to. Its own extents are the
     tell: top on Z=0, bottom on the lifted run at y1, and nothing at all north of y2."""
-    sk = skirt_extension()
-    assert len(sk.solids()) == 1
+    sk = skirt_extension(seam_skirt_tub())
+    # TWO solids now, and that is the design: the wave crosses Z=0 twice, so the band exists over
+    # the southern stretch and again over the rear, with the crest's stretch — where the parting
+    # line is ABOVE Z=0 and there is no skin below it — separating them. It was one solid while
+    # the line crossed zero once. Each piece still has to be clean.
+    solids = sk.solids()
+    assert len(solids) == 2, f"expected a southern band and a rear band, got {len(solids)}"
+    assert all(s.volume > 1.0 for s in solids), "one of the two bands is a sliver"
     bb = sk.bounding_box()
     assert abs(bb.max.Z) < 1e-6, f"skirt should top out at Z=0, got {bb.max.Z:.4f}"
-    # The band is the skin BELOW Z=0, so it dies where the parting line reaches Z=0 — at y2 when
-    # the northern run is flat there, and progressively further south as SEAM_NORTH_RISE_FRAC
-    # lifts that run and the sweep therefore crosses zero earlier.
-    assert bb.max.Y <= C.TENT_SEAM_Y2 + 0.5, \
-        f"skirt reaches y={bb.max.Y:.2f}, past the end of the sweep at y2={C.TENT_SEAM_Y2:.2f}"
-    if C.SEAM_NORTH_RISE_Z <= 0.0:
-        assert bb.max.Y >= C.TENT_SEAM_Y2 - 0.5, \
-            f"skirt dies at y={bb.max.Y:.2f} with a flat northern run, expected y2"
-    else:
-        assert C.TENT_SEAM_Y1 < bb.max.Y < C.TENT_SEAM_Y2, \
-            f"skirt dies at y={bb.max.Y:.2f}, expected inside the sweep where the line crosses Z=0"
-    assert abs(bb.min.Z - _seam_z(C.TENT_SEAM_Y1)) < 0.05, \
-        f"skirt bottoms out at {bb.min.Z:.4f}, expected {_seam_z(C.TENT_SEAM_Y1):.4f}"
+    # The band is the skin BELOW Z=0, so it dies where the parting line FIRST reaches Z=0 — and
+    # with the wave that is inside the ramp, not at its end: the ramp crosses zero around u=0.55
+    # and spends the rest of its run above it. Measured against the profile rather than against
+    # y2, because "where does the seam cross Z=0" is a property of the installed curve. The old
+    # form asserted y2 whenever the northern run was flat, which was only ever true because the
+    # two-point ramp reached Z=0 exactly once, at its end.
+    up, down = _zero_crossings()
+    south, rear = sorted(solids, key=lambda s: s.bounding_box().min.Y)
+    assert abs(south.bounding_box().max.Y - up) < 0.5, (
+        f"southern band dies at y={south.bounding_box().max.Y:.2f}, expected y={up:.2f} where the "
+        f"parting line climbs through Z=0")
+    assert abs(rear.bounding_box().min.Y - down) < 0.5, (
+        f"rear band starts at y={rear.bounding_box().min.Y:.2f}, expected y={down:.2f} where the "
+        f"parting line drops back through Z=0")
+    assert bb.max.Y <= C.OUTER_DEPTH + 1e-6, \
+        f"skirt reaches y={bb.max.Y:.2f}, past the back of the case"
+    assert abs(bb.min.Z - seam_profile_min_z()) < 0.005, \
+        f"skirt bottoms out at {bb.min.Z:.4f}, expected the profile minimum {seam_profile_min_z():.4f}"
 
 
 def test_the_channel_mouth_has_a_lead_in_all_the_way_round():
@@ -272,9 +557,12 @@ def test_the_south_fraction_is_the_dial():
     assert abs(C.TENT_SEAM_Y1 - C.TENT_SEAM_SOUTH_FRAC * C.OUTER_DEPTH) < 1e-9
     assert abs(C.TENT_SEAM_Y2 - (C.TENT_SEAM_Y1 + C.TENT_SEAM_RAMP_FRAC * C.OUTER_DEPTH)) < 1e-9
     assert C.TENT_SEAM_SOUTH_FRAC <= C.TENT_SEAM_FRAC_MAX, "the dial is past its own ceiling"
-    # the ceiling is exactly the fraction whose sweep ends on the bump limit
+    # The ceiling is exactly the fraction whose ramp ends at the BACK OF THE CASE. It used to be
+    # the fraction whose ramp ended at the +Y bump limit, 20 mm short of that — a fence around a
+    # skirt built from a polygon offset. skirt_extension sections the tub now, so the bump is no
+    # longer a special case and the only limit left is the part's own depth.
     assert abs((C.TENT_SEAM_FRAC_MAX + C.TENT_SEAM_RAMP_FRAC) * C.OUTER_DEPTH
-               - (C.OUTER_DEPTH - 20.0)) < 1e-9
+               - C.OUTER_DEPTH) < 1e-9
 
 
 def test_the_handover_actually_sits_where_the_dial_says():
@@ -282,8 +570,114 @@ def test_the_handover_actually_sits_where_the_dial_says():
     of it just north of y2. Catches the constant being changed without the geometry following."""
     top = build_top_part("right")
     south = _lowest_at(top, C.TENT_SEAM_Y1 - 8.0)
-    north = _lowest_at(top, C.TENT_SEAM_Y2 + 8.0)
+    # There is no flat rear run left to probe — the ramp descends all the way to the back edge,
+    # which is what stops the band re-opening at the end. So the north station is compared with
+    # the PROFILE there, and the dial is checked where it actually applies: at y = OUTER_DEPTH.
+    north = _lowest_at(top, C.OUTER_DEPTH - 1.2)
     assert abs(south - _seam_z(C.TENT_SEAM_Y1 - 8.0)) < 0.06, \
         "skin is not on its lifted run south of the handover"
-    assert abs(north - C.SEAM_NORTH_RISE_Z) < 0.02, \
-        "skin is not on its northern run past the sweep"
+    assert abs(north - _profile_z_at(C.OUTER_DEPTH - 1.2)) < 0.06, \
+        "skin is not on the ramp near the back edge"
+    assert abs(_seam_sweep_params()[0][-1][1] - C.SEAM_NORTH_RISE_Z) < 1e-9, \
+        "the ramp does not finish on the dial"
+
+
+@pytest.mark.parametrize("angle", [1.0, 3.0, 7.0, 10.0])
+def test_the_seam_cutter_never_reaches_above_the_rabbet_ledge(monkeypatch, angle):
+    """The cutter's ceiling — restated for the wave, because its old form was Z=0 and the wave
+    deliberately crests above that.
+
+    Z=0 was never the real limit; it was where the old profile happened to stop. What the cutter
+    must not do is eat the TUB, and the height at which that starts is SEAM_LEDGE_Z: below the
+    ledge the tub is only its outer skin, because _plate_pocket has already taken the floor and
+    inner wall out from behind it, so the cutter takes skin and nothing else. Above the ledge it
+    starts taking the tub proper. That is the same reason SEAM_NORTH_RISE_FRAC's ceiling is 1.0,
+    asked at a different Y.
+
+    Also pinned to seam_profile_max_z(), so the built solid and the measured curve agree — the
+    two are consumed by different callers (_lead_in_relief gates on the measurement) and a drift
+    between them would strand the channel mouth exactly where the crest needs it opened."""
+    monkeypatch.setattr(C, "TENT_ANGLE_DEG", angle)
+    cutter = _below_seam_cutter()
+    inside = cutter & Solid.make_box(400.0, C.OUTER_DEPTH, 200.0).translate((-100.0, 0.0, -100.0))
+    assert inside.volume > 1e-9, f"{angle} deg: the cutter missed the case entirely"
+    got = inside.bounding_box().max.Z
+    assert got < C.SEAM_LEDGE_Z, (
+        f"{angle} deg: the seam cutter reaches Z={got:.4f}, at or above the rabbet ledge "
+        f"{C.SEAM_LEDGE_Z:.4f} — it is eating the tub, not its skin")
+    assert abs(got - seam_profile_max_z()) < 0.01, (
+        f"{angle} deg: the built cutter tops out at {got:.4f} but the measured profile says "
+        f"{seam_profile_max_z():.4f} — solid and curve have drifted apart")
+
+
+@pytest.mark.parametrize("angle", [1.0, 3.0, 7.0, 10.0])
+def test_the_seam_cutter_holds_at_z0_south_of_the_case(monkeypatch, angle):
+    """The cutter's southern guard branch, which only becomes REACHABLE at a steep angle.
+
+    ``_below_seam_cutter`` starts its profile 20 mm south of the case, and the southern run is
+    the tent plane lifted by ``TENT_SKIRT_LIFT``. That lifted plane rises going south, so far
+    enough out it crosses Z=0 — at 3 deg it has not yet done so by y=-20 (z_s = -0.45), at 7 deg
+    it has (z_s = +1.96). Past the crossing the profile is HELD at Z=0 rather than followed,
+    because everything below the profile is the cutter and a cutter reaching above Z=0 eats the
+    tub proper instead of its skirt.
+
+    The hold is safe at every angle, and not by luck: the crossing sits at y = -20 + z_s/tan,
+    and substituting z_s = -TENT_WEDGE_MIN_H + 20*tan + TENT_SKIRT_LIFT collapses the whole
+    thing to (TENT_SKIRT_LIFT - TENT_WEDGE_MIN_H)/tan, which is negative for any angle so long
+    as the lift stays under the wedge's thin end — which ``TENT_SKIRT_LIFT_MAX`` already
+    guarantees. So the crossing is always SOUTH of the case and the tub is never touched.
+
+    Swept across the band rather than tested at one angle, because the branch that fires
+    depends on the angle and both branches must land in the same place.
+
+    Measured SOUTH of y=0 only. The ceiling inside the case is a different question with a
+    different answer now that the wave crests above Z=0 — see the test above. Out here, where
+    there is no case for the profile to be a parting line of, the hold at Z=0 is absolute."""
+    monkeypatch.setattr(C, "TENT_ANGLE_DEG", angle)
+    cutter = _below_seam_cutter()
+    overhang = cutter & Solid.make_box(400.0, 20.0, 200.0).translate((-100.0, -20.0, -100.0))
+    assert overhang.volume > 1e-9, f"{angle} deg: no cutter south of the case at all"
+    got = overhang.bounding_box().max.Z
+    assert got <= 1e-6, (
+        f"{angle} deg: south of the case the seam cutter reaches Z={got:.4f} — the hold at Z=0 "
+        f"has failed and it will eat the tub proper at the front edge")
+
+
+@pytest.mark.parametrize("angle", [3.0, 7.0, 10.0])
+def test_the_sweep_dips_below_the_run_and_costs_no_clearance(monkeypatch, angle):
+    """The sweep leaves the southern run along the PLANE'S slope, so it keeps descending for a
+    few mm before it curves up — the profile's minimum is south of the ramp's midpoint and below
+    the run's end at y1, not equal to it.
+
+    That is tangency working as intended, not a defect, and the reason it needs its own test is
+    that it hid for a long time: at 3 deg the dip is 0.024 mm and four separate assertions
+    compared the tub's floor against z1 with a 0.05 tolerance, so it fitted underneath. At 7 deg
+    it is 0.074 and all four failed at once. They were wrong the whole time; the angle only made
+    it visible. They now compare against seam_profile_min_z() and can afford a 0.005 tolerance.
+
+    THE INVARIANT THAT ACTUALLY MATTERS IS UNAFFECTED, which is the other half of this test. The
+    dip is measured against z1 — one number — while the desk is a tilted plane that drops
+    northward FASTER than the spline does. So dipping below z1 moves the skin AWAY from the desk,
+    not toward it, and the ground clearance stays the full TENT_SKIRT_LIFT."""
+    monkeypatch.setattr(C, "TENT_ANGLE_DEG", angle)
+    z1 = tent_ground_z(C.TENT_SEAM_Y1) + C.TENT_SKIRT_LIFT
+    lo = seam_profile_min_z()
+    dip = z1 - lo
+    assert dip > 0.0, "the sweep no longer leaves the run tangentially — someone kinked the seam"
+    assert dip < 0.2, f"{angle} deg: sweep dips {dip:.4f} mm, far more than tangency explains"
+    # and the clearance to the DESK is untouched by it — measured perpendicular to the plane
+    o, n = tent_plane()
+    y_dip = C.TENT_SEAM_Y1 + 1.2                      # ~where the minimum sits, all angles
+    gap = (y_dip - o[1]) * n[1] + (lo - o[2]) * n[2]
+    assert gap >= C.TENT_SKIRT_CLEAR_MIN, (
+        f"{angle} deg: the dip pulled the skin to {gap:.4f} mm off the desk, under the "
+        f"{C.TENT_SKIRT_CLEAR_MIN} mm floor")
+    # ...and it costs essentially nothing of whatever lift is set, which is the docstring's other
+    # claim. Stated as ABSOLUTE mm eaten, not as a fraction of the dial: the old form
+    # `gap > TENT_SKIRT_LIFT * 0.9` scaled its own threshold down with the lift and went trivially
+    # true at 0, exactly as the clearance guard did. How much the dip costs is a property of the
+    # tangency, and it does not get cheaper because the reveal got narrower.
+    eaten = C.TENT_SKIRT_LIFT - gap
+    assert eaten < 0.05, (
+        f"{angle} deg: the dip pulled the skin {eaten:.4f} mm closer to the desk than the run "
+        f"does — it must not, the desk falls faster than the spline")

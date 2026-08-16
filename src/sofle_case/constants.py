@@ -17,13 +17,50 @@ FLOOR_THICKNESS = 6.3   # was 3.8
 # Named vertical gaps (invariant — these reproduce the original stack at FLOOR=3.8):
 STANDOFF_SHOULDER_H = 2.5   # PCB seat above the floor top (standoff lower shoulder)
 PCB_THICKNESS       = 1.6   # main PCB thickness
-MX_BODY_CLEAR       = 3.0   # measured MX switch-body gap: plate seat above PCB top
+# MX switch-body gap: plate UNDERSIDE above PCB top. This is a HARDWARE datum — the switch
+# body bottoms on the PCB and the plate clips onto its shoulder, so nothing the case does can
+# change it. Two independent derivations and one measurement disagree, and the spread is real:
+#
+#   Cherry datasheet, total height   0.60 in = 15.24 mm from PCB, no keycap
+#                                    15.24 - PLATE_THICKNESS 1.6 - _UPPER_H 6.6 - _STEM_H 3.5
+#                                                                              -> 3.54
+#   ai03 wiki, plate TOP at 5.0      5.0 - PLATE_THICKNESS 1.6                 -> 3.40  <- CONFIRMED
+#   measured on the real Sofle                                                 -> ~4.0  <- BAD TOOL
+#
+# Set to the DERIVED value, by decision: the plate-datum route is the only one that measures the
+# surface this constant actually names (plate underside), and it agrees with the datasheet route
+# to 0.14 mm. That decision was later vindicated by measurement — see below.
+#
+# The old value was 3.0 — below every one of the three — and it is what made the printed sandwich
+# refuse to close: the standoff pins topped out 0.4-1.0 mm BELOW where the switches actually hold
+# the plate, so the plate never touched them, the screws bowed it down, and the cover rode up off
+# the tub's rim.
+#
+# RESOLVED 2026-08-16 BY MEASUREMENT. The risk above was real and is now closed: PCB top to plate
+# TOP, measured on the assembled board with the switches fully seated, reads 5.00 mm — dead on
+# MX_PLATE_TOP_ABOVE_PCB. The derivation was right and the ~4.0 caliper reading was the faulty
+# instrument (the owner had two calipers and suspected one was ~1 mm out; this is the reading that
+# convicts it). The datasheet route agreeing to 0.14 mm was the signal to trust.
+#
+# WHAT THAT MEASUREMENT DOES AND DOES NOT PIN. It pins the SUM, PCB top -> plate top = 5.00, and
+# the sum is what closing depends on: PLATE_TOP_Z is MAIN_RIM_Z, so the tub's rim height is now
+# measured, not derived. It does NOT pin how the 5.00 splits between MX_BODY_CLEAR and
+# PLATE_THICKNESS. If the real plate is not 1.6, this constant is wrong by the difference while
+# PLATE_TOP_Z stays right — harmless for the seam, but PLATE_SEAT_Z and STANDOFF_PIN_RECESS are
+# built on the split, so measure plate thickness before trusting the pin-to-plate gap.
+#
+# The closing stack is FLOOR_THICKNESS + STANDOFF_SHOULDER_H + PCB_THICKNESS + MX_BODY_CLEAR +
+# PLATE_THICKNESS, and SEAM_LEDGE_CLEAR (0.3) is the ONLY slack in all five. With the top two
+# terms now measured, any remaining closure error lives BELOW the PCB top — in the 2.5 mm of air
+# under the board, where the hotswap sockets already eat ~2.0.
 PLATE_THICKNESS     = 1.6   # switch-plate thickness (12.5 − 10.9 at the old floor)
+MX_PLATE_TOP_ABOVE_PCB = 5.0  # mm; THE datum: plate TOP surface above PCB top (ai03 wiki, MX std)
+MX_BODY_CLEAR       = MX_PLATE_TOP_ABOVE_PCB - PLATE_THICKNESS  # 3.40 — derived, tracks the plate
 
 PCB_SEAT_Z   = FLOOR_THICKNESS + STANDOFF_SHOULDER_H  # 8.8  (was 6.3 at FLOOR=3.8)
 PCB_TOP_Z    = PCB_SEAT_Z + PCB_THICKNESS             # 10.4 (was 7.9)
-PLATE_SEAT_Z = PCB_TOP_Z + MX_BODY_CLEAR              # 13.4 (was 10.9)
-PLATE_TOP_Z  = PLATE_SEAT_Z + PLATE_THICKNESS         # 15.0 (was 12.5)
+PLATE_SEAT_Z = PCB_TOP_Z + MX_BODY_CLEAR              # 13.8 (was 13.4 at MX_BODY_CLEAR=3.0)
+PLATE_TOP_Z  = PLATE_SEAT_Z + PLATE_THICKNESS         # 15.4 (was 15.0)
 
 # Minimal short case: perimeter walls end flush with the plate's top surface —
 # no proud lip above the plate. The MCU hill still rises above this (excluded).
@@ -53,20 +90,29 @@ OUTER_TOP_CHAMFER = 1.9   # mm, 45° outer-top bevel leg (~40% of WALL_THICKNESS
 # ---------- Top cover (sandwich lid over the switch plate) ----------
 # A thin printed layer the shape of the switch plate, sitting on the plate top
 # (Z = MAIN_RIM_Z) and held by the same standoffs via taller M2 screws. Each
-# 14 mm plate cutout is grown to a ~15.7 mm window (0.05 mm/side) that HUGS the
+# 14 mm plate cutout is grown to a 16.1 mm window (0.25 mm/side) that CLEARS the
 # switch's 15.6 mm top housing so the switch pokes through and the cover seats flat
-# on the plate. The window is sized to hug the switch body (not oversized) so NO ring
-# of the switch plate shows around each key — the case/plate can be different colours
-# and the plate never peeks through (the 0.05 mm gap reads as a shadow line, not
-# plate colour, and keeps the boolean/print non-degenerate). The window corners are
-# mitered square (Kind.INTERSECTION), not rounded, so the switch box's square corners
-# clear too. Keycaps float entirely above it — skirt at full
+# on the plate. The window corners are mitered square (Kind.INTERSECTION), not
+# rounded, so the switch box's square corners clear too.
+#
+# THE 0.25 IS A PRINT/ASSEMBLY BUDGET, NOT A STYLE CHOICE, AND IT WAS LEARNED THE HARD
+# WAY. This was 0.85 (a 15.70 mm window, 0.05 mm/side) chosen so NO ring of switch plate
+# shows around any key. That window cannot be assembled: the membrane has to swallow all
+# 29 collars at once in the last millimetre of travel, and the tolerance stack against it
+# is at least ±0.2 mm — the plate floats ±0.1 on Ø3.9 pins in its Ø4.1 holes, and each
+# switch floats ±0.1 in its own 14.0 mm cutout with a 13.8 mm lower housing — before any
+# FDM error, and printed windows come out UNDERSIZE. Measured on the built TOP: at 0.85
+# every one of the 29 windows binds on a collar oversized by only 0.10 mm. The printed
+# case would not close over the keyboard while the empty shells mated fine.
+# So the cover now shows a 0.25 mm ring of plate per key. That reads as a shadow line at
+# any normal viewing distance, which is the price of a lid that goes on.
+# Keycaps float entirely above it — skirt at full
 # press ~14.0 mm > cover top 16.0 mm — so 1.0 mm is safe (1.5 mm would just kiss the
 # skirt on a hard edge press). The plate's own inner notch leaves the MCU/OLED/
 # slide/JST bay open for free.
 MX_TOP_HOUSING_W        = 15.6   # mm; widest part of a Cherry MX switch (rests on plate) — drives the window size
 COVER_THICKNESS         = 1.0    # mm; lid thickness, top at MAIN_RIM_Z + 1.0 = 16.0
-COVER_WINDOW_OFFSET     = 0.85   # mm; 14 mm cutout -> 15.7 mm window, 0.05 mm/side off the 15.6 housing (invisible shadow gap, plate hidden, non-degenerate)
+COVER_WINDOW_OFFSET     = 1.05   # mm; 14 mm cutout -> 16.1 mm window, 0.25 mm/side off the 15.6 housing (was 0.85 = 0.05/side, which would not assemble — see above)
 COVER_SCREW_CLEARANCE_DIA = 2.4  # mm; M2 screw shaft clearance through the cover
 
 # ---------- Switch-puller access notches ----------
@@ -129,11 +175,9 @@ SEAM_POCKET_LEAD_IN = 0.4  # mm; 45° starter chamfer on the tub pocket MOUTH (t
 #                            so 0.4 leaves ≥1.4 mm of skin at the ground-line first layer.
 SEAM_RIM_THK    = WALL_THICKNESS - SEAM_SKIN - SEAM_FIT_CLEAR   # = 2.55; derived plate-rim thickness
 
-# Snap aids (assembly hold-shut) are DEFERRED: the 5 standoff screws are the real
-# clamp and the rabbet self-locates, so the first print validates that fit alone.
-# Adding barb/detent pairs needs robust placement on the irregular Sofle outline
-# (a naive rectangular layout floats barbs off the curved wall spans) — a follow-up
-# once the rabbet clearance is dialled in. See the spec's snap section.
+# Snap aids (assembly hold-shut) are no longer deferred — the first print showed the
+# rabbet alone does NOT hold the ends shut. See the "Rabbet snap latch" block further
+# down (it has to follow SEAM_NORTH_RISE_Z, which sets the Z budget it fits into).
 
 # ---------- Drafted rim facet (outer-top treatment) ----------
 # The tall (16 mm) flat wall read as an ugly slab from the sides. The old rim treatment
@@ -204,14 +248,24 @@ assert COVER_TOP_Z - FRONT_FACET_DROP >= SEAM_LEDGE_Z + 1.0, "front facet toe in
 #   * the front foot seats are FOOT_DEPTH deep, and at y=22 a zero-min wedge is only 0.77 mm
 #     thick, so a 0.6 mm seat would leave 0.17 mm of floor under the pad;
 #   * the reference keeps a visible band of bottom case at the front too.
-TENT_ANGLE_DEG   = 3.0   # deg; typing angle the wedge stands the case at
+# 6 deg, inside the premium-board band and one degree back from the 7 that was tried first. The
+# cost is stated above and it is real: TENT_RISE goes 6.60 -> 13.24, so the back of the assembly
+# stands 40.94 mm tall instead of 34.58. Nothing above Z=0 moved to pay for it -- the wedge grew
+# downward and the internals rode it, exactly as the "add, never cut" rule intends.
+#
+# It also roughly doubles the band of bottom case visible at the north, 7.6 -> 14.2 mm. THAT IS
+# INTENDED: it reads as a tapered plinth under the north half. Do NOT "fix" it by lifting
+# SEAM_NORTH_RISE_FRAC -- that dial is held at 0.0 for a reason of its own (see its block), and
+# at this angle it would make the north look worse, not better.
+TENT_ANGLE_DEG   = 6.0   # deg; typing angle the wedge stands the case at
 TENT_WEDGE_MIN_H = 1.0   # mm; wedge thickness at the south (the thin end)
 
 # ---- Where the two cases hand over: the visible parting line ----
 # Like the reference, the TOP case does not stop at Z=0 all the way round. Over the southern
 # stretch its skin carries on down to just above the desk, so the front of the keyboard reads
-# as one piece over a narrow reveal of bottom case (TENT_SKIRT_LIFT, below). Further north the
-# skin stops at Z=0 as before and the whole bottom wedge is exposed beneath it.
+# as one piece over a reveal so narrow it looks like none (TENT_SKIRT_LIFT, below). It lifts
+# away over the middle, where the bottom case shows at its widest, and comes back down below
+# Z=0 over the REAR so the band closes again -- see SEAM_WAVE_KNOTS and SEAM_NORTH_RISE_FRAC.
 #
 # Seen from the side with the case standing, that gives the reference's profile exactly: flat
 # along the desk at the front, a sweep up, then a long run that rises at the tilt angle. That
@@ -227,8 +281,164 @@ TENT_WEDGE_MIN_H = 1.0   # mm; wedge thickness at the south (the thin end)
 # front edge, 1.0 = it would run the whole way. Both ends of that range are accepted
 # in principle, but the usable ceiling is lower in practice -- the sweep has to finish before
 # the +Y relief bump (see the TENT_SEAM_Y2 guard, which computes the ceiling and reports it).
-TENT_SEAM_SOUTH_FRAC = 0.50   # fraction of depth where the top case rides the desk
-TENT_SEAM_RAMP_FRAC  = 0.15   # fraction of depth the sweep takes to climb back to Z=0
+TENT_SEAM_SOUTH_FRAC = 0.36   # fraction of depth where the top case rides the desk
+TENT_SEAM_RAMP_FRAC  = 0.64   # fraction of depth the wave takes to climb and come back down
+
+# How steeply the ramp is still falling when it reaches the back edge, as a MULTIPLE of the
+# desk's own slope. Above 1.0 the line drops faster than the desk does, which is the condition
+# for the visible band to still be narrowing at the very back.
+#
+# It exists because the ramp used to arrive horizontally onto a flat rear run. That looked
+# harmless and was not: the desk keeps falling away under a level line, so the band re-opened
+# over the last stretch and the wave turned back up right at the end -- the one thing the
+# reference's sweep never does. It rises, peaks, and descends all the way out.
+#
+# NOT A FREE DIAL ANY MORE. Since the tail became a shoulder followed by a STRAIGHT run (see
+# SEAM_WAVE_KNOTS), the end tangent has to be the straight run's own gradient or the spline
+# curves out of the line it just spent 40 mm establishing. It is therefore derived:
+#     m * (crest_z - SEAM_NORTH_RISE_Z) / (OUTER_DEPTH - crest_y) / tan(TENT_ANGLE_DEG)
+#   = 1.4815 * 6.628 / 41.15 / 0.10510  =  2.27
+# Left as a literal because crest_y comes from the spline, which needs this value to exist --
+# regenerate it alongside the knots rather than editing either alone.
+SEAM_TAIL_SLOPE = 2.27   # x the desk slope; matches the straight run's gradient (was 1.5, an arc)
+
+# ---- The REVEAL: the two shells do not touch, and the gap is the design ----
+# The reference's parting line is not one line, it is TWO -- the top case's lower edge and the
+# bottom case's upper edge -- with a recessed shadow between them. Measured off the reference's
+# own elevation, that gap holds ~22 px against a 434 px case height, i.e. about 5% of the case,
+# and it is CONSTANT over the back two thirds. Near the front it appears to swallow the whole
+# band, but that is not the gap growing: it is the bottom case running out, leaving nothing
+# below the gap at all.
+#
+# So this is one number, measured straight down from the parting line, and the lens shape falls
+# out of the geometry rather than being drawn: the bottom case exists exactly where the visible
+# band is taller than the reveal, which starts partway up the ramp and runs to the back edge.
+# That is what "the bottom matches the top from where the top leaves the ground to the north
+# end" means in practice.
+SEAM_REVEAL_H = 2.0   # mm; vertical gap from the parting line down to the bottom case's top edge
+
+# ---- FLUSH, not flared, and there is no dial for it ----
+# The old bottom sat SEAM_SKIN + SEAM_FIT_CLEAR (2.2 mm) INSIDE the skin -- the "skinny" look --
+# so every bit of bottom case on show was a recess. The fix for that is to put the bottom on the
+# TOP'S OWN SECTIONED OUTLINE (tub_outline_face) and extrude it straight down, which makes the
+# two shells share one lateral surface exactly rather than approximately.
+#
+# A FLARE WAS TRIED HERE AND IS NOT COMING BACK. The bottom used to stand SEAM_FLARE_MAX (1.5 mm)
+# proud of the skin, leaning out as it fell. Measured below the band's own top edge -- which
+# follows the wave -- that makes the outer offset a function of BOTH Y and Z, and a concentric
+# offset can only vary with Z. So the shell had to be stacked out of ~36 Y-slabs, every boundary
+# a real edge: 304 faces on the band, ~7 visible vertical divisions down the east wall, and
+# 7.1 s to build. Four separate attempts to loft it as one surface instead all failed on OCC
+# (periodic splines refused; closed-but-not-periodic lofted to one face but self-intersected, so
+# booleans against it returned 0 mm^3 and then 268019 mm^3 from an intersection).
+#
+# Flush costs nothing and removes the whole problem: the band is one prism cut by two tools,
+# 29 faces, 0.23 s, and the entire swoosh is a SINGLE face. The reference this case is drawn
+# from is flush too -- zoomed on its nose and its rear, the two shells' faces are coplanar and
+# the swoosh is the reveal gap, not a proud lip.
+#
+# So: no SEAM_FLARE_* constants. If a proud base is ever wanted again, the only version that
+# stays a single prism is a CONSTANT offset applied to the same outline -- never one keyed to
+# depth below the parting line.
+
+# ---- The WAVE: the shape the ramp takes between those two runs ----
+# The ramp used to be a single spline hump -- two endpoints and two tangents, monotonic by
+# construction, so the visible band of bottom case could only ever WIDEN going north. Against
+# the reference that read as unfinished: a skirt that stops rather than a shape that resolves.
+#
+# The reference's bottom case is a LENS seen from the side. Pinched to nothing at the front,
+# swelling to a crest around two-thirds back, then easing again. Reproducing that needs a curve
+# family the two-point spline cannot express, so the ramp is now a through-fit spline over the
+# knots below and the endpoints/tangents are unchanged around it. Everything else about the
+# profile is as it was: one Y-Z sketch, extruded across X, a function of Y alone.
+#
+# WHERE THESE NUMBERS COME FROM, and how much to trust them. Digitised off a CAD side elevation
+# of the reference board plus a photograph of the real product, then rescaled to this case's
+# 126 mm depth. Two rounds: the first read the zero-reveal front as ending at u=0.19, which
+# spliced across a V-notch in the drawing at x~1170 px. That notch is the reference's own front
+# knife-edge, so the front runs to u=0.36 and the rise is compressed into ~35% of the depth
+# rather than 53%. The crest's POSITION survived both reads and an independent re-extraction by
+# a different method (scipy find_peaks vs. a dark-run threshold), and the crest is visible on
+# the painted blue/white shell boundary in the photograph -- it is real geometry, not a shading
+# artifact of the render.
+#
+# WHAT IS NOT MEASURED: nothing images the reference's rear 18%, so where the wave lands north
+# of u=0.82 is this project's decision, not the reference's. It is held at SEAM_NORTH_RISE_Z
+# (i.e. Z=0), which is what the north has been since the parting line was dropped back there.
+#
+# UNITS, and this is the part that matters. Each knot is (u, band), where u is a fraction of
+# OUTER_DEPTH and `band` is the VISIBLE HEIGHT OF BOTTOM CASE there, as a fraction of
+# TENT_WEDGE_MAX_H -- the bottom case's full height at the back. Not local Z, and not millimetres.
+#
+# Local Z was the obvious choice and it was wrong. The sketch is drawn in local Z, so storing it
+# that way saves a conversion; but local Z bakes in the tent angle the numbers were measured at,
+# and the desk is what the shape is measured FROM. Held in local Z at 6 deg, the table put the
+# crest 2.55 mm through the desk when the angle was swept to 3 -- a table that only means what it
+# says at one angle. Millimetres above the desk fail the other way: the band cannot be 13.6 mm
+# tall on a 7.6 mm wedge, so at a shallow angle the crest is driven above SEAM_LEDGE_Z and eats
+# the tub. As a fraction of the wedge's own height it is scale-free, which is what "the bottom
+# case looks like a lens" actually means. The conversion back is one line in _seam_sweep_params.
+#
+# THE REAR HALF OF THIS TABLE IS NOT THE REFERENCE'S, it is this project's answer to a problem
+# the reference solves off-camera. Nothing images the reference's rear 18%, and a wave that just
+# stops leaves the band re-opening to the full wedge height at the back (14.24 mm), wider than
+# the crest -- a ripple, not a lens. The knots from u=0.820 carry the line back DOWN through Z=0
+# so the top case's skin descends again at the rear and the band keeps closing. See
+# SEAM_NORTH_RISE_FRAC, which is negative for the same reason and sets where this lands.
+#
+#   u       band      -> at 6 deg: mm above desk   local Z    what it is
+#   0.360   (run)                   0.30           -5.47      end of the south run (computed)
+#   0.406   0.0716                  1.02           -5.36      the front knife-edge opening up
+#   0.485   0.2992                  4.26           -3.16
+#   0.558   0.6159                  8.77           +0.38      crosses Z=0 -- eats pocket wall above
+#   0.598   0.7690                 10.95           +2.03
+#   0.670   0.9459                 13.47           +3.60      CREST in local Z
+#   0.710   0.9565                 13.62           +3.22      crest in the VISIBLE BAND
+#   0.749   0.9256                 13.18           +2.26      easing
+#   0.820   0.8800                 12.53           +0.67      still easing; about to re-cross Z=0
+#   0.890   0.8500                 12.11           -0.68      rear skirt: the skin is back below Z=0
+#   0.950   0.8150                 11.61           -1.99
+#   1.000   (end)                  11.22           -3.02      the BACK EDGE, and still falling
+# THE TAIL KNOTS (u > 0.67) ARE NOT DIGITISED POINTS, they are a fitted curve, and that is a
+# deliberate difference from the climb above them. The climb's knots are read off the reference
+# directly. The tail's could not be: the reference's whole post-crest descent is 49 px in a
+# 3186 px image, so tracing noise is ~1 px = 2% of the drop and the individual points are mush.
+#
+# What survives the noise is the CHARACTER, and it is not an arc. Traced column by column, the
+# reference holds almost flat for the first third past the crest -- 12% of its total drop in the
+# first 30% of the run -- and then descends on a near-constant gradient the rest of the way. A
+# shoulder, then a straight. The old knots traced a symmetric arc instead: steepest in the
+# middle, easing at both ends, already twice as far down as the reference by 30% of the run.
+#
+# So the tail is generated from a model fitted to the trace rather than from the trace:
+#
+#     drop(s) = m * s^2 / (2*s0)      for s <= s0        (gradient ramps linearly 0 -> m)
+#     drop(s) = m * (s - s0/2)        for s >  s0        (gradient holds at m)
+#     s = fraction of the run from the crest to the back edge, drop = fraction of the total fall
+#     s0 = 0.65 (the shoulder), m = 1/(1 - s0/2) = 1.4815 (the straight-run gradient)
+#
+# Fitted at rms 0.028 of the drop against the trace, near its 0.020 noise floor. A power-law
+# family fits marginally better (0.018) but describes a curve that steepens forever and is never
+# straight, so it loses the one feature this change exists to reproduce -- and the difference is
+# 0.07 mm on a 6.63 mm fall, well under the print. The shape was chosen, not the residual.
+#
+# Knots are placed ON that model at even u, then the through-fit spline is checked back against
+# it: max error 0.076 mm, rms 0.056 mm. Move the model, regenerate the knots -- do not hand-edit
+# them, or the spline and the law it came from will drift apart.
+SEAM_WAVE_KNOTS = (
+    (0.406, 0.0716),
+    (0.485, 0.2992),
+    (0.558, 0.6159),
+    (0.598, 0.7690),
+    (0.670, 0.9459),
+    (0.700, 0.9706),
+    (0.740, 0.9892),
+    (0.780, 0.9920),
+    (0.820, 0.9788),
+    (0.860, 0.9498),
+    (0.900, 0.9058),
+    (0.950, 0.8467),
+)
 
 # ---- How far the skirt stops SHORT of the desk: the reveal ----
 # TENT_SEAM_SOUTH_FRAC dials the skirt's LENGTH (how far north it reaches). This dials its
@@ -248,18 +458,44 @@ TENT_SEAM_RAMP_FRAC  = 0.15   # fraction of depth the sweep takes to climb back 
 # enough to keep a real band of skin rather than a feather edge. To show MORE bottom case at
 # the front than that allows, the wedge itself has to get thicker at the south
 # (TENT_WEDGE_MIN_H), and that one does cost height, 1:1.
-TENT_SKIRT_LIFT = 0.5   # mm; bottom case visible below the skin at the front
+# 0.3 rather than the 0.5 it was, because the wave wants the front to read as ZERO reveal --
+# the reference's bottom case is pinched to a knife edge there and the two shells look like one
+# piece. Literal zero was on the table and was rejected: at 0.0 the skirt's underside is
+# coplanar with the wedge's ground face and the two printed parts fight over how the case sits
+# (see TENT_SKIRT_CLEAR_MIN). 0.3 is the smallest reveal that still leaves ground contact
+# unambiguously with the wedge, and at arm's length it reads as none.
+TENT_SKIRT_LIFT = 0.3   # mm; bottom case visible below the skin at the front
 
 assert 0.0 <= TENT_SEAM_SOUTH_FRAC <= 1.0, (
     f"TENT_SEAM_SOUTH_FRAC must be a fraction of the depth, 0.0-1.0; got {TENT_SEAM_SOUTH_FRAC}")
 assert TENT_SEAM_RAMP_FRAC > 0.0, "the sweep needs a non-zero run"
 
+# ---- The floor under the reveal: ground contact belongs to the wedge, full stop ----
+# TENT_SKIRT_LIFT is a STYLING dial -- how wide a band of bottom case shows. This is the
+# PHYSICAL invariant underneath it, and the two are deliberately separate numbers.
+#
+# They were the same number once, and that was a defect. Every guard on "the skin never
+# touches the desk" derived its threshold FROM the lift (worst > TENT_SKIRT_LIFT - 0.06), so
+# turning the lift down turned the guard down with it and at 0.0 the assertion read
+# worst > -0.06 -- it went trivially true at exactly the moment it should have fired. An
+# assertion has to be anchored to the physical thing it protects, never to the dial that can
+# violate it.
+#
+# 0.2 mm is the floor, not a target: two FDM parts printed to a nominal contact plane vary by
+# about a layer, so anything under that and whichever comes out proud decides how the keyboard
+# sits. The wedge must own the desk alone -- it is the part ground_face() chamfers and the part
+# the foot seats are cut into.
+TENT_SKIRT_CLEAR_MIN = 0.2   # mm; least the skin may ever come to the tent plane, at any dial
+
 TENT_SKIRT_MIN_H = 0.3   # mm; skin that must survive at the south so the skirt is not a feather edge
 TENT_SKIRT_LIFT_MAX = TENT_WEDGE_MIN_H - TENT_SKIRT_MIN_H
-assert 0.0 <= TENT_SKIRT_LIFT <= TENT_SKIRT_LIFT_MAX, (
-    f"TENT_SKIRT_LIFT={TENT_SKIRT_LIFT} leaves {TENT_WEDGE_MIN_H - TENT_SKIRT_LIFT:.2f} mm of skirt "
-    f"at the south; with TENT_WEDGE_MIN_H={TENT_WEDGE_MIN_H} the ceiling is "
-    f"{TENT_SKIRT_LIFT_MAX:.2f} — lower the lift, or thicken the wedge's thin end (which costs height)")
+assert TENT_SKIRT_CLEAR_MIN <= TENT_SKIRT_LIFT <= TENT_SKIRT_LIFT_MAX, (
+    f"TENT_SKIRT_LIFT={TENT_SKIRT_LIFT} is outside its band [{TENT_SKIRT_CLEAR_MIN:.2f}, "
+    f"{TENT_SKIRT_LIFT_MAX:.2f}]. Below the floor the skin starts sharing desk contact with the "
+    f"wedge; above the ceiling it leaves only "
+    f"{TENT_WEDGE_MIN_H - TENT_SKIRT_LIFT:.2f} mm of skirt at the south, a feather edge. To show "
+    f"MORE bottom case at the front, thicken the wedge's thin end (TENT_WEDGE_MIN_H), which costs "
+    f"height 1:1")
 
 # ---- How high the parting line rides NORTH of the sweep: the riser ----
 # North of TENT_SEAM_Y2 the parting line has always sat flat at Z=0, so the visible band of
@@ -292,36 +528,102 @@ assert 0.0 <= TENT_SKIRT_LIFT <= TENT_SKIRT_LIFT_MAX, (
 #
 # The SOUTH is untouched by this dial. Over the southern run the skin still descends to
 # TENT_SKIRT_LIFT above the desk and the bottom stays inset behind it — see that block above.
-SEAM_NORTH_RISE_FRAC = 0.5   # 0.0 = flat at Z=0 (the old behaviour), 1.0 = up to the ledge
+#
+# ---- THE RANGE NOW GOES NEGATIVE, AND THAT IS WHERE IT IS SET ----
+# Everything above describes lifting the line UP the wall, which was the only direction that
+# made sense while the ramp was a monotonic sweep: the line arrived at the north from below and
+# the dial decided how high. It was held at 0.0 because lifting it read as an unfinished skirt —
+# the bottom stays inset 2.2 mm, so a lifted skin edge floats over a shadow slot with nothing
+# flush behind it.
+#
+# The wave changed the question. Its band CRESTS at u=0.71 and eases, and for that to read as a
+# lens rather than a ripple the band has to keep narrowing to the back. It cannot: the band at
+# the back is at least the wedge's height there (14.24 mm) for any parting line at or above Z=0,
+# which is wider than the 13.62 mm crest. A crest tall enough to beat it needs local Z +5.63 and
+# leaves 0.67 mm of rabbet lap, under the 2.0 floor. So the line has to go BELOW Z=0 at the back
+# — the top case's skin descends again there, exactly as it does at the front, and the lens
+# closes. Negative frac is that, as a fraction of the same SEAM_LEDGE_Z travel.
+#
+# THIS COSTS NO RABBET. Below Z=0 there is no pocket wall to give up; the lap is bounded by how
+# high the line climbs, and going down does not touch it. What it costs instead is a second
+# stretch of skirt band, at the rear, which is why skirt_extension had to stop being a polygon
+# offset and start sectioning the tub — the +Y relief bump lives back there.
+#
+#   frac    line at the back    band at the back    what it reads as
+#   +1.00   +6.30 mm            20.54 mm            plinth, rabbet gone north
+#    0.00    0.00 mm            14.24 mm            the old flat line; band widest at the back
+#   -0.29   -1.83 mm            12.41 mm            lens nearly closed
+#   -0.37   -2.30 mm            11.94 mm            lens closed: back is narrower than the crest
+SEAM_NORTH_RISE_FRAC = -0.48   # <0 = line drops below Z=0 (rear skirt), 1.0 = up to the ledge
 SEAM_NORTH_RISE_Z    = SEAM_NORTH_RISE_FRAC * SEAM_LEDGE_Z   # derived; the actual height
 
-assert 0.0 <= SEAM_NORTH_RISE_FRAC <= 1.0, (
-    f"SEAM_NORTH_RISE_FRAC={SEAM_NORTH_RISE_FRAC} is a fraction of SEAM_LEDGE_Z={SEAM_LEDGE_Z}; "
-    f"0.0 leaves the parting line flat at Z=0, 1.0 puts it on the ledge and gives up the rabbet "
-    f"north of the sweep. There is nothing sane above 1.0 — the line would pass the plate rim's "
-    f"own top and the bottom case would have no material left to show")
+# The ceiling is stated here; the FLOOR is a function of the tent (it is the desk, with the same
+# clearance the front skirt keeps) and cannot be computed until TENT_WEDGE_MAX_H exists — see
+# SEAM_NORTH_RISE_FRAC_MIN further down, beside the other derived seam numbers.
+assert SEAM_NORTH_RISE_FRAC <= 1.0, (
+    f"SEAM_NORTH_RISE_FRAC={SEAM_NORTH_RISE_FRAC} is a fraction of SEAM_LEDGE_Z={SEAM_LEDGE_Z}. "
+    f"There is nothing sane above 1.0 — the line would pass the plate rim's own top and the "
+    f"bottom case would have no material left to show")
 
-assert 0.0 < TENT_ANGLE_DEG <= 5.0, "TENT_ANGLE_DEG outside the sane 0-5 deg range"
+# The ceiling here is a PRACTICAL band, not a derived limit, and it is worth saying so rather
+# than implying a calculation that does not exist. The geometry has no hard stop: every part of
+# the wedge path scales with tan(angle) and stays valid -- the tent plane never reaches Z=0
+# inside the footprint (it starts at -TENT_WEDGE_MIN_H), and the seam cutter's southern guard
+# branch is satisfied at every angle (it reduces to -TENT_SKIRT_LIFT < 0, which is why
+# test_the_seam_cutter_never_reaches_above_z0 passes rather than merely happening to).
+#
+# What does bind is use, not maths. Rise is OUTER_DEPTH * tan, so each extra degree costs about
+# 2.2 mm of back height at this depth: 7 deg puts the back at 43.45 mm, 10 deg at 51.2 mm, and
+# past that the front lip and the north plinth stop being a keyboard and start being a doorstop.
+# 10.0 is where that judgement lands. Raising it further is allowed but should come with a
+# reason, the way this one does.
+assert 0.0 < TENT_ANGLE_DEG <= 10.0, (
+    f"TENT_ANGLE_DEG={TENT_ANGLE_DEG} is outside the practical 0-10 deg band; rise is "
+    f"OUTER_DEPTH*tan(angle), so the back height grows ~2.2 mm per degree")
 # The rest of the guards need OUTER_DEPTH and FOOT_DEPTH, both defined further down; they sit
 # with the envelope. Search for TENT_RISE.
 
 # ---------- Encoder plateau (TOP part, around EC11 rotary encoder) ----------
 # The EC11 body is a ~12 mm box that mounts through the plate's encoder cutout
-# (~12.7 mm) and protrudes ~2 mm above the plate top. On the sandwich TOP part a
-# single-body PLATEAU caps it: one low mound, hollow inside to clear the box, with
-# a closed roof and a plain shaft hole. The plateau leaves the cover tangentially
-# (concave ogee foot) and rounds over at the top edge — no hard step, no second
-# tier. The box is hidden; the bushing + 6 mm shaft exit through the shaft hole.
-ENCODER_BODY_PROUD     = 2.0   # mm; EC11 box top above the plate (measured)
-ENCODER_BODY_TOP_Z     = PLATE_TOP_Z + ENCODER_BODY_PROUD   # 17.0; box top (cavity must clear this)
+# (~12.7 mm). On the sandwich TOP part a single-body PLATEAU caps it: one low
+# mound, hollow inside to clear the box, with a closed roof and a plain shaft
+# hole. The plateau leaves the cover tangentially (concave ogee foot) and rounds
+# over at the top edge — no hard step, no second tier. The box is hidden; the
+# bushing + 6 mm shaft exit through the shaft hole.
+#
+# ENCODER_BODY_H is a PCB datum, not a plate one — the encoder is soldered to the
+# PCB, so its height can't change when the plate does. It used to be the other
+# way round (PLATE_TOP_Z + a measured "proud" offset), which meant every plate
+# fix silently re-derived a different box height — 6.6 at MX_BODY_CLEAR=3.0, 7.0
+# at 3.7, whatever the plate happened to be that week, independent of the actual
+# hardware. Two independent sources for the real number (a vendor listing's own
+# dimensioned photo — case top to the PCB-face color boundary, ≈5.9mm — and a
+# second vendor's drawing giving 6.5mm for the same span) put it at 6.0–6.5mm.
+# Held at 7.0 anyway, above both readings: the plateau's clearance over the box
+# matters more than shaving the margin to match an estimate, and reading the
+# case a little short costs nothing while reading it a little tall risks the
+# same collision class as the encoder-plateau fix this datum already needed
+# once (commit 7a54949).
+ENCODER_BODY_H         = 7.0   # mm; PCB top -> EC11 box top. See note above.
+ENCODER_BODY_TOP_Z     = PCB_TOP_Z + ENCODER_BODY_H          # box top (cavity must clear this)
+ENCODER_BODY_PROUD     = ENCODER_BODY_TOP_Z - PLATE_TOP_Z    # derived, informational only: how far
+                                                              # the box stands above the CURRENT plate
 ENCODER_SHELL_WALL     = 1.5   # mm; plateau side-wall thickness (thin → smaller footprint)
 ENCODER_SHELL_ROOF     = 1.5   # mm; closed top-face thickness
-ENCODER_SHELL_CAVITY_CLEAR = 0.4  # mm/side; cavity grows past the window so the ring
-                                  # overlaps solid cover material (robust fusion)
+ENCODER_SHELL_CAVITY_CLEAR = 0.4  # mm/side; cavity grows past the plate cutout so the ring
+                                  # overlaps solid cover material (robust fusion). ALSO the
+                                  # membrane's encoder-window margin (top_cover.build_top_cover),
+                                  # so the window and the cavity are ONE aperture: the window
+                                  # used to be the exact cutout (12.72 mm), which left the
+                                  # 12.4 mm EC11 body 0.07 mm/side on its −Y face and would
+                                  # print interference-fit. The window is invisible under the
+                                  # 16.5 mm plateau, so widening it costs nothing.
 ENCODER_SHAFT_HOLE_DIA = 7.5   # mm; shaft hole: clears the 6 mm shaft + 7 mm bushing
 ENCODER_PLATEAU_H      = 4.5   # mm; plateau height above the cover surface
-ENCODER_SHELL_TOP_Z    = COVER_TOP_Z + ENCODER_PLATEAU_H            # 18.0; plateau top
-ENCODER_CAVITY_TOP_Z   = ENCODER_SHELL_TOP_Z - ENCODER_SHELL_ROOF   # 16.5; roof underside (clears box)
+ENCODER_SHELL_TOP_Z    = COVER_TOP_Z + ENCODER_PLATEAU_H            # derived; plateau top, tracks COVER_TOP_Z
+ENCODER_CAVITY_TOP_Z   = ENCODER_SHELL_TOP_Z - ENCODER_SHELL_ROOF   # derived; roof underside (clears box) —
+                                                                     # do not hardcode a number here, it has
+                                                                     # already gone stale once (was "19.0")
 # Tangent blends so the plateau reads as a mound, not a box:
 ENCODER_BEZEL_FOOT_R   = 1.5   # mm; concave foot radius (plateau → cover)
 ENCODER_BEZEL_TOP_R    = 1.5   # mm; convex round-over of the plateau top edge
@@ -333,6 +635,26 @@ STANDOFF_OD_UPPER  = 3.9   # passes through PCB Ø4.1 hole (~0.2 mm clearance); 
 STANDOFF_TAP_DIA   = 1.8   # M2 self-tap bore (sized for FDM tolerance)
 STANDOFF_TAP_DEPTH = 4.0
 STANDOFF_TAP_CHAMFER = 0.3  # 45° entry chamfer at bore top
+
+# ---------- The pins are screw bosses, NOT a plate seat ----------
+# The switch plate's height is set by the SWITCHES (PCB top + MX_BODY_CLEAR) — a hardware datum
+# the case cannot argue with. The standoff pins used to top out at exactly PLATE_SEAT_Z, making
+# them a SECOND datum for the same surface. Two datums for one face is an over-constraint, and
+# it only resolves if MX_BODY_CLEAR is exact; it was out by 0.4-1.0 mm, so the pins and the
+# switches fought and the case would not shut.
+#
+# The pins are now RECESSED below the plate. They carry the M2 thread and nothing else: the
+# screw pulls the cover down onto the plate and the plate onto the switch shoulders, which is
+# the load path that already existed in the hardware. Keypress force never runs through the
+# plate (the switch body bottoms on the PCB), so the pins support nothing structural.
+#
+# Sized for the WORST case, which is MX_BODY_CLEAR being too HIGH: if the true gap is 3.4 the
+# plate sits 0.3 below nominal and a flush pin would spear it. 0.6 covers that 0.3, plus ~0.3
+# of FDM Z error on a printed pin — i.e. the case still assembles for any true gap from 3.1 up.
+# There is no penalty at the other end: at a true gap of 4.0 the pin simply sits 0.9 clear.
+# The tap bore follows the pin down, so thread engagement (STANDOFF_TAP_DEPTH) is unchanged;
+# the screw crosses 0.6 mm more air, which is inside M2 head-to-thread slack.
+STANDOFF_PIN_RECESS = 0.6  # mm; pin top below PLATE_SEAT_Z — the plate must never touch it
 
 # ---------- Clearances ----------
 PCB_XY_CLEARANCE = 0.5
@@ -377,9 +699,9 @@ USB_JACK_H    = 3.16   # mm; mid-mount shell height (was 4.0 — a guess, 0.84 m
 USB_JACK_SINK = 1.00   # mm; shell depth BELOW the board's component-side face
 USB_JACK_PROUD = USB_JACK_H - USB_JACK_SINK   # 2.16; shell height above that face
 USB_JACK_Y_PROTRUDE = 1.0   # mm; measured: the jack's +Y face sits this far past the
-#                            nano board's +Y edge. The jack stops ~0.4 mm short of the
-#                            canopy north wall's inner face — only the plug bridges the
-#                            wall. (The pcb_phantom stub depth uses this.)
+#                            nano board's +Y edge. The jack stops 0.57 mm short of the
+#                            canopy north wall's inner face (BAY_NORTH_INNER_Y) — only the
+#                            plug bridges the wall. (The pcb_phantom stub depth uses this.)
 
 # Port-mouth DESIGN MARGINS around the jack body (NOT measurements — the values above are
 # the hardware; these are the slack the printed port adds). The canopy port cutter is the
@@ -398,10 +720,13 @@ USB_PORT_W_CLEAR  = 2.0   # mm; port width = USB_C_W + this (jack + plug clearan
 #
 #     engagement = USB_PLUG_SHELL_L − (wall outer face → jack mouth)
 #
-# Here the jack mouth sits 4.41 mm behind the canopy's outer face, so a straight shell-sized
-# hole leaves 2.24 mm of engagement (34%) AND blocks the overmold outright — that port would
+# Here the jack mouth sits 3.32 mm behind the canopy's outer face, so a straight shell-sized
+# hole leaves 3.33 mm of engagement (50%) AND blocks the overmold outright — that port would
 # not take a standard cable at all. The fix is a stepped bore: a wide outer POCKET that
 # admits the overmold for part of the wall, then a narrow NECK sized for the shell.
+# (That travel was 4.41 mm / 2.24 mm of engagement while the board's north face was anchored
+# to the wrong pin. Correcting the anchor moved the jack 1.09 mm toward the wall, which is a
+# problem for the CASE — see BAY_NORTH_INNER_Y — but a gift to the plug.)
 USB_PLUG_SHELL_L = 6.65   # mm; USB-IF plug shell insertion depth (shell itself 8.34 × 2.56)
 USB_OVERMOLD_W   = 12.35  # mm; USB-IF MAXIMUM plug overmold width.  Overmolds are NOT
 USB_OVERMOLD_H   = 6.50   # mm; USB-IF MAXIMUM plug overmold height. standardised, so sizing
@@ -449,10 +774,34 @@ def usb_port_z(side: str) -> tuple[float, float]:
 # lowers both the wall and the cover in one op. It is a TOP-only feature (the BOTTOM is a separate
 # inset plate below the rabbet ledge); access is from the top/side, not from below, so the plate
 # never blocks. See docs and the plan slide-scoop-decrement.md.
+# ---- SK12D07VG3 Z stack -----------------------------------------------------------
+# Hoisted above the scoop block because the scoop's Z is derived from it. These three are
+# the RULER every slide-switch clearance check is measured against, so a wrong value here
+# does not make a test fail — it makes a real collision invisible.
+#
+# A caliper pass in Aug 2026 read 5.0 / 2.4 instead of 4.3 / 1.5 and was reverted at the
+# owner's direction. That revert is now confirmed: the genuine SK12D07VG3 manufacturer spec
+# sheet (ShenZhen ShouHan — the actual part, not a generic clone-envelope listing) gives a
+# frame height of 4.0-4.7mm above the PCB (4.3 sits inside it) and a paddle thickness of
+# exactly 2.0mm. The datasheet's paddle Z-band (~1.0-3.35mm, paddle centered at mid-body) is
+# close to 1.5-3.5mm from NUB_BASE=1.5. The 5.0/2.4 caliper reading would put the paddle
+# mostly above the frame top, which does not match a part whose paddle is drawn at mid-body
+# height — that reading was the bad one. Datasheet also confirms this is a lateral paddle
+# (protrudes sideways out of the frame, not upward off the top), matching why the model
+# reaches it through a side-wall window rather than a top window.
+SLIDE_ACTUATOR_BODY_H       = 4.3  # mm; datasheet-confirmed — frame height above PCB top (spec: 4.0-4.7)
+SLIDE_ACTUATOR_NUB_BASE     = 1.5  # mm; datasheet-confirmed (close fit) — paddle underside above PCB top
+SLIDE_ACTUATOR_NUB_H        = 2.0  # mm; datasheet-confirmed exact — paddle thickness. The paddle top
+#                                    (PCB_TOP_Z + NUB_BASE + NUB_H) rides on this.
+
 SLIDE_SWITCH_W           = 6.0   # mm; slide actuator nominal width (reference)
-SLIDE_NUB_Z              = PCB_TOP_Z + 2.5   # actuator nub centre Z (finger-access height); tracks the PCB
+SLIDE_NUB_Z              = PCB_TOP_Z + SLIDE_ACTUATOR_NUB_BASE + SLIDE_ACTUATOR_NUB_H / 2  # lever centre Z; tracks the PCB
 SLIDE_SCOOP_W            = 10.0  # mm; scoop width in Y (wider than its Z depth)
-SLIDE_SCOOP_FLOOR_Z      = SLIDE_NUB_Z - 1.4  # mm; scoop floor just below the nub; tracks the PCB (was literal 9.0)
+# 1.4 below the lever centre: the window's lower edge sits under the lever so a fingernail can
+# catch it. Derived rather than pinned, but note the coupling — it moves the moment the lever
+# height does, which is a geometry change riding in on a measurement. If SLIDE_ACTUATOR_NUB_BASE
+# is ever re-measured, size this floor deliberately instead of letting it follow.
+SLIDE_SCOOP_FLOOR_Z      = SLIDE_NUB_Z - 1.4  # mm; scoop floor = 11.5
 SLIDE_SCOOP_INNER_MARGIN = 0.25  # mm; reach past the inner wall face to bare the nub (no PCB)
 SLIDE_SCOOP_FLOOR_R      = 2.0   # mm; floor rounding (reads as a valley, not a box)
 SLIDE_SCOOP_SIDE_R       = 2.5   # mm; plan-corner rounding at the scoop ends
@@ -467,8 +816,11 @@ SLIDE_SCOOP_X_SHIFT      = 0.4   # mm; slide the WHOLE cutter toward −X (out t
 # tub lowers over the PCB+switch assembly. Subtracted in build_top_part AFTER the scoop;
 # it is a TOP-only feature (the BOTTOM is a separate inset plate below the rabbet ledge —
 # untouched). No retaining lip: a plain clearance pocket. The top is capped at the cover
-# underside so the 1.0 mm lid is NOT
-# perforated (the can top is 12.2, leaving 0.3 mm of cover above it).
+# underside so the 1.0 mm lid is NOT perforated.
+#
+# The cap is sized off the CAN, not off the rim — see SLIDE_ACTUATOR_TOP_Z below for why that
+# distinction is the whole ballgame. (The old note here read "the can top is 12.2, leaving
+# 0.3 mm of cover above it" — stale: 12.2 came from FLOOR_THICKNESS 3.8.)
 #
 # These are STRUCTURAL mirrors of the datasheet-derived can/nub dims. The pcb_phantom
 # _SK12_* dims are marked "phantom-only, not structural" — do NOT import them here;
@@ -477,16 +829,156 @@ SLIDE_SCOOP_X_SHIFT      = 0.4   # mm; slide the WHOLE cutter toward −X (out t
 # tracks the switch exactly without coupling structure to the phantom module.
 SLIDE_ACTUATOR_BODY_W       = 4.4  # mm; metal can width (perp. to pin row, local Y)
 SLIDE_ACTUATOR_BODY_L       = 4.0  # mm; metal can length (along pin row, local X)
-SLIDE_ACTUATOR_BODY_H       = 4.3  # mm; metal can height above the PCB (reference)
 SLIDE_ACTUATOR_NUB_L        = 3.5  # mm; actuator nub length along pin row (local X)
 SLIDE_ACTUATOR_NUB_D        = 3.0  # mm; actuator protrusion beyond the can edge (local -Y)
-SLIDE_ACTUATOR_NUB_H        = 2.0  # mm; actuator height above the can top (reference)
 SLIDE_ACTUATOR_PIN_CENTER_X = 2.0  # mm; can centre offset from footprint origin (local X)
+# BODY_H / NUB_BASE / NUB_H are defined with the measured Z stack ABOVE — the scoop needs them
+# first. They are the same OWNED structural values this block has always carried, only hoisted.
 SLIDE_ACTUATOR_PAD          = 0.5  # mm; clearance grown on every X/Y face of the pocket
 SLIDE_ACTUATOR_FLOOR_Z      = 0.0   # mm; pour depth for the drop-in channel (decoupled from the
 #                                      seam — the tub is now open below this anyway; kept as a
 #                                      registered clearance floor for the switch can/nub)
-SLIDE_ACTUATOR_TOP_Z        = MAIN_RIM_Z - 0.5   # mm; cover underside — do NOT perforate the lid (tracks the rim; was literal 12)
+# Pocket cap. It tracked MAIN_RIM_Z − 0.5, which is a datum the CAN knows nothing about: the
+# pocket is over the switch, not over the plate, so tying it to the plate stack made its
+# clearance an accident of MX_BODY_CLEAR. That accident was 0.9 mm of INTERFERENCE at the old
+# 4.3 mm can, and only ~0.15 mm of air at MX_BODY_CLEAR = 3.40. Now derived from the can it
+# actually has to clear, and clamped so the lid keeps at least SLIDE_ACTUATOR_LID_MIN of solid.
+SLIDE_ACTUATOR_CAP_CLEAR    = 0.3  # mm; air above the measured can — an FDM face lands ±0.2
+SLIDE_ACTUATOR_LID_MIN      = 0.5  # mm; solid cover that must survive above the pocket
+SLIDE_ACTUATOR_TOP_Z        = min(
+    PCB_TOP_Z + SLIDE_ACTUATOR_BODY_H + SLIDE_ACTUATOR_CAP_CLEAR,  # clear the can
+    COVER_TOP_Z - SLIDE_ACTUATOR_LID_MIN,                          # never perforate the lid
+)
+
+# ---------- Battery JST at J2 (S2B-XH-A-1, side entry) ----------
+# THE PART THE MODEL COULD NOT SEE. This is the wireless build's battery connector, and until
+# now it existed nowhere except a sentence: canopy.py's ramp-foot comment claims the slip
+# "starts climbing early enough to clear the JST beneath it" — an explicit clearance promise
+# with no constant, no phantom and no test behind it. Nothing ever checked it, and the case
+# would not shut.
+#
+# It is invisible to the data too, and that is not the CPL's fault. data/raw/CPL-SofleKeyboard.csv
+# is the shared Sofle v2 placement file (U1's ProMicro footprint is what a nice!nano drops into),
+# and it lists J2 as a generic Conn_01x03_Female / PinSocket_1x03_P2.54mm_Vertical. The part
+# actually soldered there is a 2-circuit JST XH. No footprint, no envelope, and above all no
+# HEIGHT — so no data-driven check could have caught this. Only a datum can.
+#
+# HEIGHT: 6.5, MEASURED, and the datasheet agrees at (6.1). Read this before touching the number,
+# because it was wrong once and the error is instructive.
+#
+# eXH.pdf's side-entry pages carry two figures side by side, and they are DIFFERENT VIEWS:
+#   * LEFT is a plan view — "the PC board layout figure shown is viewed from the connector
+#     mounting surface". Dimension (C) lives here, running from the pin-hole row to the "Side
+#     edge of header on PCB". C is therefore a FOOTPRINT dimension in the plane of the board.
+#     It is what distinguishes S2B-XH-A (C:9.2) from S2B-XH-A-1 (C:7.6);
+#   * RIGHT is the side elevation. There (14.3), 4.5 and 7 run HORIZONTALLY, and the single
+#     vertical dimension is (6.1). That is the height above the PCB.
+#
+# This constant was first set to 7.6 by reading C as a height — a plan-view footprint number used
+# as an elevation. It survived because 7.6 was plausible and every check downstream was built on
+# it, so the model was self-consistent and confidently wrong. The owner's calipers caught it: 6.5
+# against the datasheet's 6.1, and the two agree. The vendor listing is wrong in the other
+# direction — it advertises "assembled height 9.8 mm", which is the TOP-ENTRY (B2B) figure (header
+# 7.0 plus a mated XHP-2 sitting on top of it), meaningless for an S-prefix side-entry part.
+#
+# The lesson is not "read more carefully". It is that a dimension letter is worthless without the
+# view it was drawn in, and a datasheet that puts a plan and an elevation next to each other will
+# hand you the wrong one without complaint.
+#
+# Above the PCB this fouled the cover no matter which figure was believed: the headroom at J2 is
+# 6.70 mm and every candidate (6.1, 6.5, 7.6) needs more than that once JST_CLEAR is counted. That
+# is what forced the move underneath, and it is why the wrong height did not change the decision.
+#
+# MOUNTED UNDER THE PCB, like the hotswap sockets. Standing on top it fouled the cover by
+# 34.2 mm^3 (2.016 mm thick, Z 15.98..18.00) — the only hardware fouling either printed part. The
+# fix is not to reshape the canopy around it but to move it out from under the canopy entirely,
+# into a blind pocket in the floor. The fastback is then untouched, and the trough between the
+# encoder plateau (underside 19.40, ends Y 59.80) and the ramp (19.20 by Y 69.0) stops mattering.
+#
+# WHICH WAY THE PLUG FACES IS A CLEARANCE DECISION, NOT A PREFERENCE. It enters from the NORTH so
+# the wire run leaves north and turns east at case Y ~72. Routing south instead puts the wires
+# 0.46 mm from the standoff at case (53.32, 58.79); north clears it by 10.46 mm.
+#
+# ALL THREE BODY DIMENSIONS ARE MEASURED on the installed connector (6.5 x 8.0 x 8.0). They
+# replace a datasheet-derived set that was wrong in BOTH directions at once, which is the part
+# worth remembering: the height ran 1.1 mm over and the length 1.5 mm over — harmless, they only
+# spend floor — but the WIDTH ran 0.6 mm UNDER. At the earlier 7.4 the pocket came out 8.4 mm
+# across for an 8.0 mm part: 0.2 mm a side, against an FDM face that lands +/-0.2. The pocket
+# would very likely not have accepted the connector at all, and nothing in the model could have
+# said so, because every check was built from the same wrong number.
+#
+# So: oversizing is NOT a substitute for measuring. Generous depth hid a tight width, and only a
+# caliper on the real part separated them.
+# PLACEMENT. JST_POS IS PIN 1, NOT THE BODY CENTRE — this footprint's CPL "Mid X/Y" is the origin
+# pin, and SofleKeyboard-PTH.drl confirms a three-hole row running EAST from it at 2.54 pitch:
+# case X 26.60 / 29.14 / 31.68, all at case Y 67.02. Centring the body on JST_POS (as this file
+# first did) put it 2.5 mm west of the truth and short of its own third pin.
+#
+# The 2-circuit XH occupies two of the three holes. And it is a SIDE-ENTRY part: the pins leave
+# the back of the shroud, so the body does not straddle the row — it runs off it, northward, which
+# is the same direction the plug enters.
+#
+# EITHER PAIR WORKS, so the pocket must fit BOTH. The middle hole is B+ and both outer holes are
+# GND, which makes the connector electrically reversible: it can sit on the west pair or the east
+# pair and work the same. A pocket cut to whichever pair happened to be soldered first would turn
+# a free choice into a permanent one, and the constraint is invisible from the geometry — nothing
+# downstream could tell you the part was allowed to move. So the pocket spans the union of the two
+# positions: 11.54 mm rather than 9.00, wider by exactly one pin pitch.
+JST_POS       = (12.855, -48.735)  # PCB coords; the CPL's J2 row = PIN 1. Not the centre.
+JST_PIN_PITCH = 2.54   # mm; the 1x03 footprint's pitch, read off the drill file
+JST_MOUNT_W   = 0.5    # body centre for the WEST pair, in pitches from JST_POS (holes 1+2)
+JST_MOUNT_E   = 1.5    # body centre for the EAST pair (holes 2+3)
+#               No rotation constant: the CPL's 90 deg describes the 1x03 socket originally
+#               footprinted at J2, not the XH re-soldered underneath. BODY_W/BODY_D below name
+#               their case axes outright, so a stale placement angle has nothing to act on.
+JST_BODY_H    = 6.5   # mm; MEASURED on the installed part. Datasheet corroborates: (6.1).
+JST_BODY_W    = 8.0   # mm; MEASURED, across the circuits — lies along case X
+JST_BODY_D    = 8.0   # mm; MEASURED, the mating axis — along case Y
+JST_PLUG_RUN  = 6.3   # mm; how far the mated plug stands proud of the header. Datasheet-derived:
+#                       side-entry ASSEMBLY length (14.3) minus the measured 8.0 body.
+JST_WIRE_OD   = 1.9   # mm; JST's own max insulation OD. Two conductors run side by side.
+JST_WIRE_BEND = 3.0   # mm; room past the plug for the leads to turn without being pinched
+JST_CLEAR     = 0.5   # mm; air around the connector. Matches SLIDE_ACTUATOR_CAP_CLEAR's logic —
+#                       an FDM face lands +/-0.2.
+JST_BOTTOM_Z  = PCB_SEAT_Z - JST_BODY_H  # 1.20; PCB-anchored per the ENCODER_BODY_H fix (429adc9).
+#                                          It hangs off the BOARD, so the floor that has to clear
+#                                          it cannot be what defines its height.
+
+# Pocket: a blind recess cut down from the floor's top face, exactly like the battery pocket.
+JST_POCKET_PAD      = 0.5   # mm; per-side XY clearance around the connector envelope
+JST_POCKET_FLOOR_Z  = JST_BOTTOM_Z - JST_CLEAR             # 0.70; pocket floor
+JST_POCKET_DEPTH    = FLOOR_THICKNESS - JST_POCKET_FLOOR_Z  # 5.60; tracks the floor, as
+#                                                             BATTERY_POCKET_DEPTH does
+JST_POCKET_CORNER_R = 1.5   # mm; plan-corner fillet (battery uses 2.0; this pocket is smaller)
+
+# Wire channel: JST pocket -> battery pocket. NOT optional. Only STANDOFF_SHOULDER_H (2.5 mm) of
+# air exists under the PCB and the hotswap sockets already eat ~2.0 of it, so a 1.9 mm lead has
+# nowhere to cross the switch field without a channel cut into the floor.
+JST_CHANNEL_W       = 2 * JST_WIRE_OD + 1.2   # 5.0; two conductors side by side, plus slack
+# Floor MATCHES the JST pocket rather than being sized to the wire. The two pockets are NOT the
+# same depth — battery 4.30 (floor Z 2.00, set by BATTERY_FLOOR_BASE) against JST 4.50 (floor
+# Z 1.80, set by the measured connector) — so the channel takes the DEEPER of the two. A wire then
+# only ever steps DOWN into the channel and never up, at either end; matching the shallower would
+# leave a 0.20 lip at the JST mouth for a lead to catch on.
+JST_CHANNEL_FLOOR_Z = JST_POCKET_FLOOR_Z                     # 1.80; flush with the JST pocket
+JST_CHANNEL_DEPTH   = FLOOR_THICKNESS - JST_CHANNEL_FLOOR_Z  # 4.50; derived, tracks the floor
+# The run is ORTHOGONAL and HOOKED, not diagonal: out of the JST pocket heading NORTH, east along
+# the top, then a long leg SOUTH, and into the battery pocket near its south-west corner. ~94 mm
+# against the 27 mm a straight east run took and the 64 mm a diagonal took. The length IS the
+# feature — the leads get real slack and a route that stays out of the middle of the switch field,
+# rather than the shortest line between two points.
+#
+# The southward leg's X is set by the standoff at case (53.32, 58.79), which is the only thing
+# either turn comes near: 44.0 clears it by 4.07 mm, and every millimetre east of that is spent
+# straight off the margin (46.0 leaves 2.07, 47.0 leaves 1.07).
+JST_CHANNEL_TOP_Y     = 90.0   # case Y of the northern leg, clear of the JST pocket's mouth
+JST_CHANNEL_MID_X     = 44.0   # case X of the long southward leg — see the standoff note above
+# The entry leg's centreline offset from the battery pocket's south wall. HALF THE CHANNEL WIDTH,
+# derived rather than dialled, so the channel's south face lands EXACTLY on the pocket's south
+# face and the two read as one continuous wall. At a free 3.0 the channel sat 0.5 mm north of it
+# and left a visible jog at the junction — small, but it is a step in a wall a wire is pressed
+# against, and it moves the moment JST_CHANNEL_W does.
+JST_CHANNEL_BAT_INSET = JST_CHANNEL_W / 2
 
 # ---------- Battery pocket (405070 LiPo cell: 50x70mm footprint) ----------
 # The footprint sits UNDER 12 switches, so the hotswap sockets (~2 mm below the PCB)
@@ -571,15 +1063,64 @@ assert TENT_WEDGE_MIN_H >= FOOT_DEPTH + 0.3, (
 TENT_SEAM_Y1 = TENT_SEAM_SOUTH_FRAC * OUTER_DEPTH                        # 63.0 at 0.50
 TENT_SEAM_Y2 = TENT_SEAM_Y1 + TENT_SEAM_RAMP_FRAC * OUTER_DEPTH          # 85.7 at 0.50
 
-# The sweep must finish south of the +Y relief bump (y>=115). The bump stands proud of the
-# nominal outline offset and carries a corner fillet, so a skirt reaching it would have to
-# chase the tub's real footprint instead of a plain offset -- the complexity this design
-# deliberately avoids. y = OUTER_DEPTH - 20 is the conservative stand-in for that limit.
-TENT_SEAM_FRAC_MAX = (OUTER_DEPTH - 20.0) / OUTER_DEPTH - TENT_SEAM_RAMP_FRAC   # 0.66 at ramp 0.18
-assert TENT_SEAM_Y2 < OUTER_DEPTH - 20.0, (
-    f"TENT_SEAM_SOUTH_FRAC={TENT_SEAM_SOUTH_FRAC} puts the sweep's end at y={TENT_SEAM_Y2:.1f}, "
-    f"which runs into the +Y relief bump. With TENT_SEAM_RAMP_FRAC={TENT_SEAM_RAMP_FRAC} the "
-    f"ceiling is {TENT_SEAM_FRAC_MAX:.2f} — lower the south fraction or shorten the ramp")
+# The ramp used to have to finish south of the +Y relief bump at y = OUTER_DEPTH - 20. That was
+# never about the ramp: it was about the SKIRT the ramp drags below Z=0. The bump stands proud of
+# the nominal outline offset and carries a corner fillet, and skirt_extension built its band from
+# a polygon offset, so a band reaching the bump would have sat INSIDE the wall above it and left a
+# step at Z=0 along the whole bump face. The limit fenced the skirt off from that region instead
+# of solving it.
+#
+# skirt_extension now sections the TUB at Z=0 and projects that outline down, so the band IS
+# whatever the wall above it is -- bump, fillet and all. The limit is therefore retired, which is
+# what lets the wave carry a rear skirt at all. What remains is only that the ramp has to fit in
+# the case.
+TENT_SEAM_FRAC_MAX = 1.0 - TENT_SEAM_RAMP_FRAC
+assert TENT_SEAM_Y2 <= OUTER_DEPTH, (
+    f"TENT_SEAM_SOUTH_FRAC={TENT_SEAM_SOUTH_FRAC} puts the ramp's end at y={TENT_SEAM_Y2:.1f}, "
+    f"past the back of the case at {OUTER_DEPTH:.1f}. With TENT_SEAM_RAMP_FRAC="
+    f"{TENT_SEAM_RAMP_FRAC} the ceiling is {TENT_SEAM_FRAC_MAX:.2f} — lower the south fraction "
+    f"or shorten the ramp")
+
+# The rear parting line's floor: the desk, less the clearance the skin must always keep from it.
+# Stated here rather than beside the dial because it needs the tent's own numbers.
+SEAM_NORTH_RISE_FRAC_MIN = -(TENT_WEDGE_MAX_H - TENT_SKIRT_CLEAR_MIN) / SEAM_LEDGE_Z
+assert SEAM_NORTH_RISE_FRAC >= SEAM_NORTH_RISE_FRAC_MIN, (
+    f"SEAM_NORTH_RISE_FRAC={SEAM_NORTH_RISE_FRAC} puts the rear parting line at "
+    f"{SEAM_NORTH_RISE_Z:.2f}, which is through the desk at the back ({-TENT_WEDGE_MAX_H:.2f}) or "
+    f"inside TENT_SKIRT_CLEAR_MIN={TENT_SKIRT_CLEAR_MIN} of it. The floor at this tent angle is "
+    f"{SEAM_NORTH_RISE_FRAC_MIN:.3f}")
+
+# ---- The wave's knots, checked against the geometry they have to live inside ----
+# SEAM_WAVE_KNOTS is written as literal numbers because it is MEASURED DATA, not a formula, so
+# nothing here can derive it -- these only catch a table that has drifted out of the space the
+# rest of the design leaves for it.
+#   local Z = (band above the desk) + (Z of the desk there)
+#           = band * TENT_WEDGE_MAX_H  -  (TENT_WEDGE_MIN_H + TENT_RISE * u)
+# The second term is tent_ground_z() written out in terms of u; case.py has the function, but
+# constants cannot import it, and the guards below have to run at import time.
+SEAM_WAVE_Y = tuple((u * OUTER_DEPTH,
+                     band * TENT_WEDGE_MAX_H - (TENT_WEDGE_MIN_H + TENT_RISE * u))
+                    for u, band in SEAM_WAVE_KNOTS)
+assert all(TENT_SEAM_Y1 < y < TENT_SEAM_Y2 for y, _z in SEAM_WAVE_Y), (
+    f"a wave knot sits outside the ramp it shapes (y must be strictly inside "
+    f"{TENT_SEAM_Y1:.2f}..{TENT_SEAM_Y2:.2f}); the runs either side own those ends")
+assert all(a[0] < b[0] for a, b in zip(SEAM_WAVE_Y, SEAM_WAVE_Y[1:])), (
+    "wave knots must be strictly increasing in y — a through-fit spline cannot double back")
+
+# The ceiling is the rabbet ledge, and for exactly the reason SEAM_NORTH_RISE_FRAC's own ceiling
+# of 1.0 exists: below SEAM_LEDGE_Z the tub is ONLY its outer skin, because _plate_pocket has
+# already taken the floor and inner wall out from behind it, so the cutter eats skin and nothing
+# else. Above the ledge it starts eating the tub proper. The crest is the same question asked at
+# a different Y, and it costs the same thing -- rabbet lap, 1 mm for 1 mm.
+SEAM_WAVE_CREST_Z = max(z for _y, z in SEAM_WAVE_Y)
+SEAM_WAVE_LAP_LEFT = SEAM_LEDGE_Z - max(SEAM_WAVE_CREST_Z, SEAM_NORTH_RISE_Z)   # 2.70 at crest 3.60
+assert SEAM_WAVE_CREST_Z < SEAM_LEDGE_Z, (
+    f"the wave crests at Z={SEAM_WAVE_CREST_Z:.2f}, at or above the rabbet ledge "
+    f"SEAM_LEDGE_Z={SEAM_LEDGE_Z:.2f} — past there the seam cutter eats the tub itself, not its "
+    f"skin. Lower the crest, or raise the ledge (which is FLOOR_THICKNESS and costs height)")
+assert SEAM_WAVE_LAP_LEFT >= 2.0, (
+    f"the crest at Z={SEAM_WAVE_CREST_Z:.2f} leaves only {SEAM_WAVE_LAP_LEFT:.2f} mm of rabbet "
+    f"lap to locate the two halves against each other; 2.0 is the floor")
 
 PCB_OFFSET_X = (OUTER_WIDTH - (PCB_X_MAX - PCB_X_MIN)) / 2 - PCB_X_MIN
 PCB_OFFSET_Y = (OUTER_DEPTH - (PCB_Y_MAX - PCB_Y_MIN)) / 2 - PCB_Y_MIN
@@ -600,21 +1141,30 @@ SHOW_TOP_COVER      = True # True: adds the sandwich top cover to case.py __main
 # moved UP to the "MCU physical stack" block above the USB-C section: the jack bands are
 # now derived from the nano's board faces, so they must be declared before that block.
 
-# ---------- MCU board Y extent (anchored to the pin array, NOT centred on it) ----------
-# The nano is located by its 24 pin holes, so the board's Y faces must be derived from the
-# northmost pin — never from ``MCU_POS ± MCU_BODY_L/2``. That centred form happened to give
-# the right answer only while MCU_BODY_L was the nice!nano's 33.0, which IS centred on the
-# pins; at the SuperMini's 34.1 it silently walks the USB end 0.55 mm north and manufactures
-# a collision with the canopy wall. The extra 1.1 mm is at the FAR end (the SuperMini's extra
-# breakout pads): the footprint here is stock Pro Micro (0.600" rows, 2.54 pitch, 27.94 span,
-# see MCU_POS), and the board would not be Pro-Micro-drop-in if its USB end had moved.
-MCU_PIN_SPAN_Y      = 27.94   # mm; 11 × 2.54 between the outer pins — from the drill file
-MCU_PIN_TO_USB_EDGE = 2.53    # mm; northmost pin centre → the board's USB-end edge
-#                               (33.0 nice!nano centred on a 27.94 span ⇒ (33.0 − 27.94)/2)
-MCU_BODY_N_Y = pcb_to_case(*MCU_POS)[1] + MCU_PIN_SPAN_Y / 2 + MCU_PIN_TO_USB_EDGE  # 116.09
-MCU_BODY_S_Y = MCU_BODY_N_Y - MCU_BODY_L                                            # 81.99
+# ---------- MCU board Y extent (anchored to the SOUTH pin, NOT centred on the array) ----------
+# The nano is located by its 24 pin holes, so the board's Y faces must be derived from a PIN —
+# never from ``MCU_POS ± MCU_BODY_L/2``. That centred form happened to give the right answer
+# only while MCU_BODY_L was the nice!nano's 33.0, which IS centred on the pins; at any other
+# length it drifts, and it drifts on the end that matters. That trap is still live — see
+# tests/test_constants.py.
+#
+# WHICH pin is the anchor is the second half of the question, and it was answered wrong. This
+# used to derive the USB-end face from the NORTHMOST pin, which spends the SuperMini's extra
+# 1.1 mm (34.1 vs the nice!nano's 33.0) at the far/south end. Backwards. A Pro-Micro-footprint
+# board is 33.02 mm = the 27.94 mm pin span plus 2.54 mm of edge at EACH end, so it is the far
+# edge that the pin row pins down; a board longer than 33.0 grows NORTH, out over the USB end.
+# That is exactly why a SuperMini fouls a case cut for a nice!nano — the north face (board and
+# the jack overhanging it) lands in the canopy's north wall, and the case will not close over
+# it. Anchor south, let the length run north, and the collision is visible instead of invented
+# somewhere it is harmless.
+MCU_PIN_SPAN_Y        = 27.94   # mm; 11 × 2.54 between the outer pins — from the drill file
+MCU_PIN_TO_SOUTH_EDGE = 2.54    # mm; southmost pin centre → the board's FAR (non-USB) edge.
+#                                 Stock Pro Micro footprint: 27.94 + 2 × 2.54 = 33.02 ⇒ the
+#                                 33.0 mm board. This end is the datum; MCU_BODY_L sets the other.
+MCU_BODY_S_Y = pcb_to_case(*MCU_POS)[1] - MCU_PIN_SPAN_Y / 2 - MCU_PIN_TO_SOUTH_EDGE  # 83.08
+MCU_BODY_N_Y = MCU_BODY_S_Y + MCU_BODY_L                                              # 117.18
 # For reference: the PCB's own north edge at this column is 115.75, so the board overhangs
-# it by 0.34 mm — that overhang is the unsupported B+/B- pad end (see the relief below).
+# it by 1.43 mm — that overhang is the unsupported B+/B- pad end (see the relief below).
 
 # ---------- MCU +Y cover relief (B+/B- clearance) ----------
 # The nice!nano's B+/B- pads (unsoldered — meant for direct battery wire, no leg
@@ -643,6 +1193,23 @@ MCU_Y_RELIEF_OVERLAP   = 1.0   # mm, fusion overlap into existing wall material
 # air. 20.0 (case X≈36.5) is the plate's own switch/bay boundary and sits ~1.5 mm
 # clear of the nice!nano's right edge (case X≈35).
 MCU_Y_RELIEF_CEILING_X = 20.0  # mm, PCB coords — east limit of the ceiling-band cavity
+
+# ---------- The north bay's inner face — ONE plane, tray floor to canopy roof ----------
+# The tray cavity, the ceiling band above the plate top, and the canopy's north wall all bound
+# the same bay on the same side, and each used to pick its own Y: 118.75, 116.09 and 117.50.
+# Three faces on one wall means two steps, and a step in the bay is a ledge the MCU has to be
+# threaded past on the way in. The middle one was the worst of them — bounding the ceiling band
+# at MCU_BODY_N_Y put its face on exactly the board's north face, zero air by construction, and
+# left a 1 mm-tall lip running the full width of the bay under the USB funnel.
+#
+# So they all land here instead. Anything that bounds the bay on the north consumes this and
+# nothing steps inboard of anything else; the MCU slides past one flat wall. Derived from the
+# relief target, so raising MCU_Y_RELIEF_TARGET_Y moves the wall, the cavity and the canopy
+# together (that is the escape hatch if the board ever measures longer than MCU_BODY_L).
+BAY_NORTH_INNER_Y = pcb_to_case(0, MCU_Y_RELIEF_TARGET_Y)[1] + PCB_XY_CLEARANCE   # 118.75
+assert BAY_NORTH_INNER_Y - (MCU_BODY_N_Y + USB_JACK_Y_PROTRUDE) >= 0.3, (
+    f"the north bay leaves {BAY_NORTH_INNER_Y - (MCU_BODY_N_Y + USB_JACK_Y_PROTRUDE):.2f} mm "
+    f"in front of the USB jack — the MCU will not go in")
 
 # ---------- Slide-switch slot X reach (−X wall) ----------
 # Inner-X bound the slide-switch slot cutter extrudes to. Derived from the −X wall

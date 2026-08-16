@@ -12,7 +12,9 @@ _DATA = Path(__file__).resolve().parents[2] / "data"
 
 # Cherry MX geometry — phantom only, not structural
 _LOWER_W  = 13.8   # lower housing width/depth (fits through 14×14 plate cutout)
-_LOWER_H  =  3.0   # lower housing height = measured MX body clearance gap
+_LOWER_H  =  C.MX_BODY_CLEAR   # lower housing height = plate-to-PCB gap the switch body sits in.
+                                # Was a stale literal 3.0, a copy of the pre-fix MX_BODY_CLEAR;
+                                # tracked the wrong thing and drifted when that value moved to 3.40.
 _UPPER_W  = 15.6   # upper housing width/depth
 _UPPER_H  =  6.6   # upper housing height above plate
 _STEM_DIA =  4.5   # stem cylinder diameter

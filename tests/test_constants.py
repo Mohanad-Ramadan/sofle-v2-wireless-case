@@ -83,20 +83,34 @@ def test_usb_jack_is_mid_mount_not_top_mount():
         assert lo < C.MCU_PCB_TOP_Z < hi or lo < C.MCU_PCB_BOT_Z < hi
 
 
-def test_mcu_board_is_anchored_to_its_pin_array_not_centred_on_it():
+def test_mcu_board_is_anchored_to_its_SOUTH_pin():
     """The nano is located by its 24 pin holes (``MCU_POS`` = the array centre, verified
-    against data/raw/SofleKeyboard-PTH.drl), so its USB-end face must derive from the
-    northmost pin — NEVER from ``MCU_POS ± MCU_BODY_L/2``.
+    against data/raw/SofleKeyboard-PTH.drl), so its board faces must derive from a PIN —
+    NEVER from ``MCU_POS ± MCU_BODY_L/2``. That trap is still live: the centred form agrees
+    by luck at MCU_BODY_L = 33.0 (the nice!nano, which IS centred on the 27.94 pin span) and
+    drifts at every other length.
 
-    The centred form agreed by luck while MCU_BODY_L was the nice!nano's 33.0, which is
-    centred on the 27.94 pin span. At the SuperMini's 34.1 it walks the USB end 0.55 mm
-    north and invents a collision with the canopy wall. Growing MCU_BODY_L must extend the
-    SOUTH end only.
+    WHICH pin is the anchor is the second half of it, and it was wrong for a while. This used
+    to derive the USB-end face from the NORTHMOST pin, spending the SuperMini's extra 1.1 mm
+    at the far/south end where nothing is in the way. Backwards: a Pro-Micro-footprint board
+    is 33.02 = 27.94 + 2 x 2.54, so the pin row fixes the FAR edge and a longer board grows
+    north, out over the USB end and into the canopy's north wall. Anchoring north hid a real
+    collision by putting the growth somewhere harmless.
     """
-    assert abs(C.MCU_BODY_N_Y - 116.09) < 1e-6, "USB-end face moved — jack/wall gap is at risk"
+    south_pin = C.pcb_to_case(*C.MCU_POS)[1] - C.MCU_PIN_SPAN_Y / 2
+    assert abs(C.MCU_BODY_S_Y - (south_pin - C.MCU_PIN_TO_SOUTH_EDGE)) < 1e-9, \
+        "the far edge is no longer measured off the southmost pin"
     assert abs((C.MCU_BODY_N_Y - C.MCU_BODY_S_Y) - C.MCU_BODY_L) < 1e-9
     centred = C.pcb_to_case(*C.MCU_POS)[1] + C.MCU_BODY_L / 2
-    assert C.MCU_BODY_N_Y < centred, "board is being centred on MCU_POS again"
+    assert C.MCU_BODY_N_Y > centred, "board is being centred on MCU_POS again"
+    # Every mm this board is longer than a stock Pro Micro must land at the USB end: the north
+    # face sits one stock edge PLUS the whole overlength past the northmost pin.
+    north_pin  = C.pcb_to_case(*C.MCU_POS)[1] + C.MCU_PIN_SPAN_Y / 2
+    overlength = C.MCU_BODY_L - (C.MCU_PIN_SPAN_Y + 2 * C.MCU_PIN_TO_SOUTH_EDGE)
+    assert overlength > 0, "this guard assumes a board at least as long as a stock Pro Micro"
+    assert abs((C.MCU_BODY_N_Y - north_pin)
+               - (C.MCU_PIN_TO_SOUTH_EDGE + overlength)) < 1e-9, \
+        "extra board length is not going north"
 
 
 def test_usb_jack_z_rejects_bad_side():

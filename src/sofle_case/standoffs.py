@@ -9,17 +9,23 @@ def stepped_standoff(at: tuple[float, float]) -> Part:
 
     Geometry:
       - Lower section: Z=FLOOR_THICKNESS → PCB_SEAT_Z, OD=STANDOFF_OD_LOWER (PCB-seat shoulder)
-      - Upper section: Z=PCB_SEAT_Z → PLATE_SEAT_Z, OD=STANDOFF_OD_UPPER (passes through PCB hole)
-      - M2 tap bore: drilled top-down from PLATE_SEAT_Z to depth STANDOFF_TAP_DEPTH, Ø=STANDOFF_TAP_DIA
+      - Upper section: Z=PCB_SEAT_Z → pin_top, OD=STANDOFF_OD_UPPER (passes through PCB hole)
+      - M2 tap bore: drilled top-down from pin_top to depth STANDOFF_TAP_DEPTH, Ø=STANDOFF_TAP_DIA
+
+    ``pin_top`` is PLATE_SEAT_Z − STANDOFF_PIN_RECESS, NOT PLATE_SEAT_Z. The pin is a screw
+    boss, not a seat: the plate is located by the switches, and a pin that reached the plate
+    would be a second datum for the same face. See STANDOFF_PIN_RECESS in constants.py.
     """
     x, y = at
 
-    lower_h = C.PCB_SEAT_Z - C.FLOOR_THICKNESS       # 2.5 mm
-    upper_h = C.PLATE_SEAT_Z - C.PCB_SEAT_Z           # 4.6 mm (passes through PCB + spans MX body gap)
-    lower_z = C.FLOOR_THICKNESS + lower_h / 2         # cylinder centre Z = 3.25
-    upper_z = C.PCB_SEAT_Z + upper_h / 2              # cylinder centre Z = 5.5
+    pin_top = C.PLATE_SEAT_Z - C.STANDOFF_PIN_RECESS  # deliberately BELOW the plate underside
 
-    bore_z = C.PLATE_SEAT_Z - C.STANDOFF_TAP_DEPTH / 2  # centre of tap bore = 4.5
+    lower_h = C.PCB_SEAT_Z - C.FLOOR_THICKNESS       # 2.5 mm
+    upper_h = pin_top - C.PCB_SEAT_Z                  # passes through the PCB, stops short of the plate
+    lower_z = C.FLOOR_THICKNESS + lower_h / 2
+    upper_z = C.PCB_SEAT_Z + upper_h / 2
+
+    bore_z = pin_top - C.STANDOFF_TAP_DEPTH / 2       # centre of tap bore (follows the pin down)
 
     with BuildPart() as bp:
         with Locations((x, y, lower_z)):
@@ -32,7 +38,7 @@ def stepped_standoff(at: tuple[float, float]) -> Part:
                 height=C.STANDOFF_TAP_DEPTH,
                 mode=Mode.SUBTRACT,
             )
-        with Locations((x, y, C.PLATE_SEAT_Z - C.STANDOFF_TAP_CHAMFER / 2)):
+        with Locations((x, y, pin_top - C.STANDOFF_TAP_CHAMFER / 2)):
             Cone(
                 bottom_radius=C.STANDOFF_TAP_DIA / 2,
                 top_radius=C.STANDOFF_TAP_DIA / 2 + C.STANDOFF_TAP_CHAMFER,

@@ -112,7 +112,13 @@ def test_canopy_west_top_facet_runs_the_whole_shoulder(side):
         assert _solid_at(c, xw + 0.35, y, rz - 3.2, s=0.2), \
             f"{side}: west wall gone below the facet at Y={y} (cut too deep)"
     # The fuse overlap under the ramp foot must survive the facet's lead-in.
-    assert _solid_at(c, xw + 0.4, 60.0, 15.4), "facet ate the fuse overlap at the ramp foot"
+    # Derived, not a literal. This read 15.4 — which was MAIN_RIM_Z + 0.4 back when the rim was
+    # 15.0, and silently stopped tracking it. The fuse overlap is the band CANOPY_FUSE_BASE_Z
+    # (= MAIN_RIM_Z) -> COVER_TOP_Z, so the probe belongs just inside its floor; when the rim
+    # moved with MX_BODY_CLEAR the old number fell below the canopy entirely and the test read a
+    # missing part as an eaten facet.
+    assert _solid_at(c, xw + 0.4, 60.0, C.MAIN_RIM_Z + 0.4), \
+        "facet ate the fuse overlap at the ramp foot"
     east_top = [f for f in _curved_faces(c) if abs(f.center().X - xe) < 2.0
                 and f.center().Z > C.COVER_TOP_Z + 2 and f.center().Y > CAN.CANOPY_RAMP_TOP_Y]
     assert not east_top, "east top edge should stay sharp"
@@ -194,8 +200,13 @@ def test_canopy_nw_corner_is_rounded(side):
     which is what the geom_type assertion below pins, so a regression to the kink fails loudly."""
     c = build_canopy(side=side)
     xw, yn, r = CAN.CANOPY_WEST_OUTER_X, CAN.CANOPY_NORTH_OUTER_Y, CAN.CANOPY_CORNER_R
-    assert not _solid_at(c, xw + 0.3, yn - 0.3, 16.0), "NW corner is sharp, not rounded"
-    assert _solid_at(c, xw + 0.3, 100.0, 16.0), "west wall missing away from the corner"
+    # Derived, not a literal. This read 16.0 — which was COVER_TOP_Z back when the rim was 15.0,
+    # so the probe sat exactly ON the canopy's top face and stopped tracking the ladder the moment
+    # MX_BODY_CLEAR moved. Probe a fixed height up the canopy wall instead, well clear of both
+    # its base and its roof.
+    z = CAN.CANOPY_FUSE_BASE_Z + 0.6
+    assert not _solid_at(c, xw + 0.3, yn - 0.3, z), "NW corner is sharp, not rounded"
+    assert _solid_at(c, xw + 0.3, 100.0, z), "west wall missing away from the corner"
     corner_faces = [f for f in c.faces() if f.center().X < xw + r and f.center().Y > yn - r]
     kinds = sorted({str(f.geom_type).split(".")[-1] for f in corner_faces})
     assert kinds == ["CYLINDER"], \
@@ -352,7 +363,7 @@ def test_canopy_usb_bands_differ_between_halves():
     Probed in each half's exclusive band (they overlap only through 19.6–21.1)."""
     left, right = build_canopy(side="left"), build_canopy(side="right")
     ncx = _mcu_cx()
-    yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_SIDE_WALL / 2
+    yw = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_NORTH_WALL / 2
     z_left_only, z_right_only = 17.5, 23.5
     assert not _solid_at(left, ncx, yw, z_left_only), "left port missing in its own band"
     assert _solid_at(right, ncx, yw, z_left_only), "right port reaches into the flipped band"
@@ -375,14 +386,22 @@ def test_canopy_fused_into_top_single_solid(side):
 def test_usb_jack_stops_short_of_the_north_wall():
     """The mid-mount jack must NOT reach the canopy's north wall — only the plug bridges it.
 
-    This is the guard for the MCU_BODY_L trap: the nano's USB-end face is anchored to its pin
-    array, so a longer board grows southward. Centring it on MCU_POS instead drives the jack
-    into the wall (0.14 mm at MCU_BODY_L = 34.1), which no geometry test would otherwise catch.
+    This is the guard for the MCU_BODY_L trap. The board is anchored at its SOUTH pin, so extra
+    length over the nice!nano's 33.0 grows NORTH, out over the USB end — which is exactly the
+    end that has a wall in front of it. At the SuperMini's 34.1 that is 1.09 mm of growth into a
+    0.41 mm gap, and it shipped: the printed case would not close over the board. Nothing else
+    in the suite sees it, because the phantom is built from the same anchor and a phantom in the
+    wrong place cannot foul anything.
+
+    The wall it is measured against is derived too (CANOPY_NORTH_WALL lands on the bay's one
+    north face), so this asserts the pair agree, not that either number was typed correctly.
     """
     jack_end   = C.MCU_BODY_N_Y + C.USB_JACK_Y_PROTRUDE
-    wall_inner = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_SIDE_WALL
+    wall_inner = CAN.CANOPY_NORTH_OUTER_Y - CAN.CANOPY_NORTH_WALL
     assert jack_end < wall_inner, f"jack reaches the wall: {jack_end:.2f} >= {wall_inner:.2f}"
     assert wall_inner - jack_end > 0.3, "air gap under 0.3 mm — re-check the board Y anchor"
+    assert abs(wall_inner - C.BAY_NORTH_INNER_Y) < 1e-9, \
+        "the canopy's north wall has stepped off the bay's north face again"
 
 
 @pytest.mark.parametrize("side", ["right", "left"])
@@ -408,21 +427,26 @@ def test_fused_top_clears_all_bay_components(side):
     assert vol < 1e-2, f"{side} canopy clashes bay components by {vol:.2f} mm^3"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN: the ogee plateau clips the EC11 body's corners. _encoder_shell fillets EVERY vertical "
-    "edge at r=3.0, and that includes the CAVITY's four inner corners — which pulls them in to "
-    "r 8.28 while the 12.4 mm square body's corners sit at r 8.77. The cover-side redesign fixes "
-    "it by rounding the cavity deliberately (small plan radius) instead of inheriting the outer "
-    "wall's. Remove this marker when that lands."))
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_cover_clears_the_encoder_body(side):
     """The cover must not occupy the space the EC11's own body stands in.
 
     This check could not exist before the encoder had a phantom: switch_phantom skips SW25 (it is
     not an MX switch) and pcb_phantom did not draw it, so the tallest object on the keyboard was
-    being fit-checked against nothing at all. With it drawn, the plateau turns out to interfere by
-    ~0.92 mm^3 in four equal lumps — one per body corner, Z 16.10–17.00 — which is a real
-    collision with a brass-and-plastic part that will not yield."""
+    being fit-checked against nothing at all. With it drawn, the plateau turned out to interfere by
+    ~0.92 mm^3 in four equal lumps — one per body corner, Z 16.10–17.00 — a real collision with a
+    brass-and-plastic part that will not yield. This carried an ``xfail(strict=True)`` while that
+    stood.
+
+    FIXED, and the print proved why it mattered: ``_encoder_shell`` selected its R3.0 plan
+    round-over by edge LENGTH, so the cavity's four vertical corners (4.2 mm) were filleted along
+    with the outer wall's, refilling them to r 8.32 against the body corners' 8.77. The fix filters
+    that selection RADIALLY, leaving the cavity square — a square cavity is what clears a square
+    body best, so the planned "round the cavity deliberately at a small radius" is not needed.
+
+    This test only ever looked ABOVE ``COVER_TOP_Z``, so it saw 0.92 of the 2.03 mm^3;
+    ``test_case.test_encoder_plateau_clears_the_ec11_body`` covers the body's full proud height
+    and so also catches the membrane-window half of the pinch."""
     top = build_top_part(side)
     if side == "left":
         top = _mirror_back(top)

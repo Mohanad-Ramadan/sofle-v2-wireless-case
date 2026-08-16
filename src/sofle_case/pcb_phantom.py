@@ -20,10 +20,11 @@ _MCU_W         = 18.0  # nice!nano width along case X
 # Pin span from drill data: local X = -2.1 .. +6.1 → center at +2.0
 _SK12_BODY_L   =  8.7  # metal can length along pin row (local X)
 _SK12_BODY_W   =  4.4  # metal can width perpendicular to pins (local Y)
-_SK12_BODY_H   =  4.3  # metal can height above PCB
+_SK12_BODY_H   =  4.3  # metal can height above PCB — ASSUMED, not measured
 _SK12_NUB_L    =  3.5  # actuator nub length along pin row (local X)
 _SK12_NUB_D    =  3.0  # actuator protrusion beyond body edge (local -Y)
-_SK12_NUB_H    =  2.0  # actuator height above metal can
+_SK12_NUB_BASE =  1.5  # lever underside above PCB top — ASSUMED, not measured
+_SK12_NUB_H    =  2.0  # actuator lever height — ASSUMED, not measured
 _SK12_PIN_CENTER_X = 2.0  # body center offset from footprint origin (local X)
 
 # SW31 pin holes from SofleKeyboard-PTH.drl (inch→mm). All at PCB X≈2.944.
@@ -95,13 +96,13 @@ def _usb_c_stub(side: str = "right") -> Part:
     """USB-C jack body stub at the +Y face of the MCU block, at this half's measured band.
 
     The stub protrudes ``C.USB_JACK_Y_PROTRUDE`` (1.0 mm, measured) past the board's +Y
-    edge — the real jack stops ~0.4 mm short of the canopy north wall's inner face, so
+    edge — the real jack stops 0.57 mm short of the canopy north wall's inner face, so
     the viewer shows that air gap (only the plug bridges the wall). It was a 7.0 mm
     tongue that poked ~1.6 mm PAST the wall's outer face — a visual lie. On the FLIPPED
     half the jack hangs under the nano board: its Z band (17.64→20.80) falls inside
     ``_mcu_block``'s Z span, so only the 1.0 mm tongue shows there — expected."""
     cx, _ = C.pcb_to_case(*C.MCU_POS)
-    mcu_y_face = C.MCU_BODY_N_Y           # +Y (USB-end) face of the board = 116.09 case-Y
+    mcu_y_face = C.MCU_BODY_N_Y           # +Y (USB-end) face of the board = 117.18 case-Y
     stub_center_y = mcu_y_face + C.USB_JACK_Y_PROTRUDE / 2
     jack_lo, jack_hi = C.usb_jack_z(side)
     stub_h = jack_hi - jack_lo
@@ -124,7 +125,7 @@ def _slide_switch_body() -> Part:
     cx, cy, rot = slide_switch_placement()
 
     body_z = C.PCB_TOP_Z + _SK12_BODY_H / 2
-    nub_z = C.PCB_TOP_Z + 1.5 + _SK12_NUB_H / 2
+    nub_z = C.PCB_TOP_Z + _SK12_NUB_BASE + _SK12_NUB_H / 2
 
     bdx, bdy = rotate_2d(_SK12_PIN_CENTER_X, 0.0, rot)
     ndx, ndy = rotate_2d(
@@ -143,6 +144,53 @@ def _slide_switch_body() -> Part:
     return bp.part
 
 
+def _jst_body(mount: str = "east") -> Part:
+    """Battery JST at J2 (S2B-XH-A-1, side entry) with its mated plug — hung UNDER the PCB.
+
+    Drawn so the viewer SHOWS it. This connector was clearance-critical and invisible for the
+    whole life of the design: standing on top of the board it fouled the cover by 34.2 mm^3 and
+    was the only hardware holding the case open, while ``canopy.py``'s ramp-foot comment *claimed*
+    to clear it. A phantom is the difference between a fit-check that can catch that and one that
+    cannot, which is the entire reason this function exists.
+
+    It now hangs below ``PCB_SEAT_Z`` like the hotswap sockets, into a floor pocket. The plug is
+    drawn too, at the full body section rather than its true smaller housing: this box is a
+    CLEARANCE ENVELOPE and the pocket is blind with ~8.9 mm of material under it, so erring large
+    costs nothing and erring small is how the original bug happened.
+
+    Reads its dims from ``constants``, unlike the ``_SK12_*`` block above. Those are marked
+    phantom-only because structure keeps its own copy; the JST envelope IS the structural datum —
+    the pocket and the clearance test measure against these same numbers.
+
+    No ``JST_ROT``: the CPL rotation describes the 1x03 socket originally footprinted at J2, not
+    the XH re-soldered underneath. ``JST_BODY_W``/``JST_BODY_D`` name their case axes directly, so
+    applying a stale placement angle on top would rotate the envelope off the part it represents.
+
+    Placement comes from ``battery.jst_body_center`` — the same function the pocket is cut from,
+    deliberately. When this drew itself from ``JST_POS`` and the pocket did too, both were wrong
+    together and agreed perfectly: the body sat 2.5 mm west of its own pins and no clash check
+    could see it. One source or the phantom stops being evidence.
+
+    ``mount`` picks which pair of holes the connector sits on. Both are electrically valid (the
+    middle hole is B+, both outer holes GND), and the pocket is cut to span either — so this
+    draws ONE of two legal positions. A clash check against this phantom alone therefore only
+    proves the drawn one fits; ``test_either_jst_mounting_fits_the_pocket`` covers the other.
+    """
+    from .battery import jst_body_center
+    cx, cy = jst_body_center(mount)
+    body_z = C.JST_BOTTOM_Z + C.JST_BODY_H / 2
+    plug_y = cy + C.JST_BODY_D / 2 + C.JST_PLUG_RUN / 2   # plug enters from the NORTH
+
+    with BuildPart() as bp:
+        with Locations((cx, cy, body_z)):
+            Box(C.JST_BODY_W, C.JST_BODY_D, C.JST_BODY_H)
+        with Locations((cx, plug_y, body_z)):
+            Box(C.JST_BODY_W, C.JST_PLUG_RUN, C.JST_BODY_H)
+
+    assert bp.part is not None
+    return bp.part
+
+
 def build_pcb_phantom(side: str = "right", include_encoder: bool = True) -> Part:
     """PCB plate + MCU daughter board + USB-C jack stub + slide-switch body + pin holes + EC11 & knob.
 
@@ -153,7 +201,7 @@ def build_pcb_phantom(side: str = "right", include_encoder: bool = True) -> Part
     switch) and this module never picked it up, so the encoder was invisible in every fit-check.
     Pass ``include_encoder=False`` if something else in the scene already draws it."""
     children = [_pcb_plate(), _mcu_block(), _usb_c_stub(side),
-                _slide_switch_body(), _slide_switch_pin_holes()]
+                _slide_switch_body(), _slide_switch_pin_holes(), _jst_body()]
     if include_encoder:
         from .encoder_phantom import build_encoder_phantom
         children.append(build_encoder_phantom())      # EC11 + its knob

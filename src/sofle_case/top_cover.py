@@ -2,11 +2,13 @@
 
 A thin (``COVER_THICKNESS``) layer the shape of the switch plate, sitting on the
 plate top (Z = ``MAIN_RIM_Z``) and held by the same standoffs via taller M2
-screws. Each 14 mm plate cutout is grown by ``COVER_WINDOW_OFFSET`` to a ~15.7 mm
-window (mitered square corners) that hugs the switch's 15.6 mm top housing — the
-switch pokes through and the cover seats flat with NO ring of plate showing around
-each key; keycaps float above and never touch it. The plate outline's own
-inner notch leaves the MCU/OLED/slide/JST bay open for free.
+screws. Each 14 mm plate cutout is grown by ``COVER_WINDOW_OFFSET`` to a 16.1 mm
+window (mitered square corners) that clears the switch's 15.6 mm top housing by
+0.25 mm/side — the switch pokes through and the cover seats flat; keycaps float
+above and never touch it. That 0.25 mm is an assembly budget, not slack: see the
+top-cover block in ``constants.py`` for the tolerance stack it has to absorb and
+for what happened when the window hugged the collar instead. The plate outline's
+own inner notch leaves the MCU/OLED/slide/JST bay open for free.
 
 Geometry is driven by the same authoritative plate data the plate phantom uses
 (``data/plate_outline.json`` + ``data/plate_cutouts.json``, re-parsed from the
@@ -85,14 +87,19 @@ def _window_solid(case_pts: list[tuple[float, float]], margin: float) -> Part:
     i.e. mitered SHARP corners), extruded through the full cover thickness (with a
     small over-cut top and bottom).
 
-    MX switch windows use ``COVER_WINDOW_OFFSET`` (0.8) so a 14 mm cutout grows to a
-    15.6 mm window that hugs the 15.6 mm top housing FLUSH — no plate ring shows. The
-    corners are mitered (not Kind.ARC rounded): a rounded corner of radius 0.8 leaves
-    the switch box's square corner protruding ~0.33 mm into the cover, so the window
-    is kept square to match the switch footprint exactly (real MX housings have
-    rounded corners, so a square window clears them with room to spare).
-    The encoder window uses ``margin=0`` — its exact plate cutout — because the EC11
-    body already passes through that opening and the bezel shell caps it from above."""
+    MX switch windows use ``COVER_WINDOW_OFFSET`` (1.05) so a 14 mm cutout grows to a
+    16.1 mm window, clearing the 15.6 mm top housing by 0.25 mm/side. The corners are
+    mitered (not Kind.ARC rounded): a rounded corner of that radius would leave the
+    switch box's square corner protruding into the cover, so the window is kept square
+    to match the switch footprint (real MX housings have rounded corners, so a square
+    window clears them with room to spare).
+
+    The encoder window uses ``ENCODER_SHELL_CAVITY_CLEAR`` so it lands on exactly the
+    same line as the plateau's internal cavity — the two are one aperture. It used to be
+    the exact plate cutout (``margin=0``), on the grounds that the EC11 body already
+    passes through that opening in the FR4. It does; a PRINTED copy of it does not — the
+    cutout is only 0.07 mm/side clear of the 12.4 mm body on its −Y face and holes print
+    undersize. The window is hidden under the 16.5 mm plateau either way."""
     pts = case_pts[:-1] if case_pts[0] == case_pts[-1] else case_pts
     with BuildLine() as bl:
         Polyline(*pts, close=True)
@@ -157,7 +164,8 @@ def build_top_cover(fuse_margin: float = 0.0) -> Part:
         case_pts = [C.pcb_to_case(x, y) for x, y in cutout_pcb]
         if len(case_pts) < 3:
             continue
-        margin = 0.0 if _is_encoder_cutout(case_pts) else C.COVER_WINDOW_OFFSET
+        margin = (C.ENCODER_SHELL_CAVITY_CLEAR if _is_encoder_cutout(case_pts)
+                  else C.COVER_WINDOW_OFFSET)
         cover = cast(Part, cover - _window_solid(case_pts, margin))
 
     if C.COVER_PULLER_NOTCH:

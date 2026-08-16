@@ -16,25 +16,27 @@ Two facts drive the cover design:
     knob can descend over nothing, and its hem must clear the tallest thing the cover puts under
     it. If yours does have a recess, measure it — a deep one would let the knob sit lower.
 
-``KNOB_BORE_DEPTH`` was the last unmeasured number and it is now backed out of the real keyboard —
-see the constant. Together with the shaft length it decides how high the knob ends up;
-``knob_seating_report`` prints that arithmetic rather than hiding it.
+``KNOB_BORE_DEPTH`` is measured on the real knob — see the constant. Together with the shaft length
+it decides how high the knob ends up; ``knob_seating_report`` prints that arithmetic rather than
+hiding it.
 
-TWO THINGS SET THE SEATING, AND THE BEZEL IS NEITHER:
+THE PLATEAU IS THE FLOOR, AND THE SHAFT DOES NOT GET CUT:
 
-  • THE BUSHING IS THE FLOOR. The Ø7 threaded collar stands 5 mm above the mounting face, to Z 22.0
-    — 3.4 mm clear of the ring's top — and this bore is Ø6, narrower than the collar, on a hem
-    modelled flat. The knob physically cannot go lower, so ~3.9 mm of collar and bare shaft shows
-    above the ring NO MATTER WHAT THE COVER DOES. Styling the bezel cannot close that gap; only a
-    taller bezel that hides the collar, or a knob with a skirt recess, would;
-  • THE SHAFT HAS TO BE CUT, because the 9 mm bore bottoms out long before the hem gets down to the
-    collar: on the as-bought 20 mm shaft the knob hangs at Z 28.0, 5.5 mm high. Cut to
-    ``shaft_len_for_seating`` the SHAFT ITSELF becomes the stop, so pushing the knob home lands the
-    hem at the design gap instead of leaving it to be eyeballed during assembly.
+  • the bore swallows 16 of the shaft's 20 mm, so the knob comes down until it bottoms on the shaft
+    with its hem 4 mm above the mounting face (Z 21.4). That is 0.5 mm above the plateau top — the
+    design gap, reached with no trimming at all;
+  • this module used to claim THE BUSHING IS THE FLOOR, on an assumed Ø7 collar standing 5 mm above
+    the mounting face. That collar cannot exist on this part: a Ø6 bore cannot pass a Ø7 collar, so
+    a 5 mm one would cap the knob's travel at 15 mm of shaft, and the measured coverage is 16. See
+    ``encoder_phantom.BUSHING_H``. The conclusion is robust — anything up to a 3.5 mm collar leaves
+    the seating unchanged, because the plateau top (20.9) is the taller floor either way.
 
-The failure mode at the other end is real too: a bore deeper than ~14.5 swallows the whole shaft
-before the hem clears the collar, and the knob comes to rest ON the brass. ``bushing_is_the_stop``
-flags it, and trimming makes that case worse rather than better.
+The old numbers had this exactly backwards and it was nearly expensive. With the guessed 9 mm bore
+the model asked for the shaft to be CUT to 14.5 mm; against the real 16 mm bore that cut is shorter
+than the bore itself, so the knob would swallow the whole stub and come to rest on the encoder body
+— a one-way cut to a metal shaft, made on a guess. ``bushing_is_the_stop`` still guards the other
+end (a bore deep enough to land the knob on a collar, where trimming makes things worse), it simply
+no longer fires on this hardware.
 """
 from __future__ import annotations
 from typing import cast
@@ -49,12 +51,13 @@ KNOB_OD = 13.0            # mm; the "13x17mm" option → Ø13. The variant list 
                           #   number is the diameter throughout.
 KNOB_H = 17.0             # mm; the second number
 KNOB_BORE_DIA = 6.0       # mm; push-fit onto the Ø6 shaft
-KNOB_BORE_DEPTH = 9.0     # mm; BACKED OUT OF THE REAL KEYBOARD, not the listing. On the assembled
-                          #   board 6.0 mm of bare Ø6 shaft shows between the top of the bushing
-                          #   (Z 22.0) and the knob's hem, so the knob bottoms at Z 28.0 and the
-                          #   bore is 37.0 − 28.0 = 9.0. The 15.0 guessed here before ("a 17 mm
-                          #   knob bores nearly through") was past the point where the knob lands
-                          #   ON the bushing — see bushing_is_the_stop.
+KNOB_BORE_DEPTH = 16.0    # mm; MEASURED on the real knob: it takes 16 mm of the 20 mm shaft and
+                          #   leaves 4 mm showing. 16 + 4 = 20 closes on the shaft length, which is
+                          #   what makes the reading self-checking. Two earlier values were wrong in
+                          #   opposite directions: 15.0 was a guess ("a 17 mm knob bores nearly
+                          #   through"), and 9.0 was *derived* from it being wrong — backed out of a
+                          #   bushing top (Z 22.0) that does not exist on this part. A 17 mm knob
+                          #   boring 16 mm deep leaves a 1 mm crown, which is what this knob is.
 KNOB_HEM_CLEAR = 0.5      # mm; design gap between the knob's hem and the cover feature below it
 
 
@@ -76,15 +79,16 @@ def cover_feature_top_z() -> float:
 def knob_hem_z() -> float:
     """Case Z of the knob's hem — the lowest it can sit, plus the design gap.
 
-    THE BUSHING IS THE FLOOR, not the bezel. The Ø7 threaded collar stands 5 mm above the mounting
-    face — 3.4 mm clear of the ring's top — and this knob's bore is Ø6, i.e. NARROWER THAN THE
-    COLLAR, with a hem modelled flat. So the hem cannot descend past ``BUSHING_TOP_Z`` no matter how
-    the cover is styled or how far the shaft is cut; the bezel only wins if a taller one is ever
-    drawn. This function used to compare the bezel against the encoder BODY and missed the collar
-    sitting 5 mm above it, which put the design hem 2.9 mm inside solid brass.
+    THE PLATEAU IS THE FLOOR. With no collar on this part (``encoder_phantom.BUSHING_H`` = 0) the
+    tallest thing under the hem is the cover's own encoder plateau, so the hem sits ``KNOB_HEM_CLEAR``
+    above its top. ``BUSHING_TOP_Z`` stays in the ``max`` deliberately: it is the guard that fires
+    if a collar is ever measured onto this part, and up to 3.5 mm it changes nothing because the
+    plateau is taller.
 
-    If your knob turns out to have a skirt recess wide enough to swallow the collar, this is the
-    number that moves — measure the recess and the bezel becomes the floor again."""
+    Two earlier versions of this function were both wrong. The first compared the bezel against the
+    encoder BODY only; the second "fixed" it by making an assumed 5 mm collar the floor, which put
+    the design hem 1.5 mm above where the knob actually rests. If your knob turns out to have a
+    skirt recess, this is the number that moves — measure the recess."""
     return max(C.ENCODER_BODY_TOP_Z, E.BUSHING_TOP_Z, cover_feature_top_z()) + KNOB_HEM_CLEAR
 
 
@@ -125,9 +129,19 @@ def shaft_trim_needed() -> float:
     return max(0.0, knob_hem_z_if_bottomed() - knob_hem_z())
 
 
+def _seating_floor() -> tuple[str, float]:
+    """Which feature the hem actually rests on, and its Z — named rather than assumed, because the
+    report asserted "bushing top" through two versions where the bushing was not the winner."""
+    floors = (("encoder body", C.ENCODER_BODY_TOP_Z),
+              ("bushing top", E.BUSHING_TOP_Z),
+              ("cover plateau", cover_feature_top_z()))
+    return max(floors, key=lambda f: f[1])
+
+
 def knob_seating_report() -> str:
+    floor_name, floor_z = _seating_floor()
     head = (f"knob Ø{KNOB_OD}×{KNOB_H}, bore {KNOB_BORE_DIA}×{KNOB_BORE_DEPTH} | "
-            f"design hem Z {knob_hem_z():.2f} (floor: bushing top {E.BUSHING_TOP_Z:.2f} + "
+            f"design hem Z {knob_hem_z():.2f} (floor: {floor_name} {floor_z:.2f} + "
             f"{KNOB_HEM_CLEAR}) | bottomed-on-shaft hem Z {knob_hem_z_if_bottomed():.2f}")
     if bushing_is_the_stop():
         return (f"{head} | BORE TOO DEEP: the knob bottoms {knob_hem_z() - knob_hem_z_if_bottomed():.2f}"

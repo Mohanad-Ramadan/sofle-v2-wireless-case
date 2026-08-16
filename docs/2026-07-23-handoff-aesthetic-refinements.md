@@ -199,6 +199,16 @@ the whole supported range:
 | 4° | +0.90 mm |
 | 5° | +0.53 mm |
 
+> **SUPERSEDED — do not extrapolate this table.** It describes the FEET-BASED tilt design, where
+> the case sat flat and rear pads lifted it, so the front nose swung down toward the desk and the
+> clearance shrank ~0.37 mm per degree. Extended naively, 7° would read as the nose grounding by
+> ~0.2 mm. **That failure mode no longer exists.** Tilt now comes from the BOTTOM CASE being an
+> integrated wedge (`TENT_ANGLE_DEG`, `case.tent_wedge`), so the entire underside is a single
+> plane coplanar with the desk and the nose is part of it — there is nothing to swing down. The
+> foot seats are cut into that plane, so all four pads protrude equally and the clearance is
+> uniform at any angle. `RUBBER_PAD_H`, `TILT_ANGLE_DEG` and `feet.desk_clearance()` no longer
+> exist anywhere in the source.
+
 `feet.desk_clearance()` measures this against the tessellated solid (the front-most material is a
 chamfered corner on an arc-offset wall — not where you would guess), `scripts/build.py` prints it
 on every build, and two tests pin it: one that the supported range clears, one that 2.0 mm pads
