@@ -280,11 +280,11 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # pocket with a diagonal wire channel to the battery. Standing on the board it fouled the
     # cover by 34.2 mm³ and was the only hardware holding the case open. Accounted for in full:
     #   jst_pocket             959.440
-    #   jst_wire_channel     + 2183.400
+    #   jst_wire_channel     + 2194.650
     #   shared overlap       −   78.750   (the channel's first leg starts inside the JST pocket)
-    #   union                = 3064.090
-    #   already-void         −   73.910   (its last leg ends inside the battery pocket)
-    #   net new void         = 2990.180   measured −2989.816 (right) / −2989.812 (left)
+    #   union                = 3075.340
+    #   already-void         −   71.559   (its last leg ends inside the battery pocket)
+    #   net new void         = 3003.781   measured −3003.835 (right) / −3003.831 (left)
     # The 0.4 residual is the pocket's corner fillets, where the channel crosses the rounding.
     #
     # THIS NUMBER HAS MOVED FIVE TIMES, and the sequence is the point:
@@ -299,9 +299,11 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     #             pocket fitting only one pair would freeze a choice the wiring leaves open
     #   −2989.82  channel re-routed from a diagonal to a hooked orthogonal path (north, east,
     #             south, east), ~92 mm instead of 64 — the length is deliberate slack
+    #   −3003.84  entry leg dropped 0.5 so its south face lands FLUSH on the battery pocket's
+    #             south wall instead of 0.5 mm north of it, which left a jog at the junction
     # A baseline that only ever shrinks is not evidence the pocket fits. Four times now it grew.
     #
     # Still no outer dimension moved: the pocket and channel both bottom at Z 1.80, far above the
     # wedge's own surfaces, so the ground plane and parting line are untouched.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 192465.034668) < 2e-2
+    assert abs(build_bottom_part(side).volume - 192451.015398) < 2e-2

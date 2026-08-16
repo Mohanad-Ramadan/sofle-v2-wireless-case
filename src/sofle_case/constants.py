@@ -970,7 +970,12 @@ JST_CHANNEL_DEPTH   = FLOOR_THICKNESS - JST_CHANNEL_FLOOR_Z  # 4.50; derived, tr
 # straight off the margin (46.0 leaves 2.07, 47.0 leaves 1.07).
 JST_CHANNEL_TOP_Y     = 90.0   # case Y of the northern leg, clear of the JST pocket's mouth
 JST_CHANNEL_MID_X     = 44.0   # case X of the long southward leg — see the standoff note above
-JST_CHANNEL_BAT_INSET = 3.0    # how far inside the battery pocket's south edge the entry lands
+# The entry leg's centreline offset from the battery pocket's south wall. HALF THE CHANNEL WIDTH,
+# derived rather than dialled, so the channel's south face lands EXACTLY on the pocket's south
+# face and the two read as one continuous wall. At a free 3.0 the channel sat 0.5 mm north of it
+# and left a visible jog at the junction — small, but it is a step in a wall a wire is pressed
+# against, and it moves the moment JST_CHANNEL_W does.
+JST_CHANNEL_BAT_INSET = JST_CHANNEL_W / 2
 
 # ---------- Battery pocket (405070 LiPo cell: 50x70mm footprint) ----------
 # The footprint sits UNDER 12 switches, so the hotswap sockets (~2 mm below the PCB)

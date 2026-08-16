@@ -96,7 +96,7 @@ def _solid_at(part: Part, x: float, y: float, z: float, s: float = 0.3) -> bool:
 
 
 def _solid_run_down(part: Part, x: float, y: float, z_start: float, z_min: float,
-                    step: float = 0.1) -> float:
+                    step: float = 0.1, need: float | None = None) -> float:
     """Thickness of the first CONTIGUOUS band of material found walking DOWN from ``z_start``.
 
     Contiguous on purpose. Taking ``z_start`` minus the deepest solid point anywhere below would
@@ -106,6 +106,12 @@ def _solid_run_down(part: Part, x: float, y: float, z_start: float, z_min: float
     Probes the built solid rather than computing a thickness from the constants that produced it;
     the material here comes from the tent wedge, not from the floor constants, so arithmetic over
     those constants would be measuring the wrong feature.
+
+    ``need`` short-circuits the walk once that much contiguous material is confirmed. Every step
+    is a boolean intersection against the whole bottom part, and walking the full depth at every
+    sample made the channel's floor check the slowest test in the suite by four times — 90 s of a
+    210 s run, for digging ~10 mm to prove 2 mm. On failure the walk continues, so the reported
+    thickness is still the real one where it matters.
     """
     z = z_start
     while z > z_min and not _solid_at(part, x, y, z):
@@ -115,6 +121,8 @@ def _solid_run_down(part: Part, x: float, y: float, z_start: float, z_min: float
     top = z
     while z > z_min and _solid_at(part, x, y, z):
         z -= step
+        if need is not None and top - z >= need:
+            return top - z
     return top - z
 
 
@@ -185,7 +193,8 @@ def test_the_floor_carries_real_material_under_the_jst_pocket(side):
     if side == "left":
         x = C.OUTER_WIDTH - x          # phantoms are right-handed; so is this point
 
-    thickness = _solid_run_down(bottom, x, y, C.JST_POCKET_FLOOR_Z - 0.05, -20.0)
+    thickness = _solid_run_down(bottom, x, y, C.JST_POCKET_FLOOR_Z - 0.05, -20.0,
+                                need=JST_MIN_FLOOR_UNDER)
     assert thickness >= JST_MIN_FLOOR_UNDER, (
         f"only {thickness:.2f} mm of material survives under the JST pocket at case "
         f"({x:.2f}, {y:.2f}); {JST_MIN_FLOOR_UNDER} mm is the floor. The pocket bottoms at "
@@ -306,7 +315,8 @@ def test_the_floor_survives_along_the_whole_wire_channel():
         for i in range(5):
             f = i / 4
             x, y = ax + (tx - ax) * f, ay + (ty - ay) * f
-            t = _solid_run_down(bottom, x, y, C.JST_CHANNEL_FLOOR_Z - 0.05, -20.0)
+            t = _solid_run_down(bottom, x, y, C.JST_CHANNEL_FLOOR_Z - 0.05, -20.0,
+                                need=JST_MIN_FLOOR_UNDER)
             if t < JST_MIN_FLOOR_UNDER:
                 thin.append(f"({x:.1f}, {y:.1f}): {t:.2f} mm")
     assert not thin, (
