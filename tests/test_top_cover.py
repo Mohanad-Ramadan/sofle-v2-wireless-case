@@ -94,10 +94,15 @@ def test_puller_notches_open_two_faces_per_switch(monkeypatch):
 
 
 def test_keycap_headroom():
-    """Cover top must stay below the keycap skirt at full press (~1.5 mm above the
-    plate) so it never blocks a keypress."""
+    """Cover top must stay below the keycap skirt at full press so it never blocks a
+    keypress.
+
+    KEYCAP_SKIRT_CLEAR_AT_FULL_PRESS (1.5 mm) is a community/field figure, not a Cherry
+    datasheet spec — see the note in constants.py above its definition. Treat the margin
+    this asserts as tight, not comfortable: this build already hit contact once at this
+    clearance."""
     cover_top = C.MAIN_RIM_Z + C.COVER_THICKNESS
-    full_press_skirt = C.MAIN_RIM_Z + 1.5   # measured skirt-to-plate clearance at full press
+    full_press_skirt = C.MAIN_RIM_Z + C.KEYCAP_SKIRT_CLEAR_AT_FULL_PRESS
     assert cover_top < full_press_skirt, "cover top would touch the keycap skirt at full press"
 
 

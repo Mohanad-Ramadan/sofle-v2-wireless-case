@@ -106,12 +106,25 @@ OUTER_TOP_CHAMFER = 1.9   # mm, 45° outer-top bevel leg (~40% of WALL_THICKNESS
 # case would not close over the keyboard while the empty shells mated fine.
 # So the cover now shows a 0.25 mm ring of plate per key. That reads as a shadow line at
 # any normal viewing distance, which is the price of a lid that goes on.
-# Keycaps float entirely above it — skirt at full
-# press ~14.0 mm > cover top 16.0 mm — so 1.0 mm is safe (1.5 mm would just kiss the
-# skirt on a hard edge press). The plate's own inner notch leaves the MCU/OLED/
-# slide/JST bay open for free.
+#
+# KEYCAP HEADROOM. The previous version of this comment claimed "skirt at full press ~14.0 mm
+# > cover top 16.0 mm — so 1.0 mm is safe" — that arithmetic was never true (14.0 is not
+# greater than 16.0) and dates from before FLOOR_THICKNESS went 3.8 -> 6.3 and pushed
+# MAIN_RIM_Z (hence cover top) up 15.0 -> 15.4. Nobody re-derived it when the stack moved.
+#
+# KEYCAP_SKIRT_CLEAR_AT_FULL_PRESS is NOT a Cherry spec — Cherry's switch datasheet has no
+# keycap-skirt dimension at all, since keycaps are a third-party part with skirt length set
+# by whichever vendor molded the cap. 1.5 mm is a community figure (a Cherry-keycap owner on
+# geekhack reports ~2 mm nominal skirt-to-plate clearance, with a 1.5u key just touching the
+# plate under a hard edge-press) that also matches this build's own printed-and-assembled
+# result closely enough to trust as a working number — precise enough tooling (sub-0.1 mm) to
+# measure the real skirt on this keycap set was not available, so 1.5 mm is adopted as the
+# accepted working value rather than a lab measurement. Given that provenance, treat the
+# 0.5 mm headroom in test_top_cover.test_keycap_headroom as tight, not comfortable — it is a
+# community/field number, not a datasheet one, and this build already hit contact once.
+KEYCAP_SKIRT_CLEAR_AT_FULL_PRESS = 1.5  # mm; skirt bottom above plate top at full press — see note above
 MX_TOP_HOUSING_W        = 15.6   # mm; widest part of a Cherry MX switch (rests on plate) — drives the window size
-COVER_THICKNESS         = 1.0    # mm; lid thickness, top at MAIN_RIM_Z + 1.0 = 16.0
+COVER_THICKNESS         = 1.0    # mm; lid thickness, top at MAIN_RIM_Z + COVER_THICKNESS (= 16.4 at current MAIN_RIM_Z)
 COVER_WINDOW_OFFSET     = 1.05   # mm; 14 mm cutout -> 16.1 mm window, 0.25 mm/side off the 15.6 housing (was 0.85 = 0.05/side, which would not assemble — see above)
 COVER_SCREW_CLEARANCE_DIA = 2.4  # mm; M2 screw shaft clearance through the cover
 
