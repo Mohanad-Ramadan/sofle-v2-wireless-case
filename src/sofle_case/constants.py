@@ -24,25 +24,35 @@ PCB_THICKNESS       = 1.6   # main PCB thickness
 #   Cherry datasheet, total height   0.60 in = 15.24 mm from PCB, no keycap
 #                                    15.24 - PLATE_THICKNESS 1.6 - _UPPER_H 6.6 - _STEM_H 3.5
 #                                                                              -> 3.54
-#   ai03 wiki, plate TOP at 5.0      5.0 - PLATE_THICKNESS 1.6                 -> 3.40
-#   measured on the real Sofle                                                 -> ~4.0
+#   ai03 wiki, plate TOP at 5.0      5.0 - PLATE_THICKNESS 1.6                 -> 3.40  <- CONFIRMED
+#   measured on the real Sofle                                                 -> ~4.0  <- BAD TOOL
 #
 # Set to the DERIVED value, by decision: the plate-datum route is the only one that measures the
 # surface this constant actually names (plate underside), and it agrees with the datasheet route
-# to 0.14 mm. The ~4.0 caliper reading is not discarded as noise — see the risk note below.
+# to 0.14 mm. That decision was later vindicated by measurement — see below.
 #
 # The old value was 3.0 — below every one of the three — and it is what made the printed sandwich
 # refuse to close: the standoff pins topped out 0.4-1.0 mm BELOW where the switches actually hold
 # the plate, so the plate never touched them, the screws bowed it down, and the cover rode up off
 # the tub's rim.
 #
-# RISK, STATED NOT HIDDEN: if the real gap is the calipered ~3.9, this value is 0.5 mm LOW and
-# that is the same failure direction as the old 3.0 — the switches would hold the plate 0.5 above
-# the modelled rim and the tub would not come down. STANDOFF_PIN_RECESS protects the plate from
-# the pins below; NOTHING protects the rim from a plate that rides high. The absorber for that
-# direction is SEAM_LEDGE_CLEAR, which is currently 0.3 — i.e. this value tolerates a real gap up
-# to 3.7 before the seam gaps. Re-measure PCB-top-to-plate-underside with the switches fully
-# seated (an unseated hotswap switch reads high) before committing a print.
+# RESOLVED 2026-08-16 BY MEASUREMENT. The risk above was real and is now closed: PCB top to plate
+# TOP, measured on the assembled board with the switches fully seated, reads 5.00 mm — dead on
+# MX_PLATE_TOP_ABOVE_PCB. The derivation was right and the ~4.0 caliper reading was the faulty
+# instrument (the owner had two calipers and suspected one was ~1 mm out; this is the reading that
+# convicts it). The datasheet route agreeing to 0.14 mm was the signal to trust.
+#
+# WHAT THAT MEASUREMENT DOES AND DOES NOT PIN. It pins the SUM, PCB top -> plate top = 5.00, and
+# the sum is what closing depends on: PLATE_TOP_Z is MAIN_RIM_Z, so the tub's rim height is now
+# measured, not derived. It does NOT pin how the 5.00 splits between MX_BODY_CLEAR and
+# PLATE_THICKNESS. If the real plate is not 1.6, this constant is wrong by the difference while
+# PLATE_TOP_Z stays right — harmless for the seam, but PLATE_SEAT_Z and STANDOFF_PIN_RECESS are
+# built on the split, so measure plate thickness before trusting the pin-to-plate gap.
+#
+# The closing stack is FLOOR_THICKNESS + STANDOFF_SHOULDER_H + PCB_THICKNESS + MX_BODY_CLEAR +
+# PLATE_THICKNESS, and SEAM_LEDGE_CLEAR (0.3) is the ONLY slack in all five. With the top two
+# terms now measured, any remaining closure error lives BELOW the PCB top — in the 2.5 mm of air
+# under the board, where the hotswap sockets already eat ~2.0.
 PLATE_THICKNESS     = 1.6   # switch-plate thickness (12.5 − 10.9 at the old floor)
 MX_PLATE_TOP_ABOVE_PCB = 5.0  # mm; THE datum: plate TOP surface above PCB top (ai03 wiki, MX std)
 MX_BODY_CLEAR       = MX_PLATE_TOP_ABOVE_PCB - PLATE_THICKNESS  # 3.40 — derived, tracks the plate
