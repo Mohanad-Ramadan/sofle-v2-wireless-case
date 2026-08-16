@@ -906,7 +906,25 @@ SLIDE_ACTUATOR_TOP_Z        = min(
 #
 # So: oversizing is NOT a substitute for measuring. Generous depth hid a tight width, and only a
 # caliper on the real part separated them.
-JST_POS       = (12.855, -48.735)  # PCB coords; the CPL's J2 row, not retyped by hand
+# PLACEMENT. JST_POS IS PIN 1, NOT THE BODY CENTRE — this footprint's CPL "Mid X/Y" is the origin
+# pin, and SofleKeyboard-PTH.drl confirms a three-hole row running EAST from it at 2.54 pitch:
+# case X 26.60 / 29.14 / 31.68, all at case Y 67.02. Centring the body on JST_POS (as this file
+# first did) put it 2.5 mm west of the truth and short of its own third pin.
+#
+# The 2-circuit XH occupies two of the three holes. And it is a SIDE-ENTRY part: the pins leave
+# the back of the shroud, so the body does not straddle the row — it runs off it, northward, which
+# is the same direction the plug enters.
+#
+# EITHER PAIR WORKS, so the pocket must fit BOTH. The middle hole is B+ and both outer holes are
+# GND, which makes the connector electrically reversible: it can sit on the west pair or the east
+# pair and work the same. A pocket cut to whichever pair happened to be soldered first would turn
+# a free choice into a permanent one, and the constraint is invisible from the geometry — nothing
+# downstream could tell you the part was allowed to move. So the pocket spans the union of the two
+# positions: 11.54 mm rather than 9.00, wider by exactly one pin pitch.
+JST_POS       = (12.855, -48.735)  # PCB coords; the CPL's J2 row = PIN 1. Not the centre.
+JST_PIN_PITCH = 2.54   # mm; the 1x03 footprint's pitch, read off the drill file
+JST_MOUNT_W   = 0.5    # body centre for the WEST pair, in pitches from JST_POS (holes 1+2)
+JST_MOUNT_E   = 1.5    # body centre for the EAST pair (holes 2+3)
 #               No rotation constant: the CPL's 90 deg describes the 1x03 socket originally
 #               footprinted at J2, not the XH re-soldered underneath. BODY_W/BODY_D below name
 #               their case axes outright, so a stale placement angle has nothing to act on.
@@ -934,10 +952,25 @@ JST_POCKET_CORNER_R = 1.5   # mm; plan-corner fillet (battery uses 2.0; this poc
 # air exists under the PCB and the hotswap sockets already eat ~2.0 of it, so a 1.9 mm lead has
 # nowhere to cross the switch field without a channel cut into the floor.
 JST_CHANNEL_W       = 2 * JST_WIRE_OD + 1.2   # 5.0; two conductors side by side, plus slack
-JST_CHANNEL_DEPTH   = JST_WIRE_OD + 0.6       # 2.5; deep enough for wire, not for the connector
-JST_CHANNEL_FLOOR_Z = FLOOR_THICKNESS - JST_CHANNEL_DEPTH   # 3.80
-JST_CHANNEL_Y       = 76.0  # case Y of the run east. North of the pocket mouth and 17 mm clear of
-#                             the standoff at case (53.32, 58.79) — see the routing note above.
+# Floor MATCHES the JST pocket rather than being sized to the wire. The two pockets are NOT the
+# same depth — battery 4.30 (floor Z 2.00, set by BATTERY_FLOOR_BASE) against JST 4.50 (floor
+# Z 1.80, set by the measured connector) — so the channel takes the DEEPER of the two. A wire then
+# only ever steps DOWN into the channel and never up, at either end; matching the shallower would
+# leave a 0.20 lip at the JST mouth for a lead to catch on.
+JST_CHANNEL_FLOOR_Z = JST_POCKET_FLOOR_Z                     # 1.80; flush with the JST pocket
+JST_CHANNEL_DEPTH   = FLOOR_THICKNESS - JST_CHANNEL_FLOOR_Z  # 4.50; derived, tracks the floor
+# The run is ORTHOGONAL and HOOKED, not diagonal: out of the JST pocket heading NORTH, east along
+# the top, then a long leg SOUTH, and into the battery pocket near its south-west corner. ~94 mm
+# against the 27 mm a straight east run took and the 64 mm a diagonal took. The length IS the
+# feature — the leads get real slack and a route that stays out of the middle of the switch field,
+# rather than the shortest line between two points.
+#
+# The southward leg's X is set by the standoff at case (53.32, 58.79), which is the only thing
+# either turn comes near: 44.0 clears it by 4.07 mm, and every millimetre east of that is spent
+# straight off the margin (46.0 leaves 2.07, 47.0 leaves 1.07).
+JST_CHANNEL_TOP_Y     = 90.0   # case Y of the northern leg, clear of the JST pocket's mouth
+JST_CHANNEL_MID_X     = 44.0   # case X of the long southward leg — see the standoff note above
+JST_CHANNEL_BAT_INSET = 3.0    # how far inside the battery pocket's south edge the entry lands
 
 # ---------- Battery pocket (405070 LiPo cell: 50x70mm footprint) ----------
 # The footprint sits UNDER 12 switches, so the hotswap sockets (~2 mm below the PCB)

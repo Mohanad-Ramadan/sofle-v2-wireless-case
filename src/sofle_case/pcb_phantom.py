@@ -144,7 +144,7 @@ def _slide_switch_body() -> Part:
     return bp.part
 
 
-def _jst_body() -> Part:
+def _jst_body(mount: str = "east") -> Part:
     """Battery JST at J2 (S2B-XH-A-1, side entry) with its mated plug — hung UNDER the PCB.
 
     Drawn so the viewer SHOWS it. This connector was clearance-critical and invisible for the
@@ -165,8 +165,19 @@ def _jst_body() -> Part:
     No ``JST_ROT``: the CPL rotation describes the 1x03 socket originally footprinted at J2, not
     the XH re-soldered underneath. ``JST_BODY_W``/``JST_BODY_D`` name their case axes directly, so
     applying a stale placement angle on top would rotate the envelope off the part it represents.
+
+    Placement comes from ``battery.jst_body_center`` — the same function the pocket is cut from,
+    deliberately. When this drew itself from ``JST_POS`` and the pocket did too, both were wrong
+    together and agreed perfectly: the body sat 2.5 mm west of its own pins and no clash check
+    could see it. One source or the phantom stops being evidence.
+
+    ``mount`` picks which pair of holes the connector sits on. Both are electrically valid (the
+    middle hole is B+, both outer holes GND), and the pocket is cut to span either — so this
+    draws ONE of two legal positions. A clash check against this phantom alone therefore only
+    proves the drawn one fits; ``test_either_jst_mounting_fits_the_pocket`` covers the other.
     """
-    cx, cy = C.pcb_to_case(*C.JST_POS)
+    from .battery import jst_body_center
+    cx, cy = jst_body_center(mount)
     body_z = C.JST_BOTTOM_Z + C.JST_BODY_H / 2
     plug_y = cy + C.JST_BODY_D / 2 + C.JST_PLUG_RUN / 2   # plug enters from the NORTH
 

@@ -276,23 +276,32 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # the 0.02 residual is the entry chamfer meeting a shorter pin.
     # No outer dimension moved: everything the wedge, band and parting line touch is below the
     # seam, and nothing above PCB_SEAT_Z reaches them.
-    # Rebased −1065.62 mm³ (−0.55%) when the battery JST moved UNDER the PCB. Standing on the
-    # board it fouled the cover by 34.2 mm³ and was the only hardware holding the case open; the
-    # fix put it in a blind floor pocket with a wire channel to the battery, so the bottom loses
-    # that material. The delta is fully accounted for and worth checking rather than trusting:
-    #   jst_pocket             732.459
-    #   jst_wire_channel     + 358.063
-    #   shared overlap       −  12.500   (_CHANNEL_OVERLAP, 1.0 x 5.0 x 2.5, counted once)
-    #   union                = 1078.021
-    #   already-void         −  12.40    (the channel's east end reaches INTO the battery pocket,
-    #                                     which is air already — the same 1.0 x 5.0 x 2.5 slug)
-    #   removed              = 1065.62   measured −1065.624 (right) / −1065.619 (left)
-    # This number moved ONCE ALREADY, from −1186.87, when the connector's dimensions went from
-    # datasheet-derived to calipered (6.5 x 8.0 x 8.0, replacing 7.6 x 7.4 x 9.5). The pocket got
-    # shallower and shorter — and WIDER, which was the point: at 7.4 it was 8.4 mm across for an
-    # 8.0 mm part and would likely not have accepted it. A baseline that only ever shrinks is not
-    # evidence the pocket fits.
-    # Still no outer dimension moved: the pocket bottoms at Z 1.80 and the channel at 3.80, both
-    # far above the wedge's own surfaces, so the ground plane and parting line are untouched.
+    # Rebased −1817.00 mm³ (−0.93%) for the battery JST, which now hangs UNDER the PCB in a floor
+    # pocket with a diagonal wire channel to the battery. Standing on the board it fouled the
+    # cover by 34.2 mm³ and was the only hardware holding the case open. Accounted for in full:
+    #   jst_pocket             959.440
+    #   jst_wire_channel     + 2183.400
+    #   shared overlap       −   78.750   (the channel's first leg starts inside the JST pocket)
+    #   union                = 3064.090
+    #   already-void         −   73.910   (its last leg ends inside the battery pocket)
+    #   net new void         = 2990.180   measured −2989.816 (right) / −2989.812 (left)
+    # The 0.4 residual is the pocket's corner fillets, where the channel crosses the rounding.
+    #
+    # THIS NUMBER HAS MOVED FIVE TIMES, and the sequence is the point:
+    #   −1186.87  datasheet-derived connector (7.6 x 7.4 x 9.5)
+    #   −1065.62  calipered instead (6.5 x 8.0 x 8.0) — smaller in two axes, but WIDER in the
+    #             third, which was the whole risk: at 7.4 the pocket was 8.4 mm across for an
+    #             8.0 mm part and would likely not have accepted it
+    #   −1817.00  pocket re-placed onto the real pin row (JST_POS is PIN 1, not the body centre)
+    #             and the channel made diagonal and full-depth
+    #   −1997.07  pocket widened to 11.54 to span BOTH mounting positions: the middle hole is B+
+    #             and both outer holes are GND, so the connector is reversible on the board and a
+    #             pocket fitting only one pair would freeze a choice the wiring leaves open
+    #   −2989.82  channel re-routed from a diagonal to a hooked orthogonal path (north, east,
+    #             south, east), ~92 mm instead of 64 — the length is deliberate slack
+    # A baseline that only ever shrinks is not evidence the pocket fits. Four times now it grew.
+    #
+    # Still no outer dimension moved: the pocket and channel both bottom at Z 1.80, far above the
+    # wedge's own surfaces, so the ground plane and parting line are untouched.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 194389.226835) < 2e-2
+    assert abs(build_bottom_part(side).volume - 192465.034668) < 2e-2

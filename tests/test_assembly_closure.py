@@ -194,50 +194,124 @@ def test_the_floor_carries_real_material_under_the_jst_pocket(side):
     )
 
 
+@pytest.mark.parametrize("mount", ["east", "west"])
+def test_either_jst_mounting_fits_the_pocket(mount):
+    """The connector may sit on either pair of holes, so the pocket must take either.
+
+    The middle hole is B+ and both outer holes are GND, which makes the part electrically
+    reversible on the board. That freedom is invisible from the geometry — nothing downstream can
+    tell you the connector was ALLOWED to move — so a pocket cut to whichever pair was soldered
+    first would silently turn a free choice into a permanent one, and the first anybody heard of
+    it would be a connector that no longer drops in after a reprint.
+
+    The phantom draws only one position at a time, so the default clash sweep exercises exactly
+    one of the two. This is the other half.
+    """
+    from sofle_case.battery import _jst_pocket_bounds, jst_pocket
+    from sofle_case.pcb_phantom import _jst_body
+
+    x_lo, x_hi, y_lo, y_hi = _jst_pocket_bounds()
+    bb = _jst_body(mount).bounding_box()
+    assert x_lo <= bb.min.X and bb.max.X <= x_hi, (
+        f"{mount} mounting spans X {bb.min.X:.2f}..{bb.max.X:.2f}, outside the pocket's "
+        f"{x_lo:.2f}..{x_hi:.2f}")
+    assert y_lo <= bb.min.Y and bb.max.Y <= y_hi, (
+        f"{mount} mounting spans Y {bb.min.Y:.2f}..{bb.max.Y:.2f}, outside the pocket's "
+        f"{y_lo:.2f}..{y_hi:.2f}")
+
+    # And it must clear in the round, not just by bbox — the pocket has filleted corners.
+    #
+    # Only the part BELOW the floor's top face is the pocket's problem. The connector spans
+    # Z 2.30..8.80 and the pocket stops at FLOOR_THICKNESS (6.30); the top 2.5 mm lives in the
+    # air gap under the PCB (STANDOFF_SHOULDER_H), which is not a pocket at all. Comparing the
+    # whole body against the pocket reports that gap as 286 mm³ of interference — a false
+    # failure that would push someone into deepening a pocket that is already correct.
+    floor_and_below = Solid.make_box(400, 400, 60).translate((-100, -100, C.FLOOR_THICKNESS - 60))
+    sunk = cast(Part, _jst_body(mount) & floor_and_below)
+    outside = cast(Part, sunk - jst_pocket())
+    assert outside.volume < 1e-6, (
+        f"{mount} mounting leaves {outside.volume:.3f} mm³ of connector outside the pocket below "
+        f"the floor line — the corner fillets are eating it")
+
+
 def test_the_wire_channel_actually_joins_the_two_pockets():
     """A channel that stops short of either pocket is a groove in the floor, not a wire route.
 
-    Both pockets are separate cutters, so nothing forces them to meet; if they merely abutted,
-    OCC could read a zero-width face as no intersection and the render would show an open path
-    the leads cannot actually take. Asserted on the cutter geometry itself, since that is where
-    the join is decided.
+    All three recesses are separate cutters and nothing forces them to meet; abutting faces can
+    read as non-intersecting and the render would show an open path the leads cannot take.
+
+    Tested by BOOLEAN INTERSECTION rather than by comparing bounding boxes. The channel runs
+    diagonally, so its bbox spans ground it never actually occupies — a bbox overlap would report
+    a join that is not there, which is the failure this test exists to catch.
     """
-    from sofle_case.battery import _jst_pocket_bounds, battery_pocket, jst_wire_channel
+    from sofle_case.battery import battery_pocket, jst_pocket, jst_wire_channel
 
-    ch = jst_wire_channel().bounding_box()
-    _, pocket_x_hi, pocket_y_lo, pocket_y_hi = _jst_pocket_bounds()
-    bat = battery_pocket().bounding_box()
-
-    assert ch.min.X < pocket_x_hi, (
-        f"channel starts at X {ch.min.X:.2f}, east of the JST pocket's edge {pocket_x_hi:.2f} — "
-        f"the leads would have to cross solid floor to reach it")
-    assert ch.max.X > bat.min.X, (
-        f"channel ends at X {ch.max.X:.2f}, short of the battery pocket at {bat.min.X:.2f}")
-    assert pocket_y_lo < ch.min.Y and ch.max.Y < pocket_y_hi, (
-        f"channel mouth (Y {ch.min.Y:.2f}..{ch.max.Y:.2f}) is not inside the JST pocket's span "
-        f"(Y {pocket_y_lo:.2f}..{pocket_y_hi:.2f})")
+    channel = jst_wire_channel()
+    for name, pocket in (("JST pocket", jst_pocket()), ("battery pocket", battery_pocket())):
+        hit = channel & pocket
+        vol = cast(Part, hit).volume if hit is not None else 0.0
+        assert vol > 1.0, (
+            f"wire channel meets the {name} in {vol:.4f} mm³ — they do not overlap, so the leads "
+            f"would have to cross solid floor between them")
 
 
 def test_the_wire_channel_misses_every_standoff():
-    """Routing north was a clearance decision, not a preference — this is what records it.
+    """The routing is a clearance decision, not a preference — this is what records it.
 
-    A run south of the pocket passes 0.46 mm from the standoff at case (53.32, 58.79), which is
-    inside the standoff's own wall. Nothing about the geometry prevents someone re-routing it
-    there later to shorten the leads.
+    A run south of the JST pocket passes 0.46 mm from the standoff at case (53.32, 58.79), inside
+    the standoff's own wall. Nothing in the geometry stops someone re-routing there to shorten
+    the leads.
+
+    Measured perpendicular to EVERY LEG of the real route. The channel is a hook, so a check
+    against its bounding box would clear standoffs it actually passes close to and flag ones it
+    never goes near — the bbox covers ground the path does not occupy.
     """
-    from sofle_case.battery import jst_wire_channel
+    import math
+    from itertools import pairwise
 
-    ch = jst_wire_channel().bounding_box()
-    r = C.STANDOFF_OD_LOWER / 2
+    from sofle_case.battery import jst_channel_path
+
+    pts = jst_channel_path()
+    reach = C.STANDOFF_OD_LOWER / 2 + C.JST_CHANNEL_W / 2
+
+    def _leg_gap(cx, cy, ax, ay, tx, ty):
+        vx, vy = tx - ax, ty - ay
+        t = max(0.0, min(1.0, ((cx - ax) * vx + (cy - ay) * vy) / (vx * vx + vy * vy)))
+        return math.dist((cx, cy), (ax + t * vx, ay + t * vy)) - reach
+
     for hx, hy in C.MOUNTING_HOLES:
         cx, cy = C.pcb_to_case(hx, hy)
-        if not (ch.min.X - r < cx < ch.max.X + r):
-            continue
-        gap = min(abs(cy - ch.min.Y), abs(cy - ch.max.Y)) - r
-        overlaps = ch.min.Y - r < cy < ch.max.Y + r
-        assert not overlaps and gap >= 1.0, (
-            f"standoff at case ({cx:.2f}, {cy:.2f}) is {gap:.2f} mm from the wire channel "
-            f"(Y {ch.min.Y:.2f}..{ch.max.Y:.2f}) — the channel cuts into its base")
+        gap = min(_leg_gap(cx, cy, *a, *b) for a, b in pairwise(pts))
+        assert gap >= 1.0, (
+            f"standoff at case ({cx:.2f}, {cy:.2f}) is {gap:.2f} mm from the wire channel — it "
+            f"cuts into the base. Route: {[(round(x, 1), round(y, 1)) for x, y in pts]}")
+
+
+def test_the_floor_survives_along_the_whole_wire_channel():
+    """The channel is as deep as the pockets now, and it crosses most of the case to get there.
+
+    Depth was previously sized to the wire (2.5 mm); it is now flush with the JST pocket at 4.50,
+    and the route hooks north, east, south and east again for ~94 mm. That is a lot of floor to
+    remove in places nobody probed — the material under it comes from the tent wedge, which is
+    thinnest at the SOUTH, exactly where the battery end of this channel lands.
+    """
+    from itertools import pairwise
+
+    from sofle_case.battery import jst_channel_path
+
+    bottom = build_bottom_part("right")
+    pts = jst_channel_path()
+    thin = []
+    for (ax, ay), (tx, ty) in pairwise(pts):
+        for i in range(5):
+            f = i / 4
+            x, y = ax + (tx - ax) * f, ay + (ty - ay) * f
+            t = _solid_run_down(bottom, x, y, C.JST_CHANNEL_FLOOR_Z - 0.05, -20.0)
+            if t < JST_MIN_FLOOR_UNDER:
+                thin.append(f"({x:.1f}, {y:.1f}): {t:.2f} mm")
+    assert not thin, (
+        "the wire channel leaves less than "
+        f"{JST_MIN_FLOOR_UNDER} mm of floor beneath it at:\n  " + "\n  ".join(thin))
 
 
 def test_seam_ledge_gap_absorbs_the_plate_stack():
