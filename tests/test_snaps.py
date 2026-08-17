@@ -78,7 +78,15 @@ def test_barb_crosses_the_gap_into_the_pocket(bottom):
         x, y = _to_case(arm, barb_u(arm), (C.SEAM_FIT_CLEAR + PROUD) / 2.0)
         assert _probe(bottom, x, y, z, d=0.3) > 1e-6, (
             f"{arm.name}: no barb material past the skirt line — missing or too shallow")
-        x, y = _to_case(arm, barb_u(arm), PROUD + 0.15)
+        # The overshoot probe has to account for its own box being WORLD-axis-aligned: centred
+        # at v it reaches v - (d/2)*(|nx| + |ny|) inboard, which is d/2 on an axis-aligned wall
+        # but 1.22x that on the SE and SW diagonals. A flat PROUD + 0.15 therefore stood exactly
+        # TANGENT to the crest on the straight walls — passing only because a knife edge
+        # encloses no volume — and clipped the crest outright on the diagonals, reporting
+        # 4.3e-05 mm^3 of "overshoot" from a barb that is exactly the depth it should be.
+        # Stated as a real margin instead: nothing may reach 0.10 mm past the design crest.
+        reach = (0.3 / 2.0) * (abs(arm.out[0]) + abs(arm.out[1]))
+        x, y = _to_case(arm, barb_u(arm), PROUD + 0.10 + reach)
         assert _probe(bottom, x, y, z, d=0.3) < 1e-9, f"{arm.name}: barb overshoots its depth"
 
 
@@ -224,6 +232,69 @@ def test_arms_clear_the_exclusion_zones():
         bat = min(max(bx - bhw - px, px - (bx + bhw), by - bhl - py, py - (by + bhl))
                   for px, py in pts)
         assert bat > 2.0, f"{arm.name}: slot is {bat:.2f} mm from the battery pocket"
+
+
+_RIM_ARC_CACHE: dict[str, tuple[list[tuple[float, float, float]], float]] = {}
+
+
+def _rim_arc_length_of(xy):
+    """Arc-length position of a point on the plate rim's outline, plus the outline's length.
+
+    Discretised rather than solved in closed form: the outline is 25 edges of mixed line and
+    arc, and all this has to settle is WHICH RUN a barb sits on and how far along it — a
+    resolution of a few hundredths is far finer than any regression worth catching."""
+    if "rim" not in _RIM_ARC_CACHE:
+        from build123d import Plane
+
+        from sofle_case.tray import offset_extruded
+        part = offset_extruded(C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK, 0.0, C.SEAM_LEDGE_Z)
+        face = min(part.faces().filter_by(Plane.XY), key=lambda f: f.center().Z)
+        wire = face.outer_wire()
+        n = 6000
+        pts = [((wire @ (i / n)).X, (wire @ (i / n)).Y, i / n * wire.length)
+               for i in range(n + 1)]
+        _RIM_ARC_CACHE["rim"] = (pts, wire.length)
+    pts, length = _RIM_ARC_CACHE["rim"]
+    x, y = xy
+    return min(pts, key=lambda p: (p[0] - x) ** 2 + (p[1] - y) ** 2)[2], length
+
+
+def test_the_south_chain_is_evenly_spaced():
+    """THE reason the southern arms sit where they do — and the thing a well-meaning nudge is
+    most likely to undo, because nothing else in the suite would notice.
+
+    Walking the rim from E1's barb south and west to W1's is 203.46 mm, and the four arms
+    between them divide it into five EQUAL 40.69 mm steps. That interval is not a preference:
+    it is the coarsest spacing that puts every barb on a straight run, and a barb on a corner
+    arc cannot be built at all — a prism laid across an arc floats off the wall and comes back
+    as a disjoint solid. Three arms lands exactly there, which is why there are four.
+
+    It is also why the south front carries only ONE barb, at the centre of its run. Read alone
+    that is the weakest spot on it; the layout earns it by moving the neighbours in, so no
+    point on the southern perimeter is further than about 20.3 mm from a barb.
+
+    Asserted as equality BETWEEN the gaps rather than against hard-coded stations, so the whole
+    chain is free to slide when the outline changes — it just may not go back to clustering."""
+    order = ["E1-east-S", "SE1-se-diag", "S1-south-C", "T1-thumb-gulf", "SW1-sw-diag",
+             "W1-west-S"]
+    arms = {a.name: a for a in C.SNAP_ARMS}
+    missing = [n for n in order if n not in arms]
+    assert not missing, f"the south chain lost {missing}; even spacing is no longer meaningful"
+
+    pos, length = [], 0.0
+    for name in order:
+        s, length = _rim_arc_length_of(barb_center(arms[name]))
+        pos.append(s)
+    gaps = [(pos[i + 1] - pos[i]) % length for i in range(len(pos) - 1)]
+    mean = sum(gaps) / len(gaps)
+    assert max(abs(g - mean) for g in gaps) < 0.6, (
+        "the south chain is no longer evenly spaced: gaps "
+        + ", ".join(f"{g:.2f}" for g in gaps) + f" against a mean of {mean:.2f}")
+    # direction-agnostic: if the wire winds the other way every gap is its complement instead
+    step = min(mean, length - mean)
+    assert step == pytest.approx(40.69, abs=0.6), (
+        f"the chain steps {step:.2f} mm, not the 40.69 mm five-way division of the E1->W1 run "
+        f"that is what keeps every barb on a straight run")
 
 
 def test_both_halves_get_the_latches():

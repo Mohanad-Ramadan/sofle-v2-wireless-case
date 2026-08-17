@@ -341,5 +341,25 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # Chamfering first drops the residual to 1.38. A helper with a silent no-op fallback and a
     # documented history of taking it (docs/z-stack.md) is exactly the kind that fails quietly,
     # so the sequencing is asserted here by arithmetic rather than trusted.
+    # Rebased −481.021325 mm³ (−0.256%) for the SOUTH CHAIN going from two arms to four:
+    # S2-south-W deleted, S1 re-aimed to the run's centre, and SE1-se-diag, T1-thumb-gulf and
+    # SW1-sw-diag added, so the four of them divide the E1->W1 perimeter into five equal
+    # 40.69 mm steps. Arm count goes 9 -> 11.
+    #
+    # THE DELTA WAS VALIDATED BY REBUILDING, NOT BY ARITHMETIC, because the arithmetic does not
+    # close here and it is worth saying why. The relief cutters total 1121.777 mm³ more than
+    # before (SE1 683.645 + T1 438.132 + SW1 683.645, less S2's 683.645) against a measured
+    # swing of only 481.021 — the rest is cutter that never met material, since every slot
+    # deliberately overruns the wedge's ground face so its release port opens on the underside,
+    # and the wedge is thinnest exactly where the south chain lives (b = 9.42 mm at the south
+    # front, 7.58 at the gulf). So the check that actually stands behind this number is: with
+    # C.SNAP_ARMS monkeypatched back to the previous nine-arm tuple and SNAP_CORNER_BARB_LO_Z
+    # back to 2.30, build_bottom_part("right") returns 187940.344201 — the old baseline, to all
+    # six decimals. The geometry is otherwise untouched.
+    #
+    # Barb volumes read 2.954 mm³ each now rather than 1.873. That is SNAP_BARB_EMBED: the barb
+    # carries a backing slab (8.0 x 0.15 x 0.9007 = 1.081) sunk into the rim so the fuse has a
+    # real overlap instead of one tangent plane. It sits inside the arm, so it contributes
+    # nothing to this total — the two figures differ by exactly the slab.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 187940.344201) < 2e-2
+    assert abs(build_bottom_part(side).volume - 187459.322876) < 2e-2

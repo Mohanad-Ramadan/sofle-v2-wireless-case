@@ -155,7 +155,16 @@ def _barb_local(arm: C.SnapArm, proud: float = C.SNAP_BARB_PROUD) -> Part:
         # wrong way and hand back a barb on the inside of the rim. See AGENTS.md.
         extrude(amount=C.SNAP_BARB_X_LEN, dir=(1.0, 0.0, 0.0))
     assert bp.part is not None
-    return cast(Part, bp.part)
+    # The triangle above stands EXACTLY on the rim's outer face, and a fuse whose only contact
+    # is one tangent plane does not survive: at v=0 OCC returned the SE and SW diagonal barbs
+    # as SEPARATE SOLIDS, each floating under 0.02 mm off a wall whose coordinates round onto
+    # the face rather than landing on it exactly. The axis-aligned arms happened to survive,
+    # which is worse than a clean failure — a detached barb still measures the right depth from
+    # the right place, so every geometric probe in test_snaps passes and only the solid count
+    # dissents. This slab gives the fuse a real overlap. It lies wholly inside the arm (embed
+    # 0.15 against a minimum thickness of 1.25), so it moves no face and adds no volume.
+    anchor = _local_box(u0, u0 + C.SNAP_BARB_X_LEN, -C.SNAP_BARB_EMBED, 0.0, z_lo, z_hi)
+    return cast(Part, bp.part + anchor)
 
 
 def _relief_local(arm: C.SnapArm) -> Part:

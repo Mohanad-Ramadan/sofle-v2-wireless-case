@@ -266,14 +266,17 @@ def test_the_band_is_one_smooth_wall():
     assert len(band.faces()) <= 60, (
         f"the band came back with {len(band.faces())} faces (expected ~29). Something has "
         f"reintroduced a per-Y construction — see _bottom_outer_shell")
-    # Raised 200 -> 300 for the nine snap latches, and broken down rather than bumped, because
-    # a bound raised without accounting is exactly the decay this docstring warns about.
-    # Measured: the bottom is 163 faces without them and 272 with — 12.1 per arm, which is an
-    # L-slot (two legs plus the root-relief cylinder) and a 5-face barb prism. It was 677 while
-    # the barb was still a 23-slab staircase; rebuilding it as one triangular prism, which
-    # SNAP_RETURN_DEG = 90 makes exact, took 405 faces back out. 300 leaves ~2 arms of headroom
-    # and still catches a per-Y reconstruction of the band, which is what this really guards.
-    assert len(build_bottom_part("right").faces()) <= 300
+    # Raised 200 -> 300 for the nine snap latches, then 300 -> 360 when the south chain took the
+    # count to eleven — broken down rather than bumped, because a bound raised without
+    # accounting is exactly the decay this docstring warns about.
+    # Measured: the bottom is 163 faces bare, was 272 with nine arms (12.1 each: an L-slot's two
+    # legs, the root-relief cylinder, and a barb prism), and is 306 with eleven (13.0 each). The
+    # extra ~0.9 per arm is SNAP_BARB_EMBED's backing slab, which buys the barb a real overlap
+    # to fuse across instead of a single tangent plane. It was 677 while the barb was still a
+    # 23-slab staircase; rebuilding it as one triangular prism, which SNAP_RETURN_DEG = 90 makes
+    # exact, took 405 faces back out. 360 leaves ~4 arms of headroom and still catches a per-Y
+    # reconstruction of the band, which is what this really guards.
+    assert len(build_bottom_part("right").faces()) <= 360
 
     # The swoosh is ONE face. That is the claim the face count is a proxy for, stated directly:
     # the top surface is what the reveal exposes, and a divided one IS the defect.
