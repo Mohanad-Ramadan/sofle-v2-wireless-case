@@ -40,11 +40,20 @@ folded into the rotation, because rotating to face the other way would also flip
 radial sign with it.
 """
 from __future__ import annotations
+
 import math
 from typing import cast
 
 from build123d import (
-    BuildLine, BuildPart, BuildSketch, Location, Part, Plane, Polyline, Solid, extrude,
+    BuildLine,
+    BuildPart,
+    BuildSketch,
+    Location,
+    Part,
+    Plane,
+    Polyline,
+    Solid,
+    extrude,
     make_face,
 )
 
@@ -350,15 +359,15 @@ def snap_report() -> str:
              + corner_force())
     hidden = sum(1 for a in C.SNAP_ARMS if a.hidden_cut)
     lines = [
-        f"snap latches: {len(C.SNAP_ARMS) + 1} arms, barb {C.SNAP_BARB_PROUD:.2f} mm proud "
-        f"({C.SNAP_DEFLECT:.2f} deflection), lead-in {C.SNAP_LEAD_IN_DEG:.0f} deg / return "
-        f"{C.SNAP_RETURN_DEG:.0f} deg",
-        f"  barb {C.SNAP_BARB_H:.3f} mm tall, Z budget {C.SNAP_Z_BUDGET:.3f}, "
-        f"{C.SNAP_Z_PLAY:.2f} mm of lift before it bites",
+        (f"snap latches: {len(C.SNAP_ARMS) + 1} arms, barb {C.SNAP_BARB_PROUD:.2f} mm proud "
+         f"({C.SNAP_DEFLECT:.2f} deflection), lead-in {C.SNAP_LEAD_IN_DEG:.0f} deg / return "
+         f"{C.SNAP_RETURN_DEG:.0f} deg"),
+        (f"  barb {C.SNAP_BARB_H:.3f} mm tall, Z budget {C.SNAP_Z_BUDGET:.3f}, "
+         f"{C.SNAP_Z_PLAY:.2f} mm of lift before it bites"),
         f"  {hidden} cuts hidden, {len(C.SNAP_ARMS) + 1 - hidden} show a slit in the reveal",
-        f"  total deflection force {total:.1f} N -> insertion "
-        + " / ".join(f"{C.snap_insertion_force(total, mu):.1f}" for mu in (0.4, 0.5, 0.7))
-        + " N at mu 0.4/0.5/0.7",
+        (f"  total deflection force {total:.1f} N -> insertion "
+         + " / ".join(f"{C.snap_insertion_force(total, mu):.1f}" for mu in (0.4, 0.5, 0.7))
+         + " N at mu 0.4/0.5/0.7"),
     ]
     for arm in C.SNAP_ARMS:
         fx, fy = arm_free_end(arm)

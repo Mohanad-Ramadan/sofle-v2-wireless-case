@@ -12,10 +12,19 @@ import pytest
 from build123d import Solid
 
 from sofle_case import constants as C
-from sofle_case.case import tent_ground_z, _seam_z_at
+from sofle_case.case import _seam_z_at, tent_ground_z
 from sofle_case.snaps import (
-    _corner_s_to_xy, _slot_v0, arm_wall_height, barb_center, barb_u, corner_barb_center,
-    corner_cut_center, corner_strain, cut_center, cut_u, snap_report,
+    _corner_s_to_xy,
+    _slot_v0,
+    arm_wall_height,
+    barb_center,
+    barb_u,
+    corner_barb_center,
+    corner_cut_center,
+    corner_strain,
+    cut_center,
+    cut_u,
+    snap_report,
 )
 from tests.shared_builds import build_bottom_part, build_top_part
 
