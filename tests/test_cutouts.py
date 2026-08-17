@@ -305,5 +305,41 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     #
     # Still no outer dimension moved: the pocket and channel both bottom at Z 1.80, far above the
     # wedge's own surfaces, so the ground plane and parting line are untouched.
+    # Rebased +67.88 mm³ (+0.035%) for FOOT_DIA 10.0 -> 8.0. The seats are the ONLY thing that
+    # moved, and they give material back rather than taking it:
+    #   Ø10:  4 x π x 5² x FOOT_DEPTH(0.6) = 188.50 mm³ removed
+    #   Ø8:   4 x π x 4² x 0.6             = 120.64 mm³ removed
+    #   net                                = + 67.86 predicted vs +67.875 measured
+    # The 0.015 residual is the seats meeting a TILTED ground face: _foot_recesses cuts
+    # perpendicular to the tent plane, so a seat's rim sits at slightly different depths across
+    # its diameter, and a smaller disc samples that 6° slope differently. Nothing else in the
+    # bottom part is a function of FOOT_DIA — the wedge, band and parting line are untouched,
+    # which is the same invariant the rest of this baseline's history exists to prove.
+    # The seats shrank because they, not the seam, decide where the snap arms can go: at Ø10
+    # four of the nine relief slots foul a seat. See the FOOT_DIA note in constants.py.
+    # Rebased −4578.55 mm³ (−2.38%) for the NINE SNAP LATCHES. Accounted for in full:
+    #   8 straight reliefs  −3805.907  (their cutters total more; the surplus is air below the
+    #                                   wedge, because every slot deliberately overruns the
+    #                                   ground face so the release port opens on the underside)
+    #   N2's wrapped relief −  788.811  (a concentric band, not local boxes — it follows the
+    #                                   4.24 mm arc between the lobe and the run past it)
+    #   8 straight barbs    +   14.987
+    #   N2's barb           +    1.873
+    #   predicted           = −4577.858  vs −4578.546 measured, −0.69 residual (0.015%)
+    #
+    # AN EARLIER VERSION OF THIS NUMBER WAS OFF BY 1.4 mm³ AND THAT WAS A REAL BUG, not noise.
+    # The barb sits at 0.8L and runs SNAP_BARB_X_LEN long, so on the short N2 arm (L=14) its
+    # outboard half landed PAST the free end, inside the relief slot — and barbs are fused on
+    # AFTER the slot is cut, so it plugged the slot and welded the arm back to the rim it is
+    # supposed to be free of. Every geometric test still passed; only the volume disagreed.
+    # barb_u() now clamps to keep the barb on the arm (inactive at L=22, to 4 decimals).
+    #
+    # THE ORDER OF THOSE TWO OPS AGAINST _chamfer_wedge_ground_edge MATTERS, and this number is
+    # what caught it. Cutting the reliefs BEFORE the chamfer left a 27.4 mm³ discrepancy: that
+    # helper selects ground_face(part).outer_wire().edges(), and nine through-slots hand it the
+    # slot mouths as extra edges to chamfer — putting a 0.5 mm chamfer inside each release port.
+    # Chamfering first drops the residual to 1.38. A helper with a silent no-op fallback and a
+    # documented history of taking it (docs/z-stack.md) is exactly the kind that fails quietly,
+    # so the sequencing is asserted here by arithmetic rather than trusted.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 192451.015398) < 2e-2
+    assert abs(build_bottom_part(side).volume - 187940.344201) < 2e-2

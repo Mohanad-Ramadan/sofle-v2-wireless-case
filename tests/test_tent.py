@@ -10,7 +10,7 @@ is free, because the battery pocket's floor spans Y 30.8-103.8 through the middl
 tests care about two things above all: the tilt is real, and NOTHING above the wedge moved."""
 import math
 
-from build123d import Solid
+from build123d import Face, Solid
 from sofle_case import constants as C
 from sofle_case.canopy import CANOPY_RIDGE_TOP_Z, canopy_ridge_top_z
 from sofle_case.case import (bottom_deep_z, ground_face, tent_ground_z, tent_plane, tent_wedge,
@@ -67,8 +67,25 @@ def test_contact_is_the_whole_footprint():
     proof — unlike the four inset riser feet this design replaced."""
     face = ground_face(build_bottom_part("right"))
     assert face.area > 10000.0, f"ground face is only {face.area:.0f} mm² — that is not the footprint"
-    assert len(face.inner_wires()) == len(C.FOOT_POSITIONS), \
-        "expected exactly the foot seats as holes in the ground face"
+    # Holes in the footprint are the FOUR foot seats plus the snap latches' release ports. Five
+    # of the nine arms show up here: their relief slot runs to the ground face and closes as its
+    # own loop. The other four are at the south, where the wedge is thin enough that the slot's
+    # outboard leg reaches the footprint's edge and merges into the outer wire instead.
+    #
+    # Counted AND measured, because the count alone would pass a slot that had eaten half the
+    # footprint. What this test is really claiming is that the case still rests on essentially
+    # its whole plan area and cannot rock, so the load-bearing number is the area: the ports
+    # take ~0.9% of it.
+    seats = [w for w in face.inner_wires() if abs(w.length - math.pi * C.FOOT_DIA) < 0.5]
+    assert len(seats) == len(C.FOOT_POSITIONS), \
+        f"expected {len(C.FOOT_POSITIONS)} foot seats in the ground face, found {len(seats)}"
+    ports = len(face.inner_wires()) - len(seats)
+    assert ports <= len(C.SNAP_ARMS), \
+        f"{ports} holes in the footprint are neither foot seats nor snap release ports"
+    holes = sum(Face(w).area for w in face.inner_wires())
+    assert holes / (face.area + holes) < 0.03, \
+        f"holes take {holes / (face.area + holes) * 100:.1f}% of the footprint — that is no " \
+        f"longer 'the whole footprint' and the case can start to rock"
 
 
 # ------------------------------------------------------- nothing above the wedge moved

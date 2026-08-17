@@ -1,5 +1,6 @@
 """All dimensions in mm. Single source of truth for the case geometry."""
 import math
+from typing import NamedTuple
 
 # ---------- Heights (Z = 0 at case bottom) ----------
 # The whole Z ladder is DERIVED from FLOOR_THICKNESS via named gaps, so raising
@@ -188,9 +189,10 @@ SEAM_POCKET_LEAD_IN = 0.4  # mm; 45° starter chamfer on the tub pocket MOUTH (t
 #                            so 0.4 leaves ≥1.4 mm of skin at the ground-line first layer.
 SEAM_RIM_THK    = WALL_THICKNESS - SEAM_SKIN - SEAM_FIT_CLEAR   # = 2.55; derived plate-rim thickness
 
-# Snap aids (assembly hold-shut) are no longer deferred — the first print showed the
-# rabbet alone does NOT hold the ends shut. See the "Rabbet snap latch" block further
-# down (it has to follow SEAM_NORTH_RISE_Z, which sets the Z budget it fits into).
+# Snap aids (assembly hold-shut): see the "Rabbet snap latch" block further down. It has
+# to follow the seam-wave constants, because the wave — not SEAM_NORTH_RISE_Z as an older
+# note here claimed — is what sets both the Z budget a barb fits into and the y beyond
+# which a relief cut stops being hidden. Spec: .omc/specs/deep-dive-invisible-snap-latches.md
 
 # ---------- Drafted rim facet (outer-top treatment) ----------
 # The tall (16 mm) flat wall read as an ugly slab from the sides. The old rim treatment
@@ -1017,7 +1019,7 @@ BATTERY_POCKET_CORNER_R = 2.0  # mm, pocket corner fillet radius
 
 # ---------- Anti-slip rubber feet (external, underside of the bottom plate) ----------
 # Shallow Ø10 seats recessed into the OUTER bottom face (Z=0) of the inset floor plate
-# at 4 corners, so 10 mm self-adhesive rubber feet locate there and the keyboard grips
+# at 4 corners, so 8 mm self-adhesive rubber feet locate there and the keyboard grips
 # the desk (doesn't slide while typing). NOT deep — a shallow locating seat; the foot
 # sits mostly proud below and lifts the case off the desk.
 #
@@ -1025,7 +1027,15 @@ BATTERY_POCKET_CORNER_R = 2.0  # mm, pocket corner fillet radius
 # Sofle outline edges (the bottom-right corner is cut by the thumb cluster) and clear of
 # the battery pocket. Subtracted BEFORE the left-mirror, so they track to the mirrored
 # outline on the left half.
-FOOT_DIA   = 10.0   # mm, rubber-foot diameter → seat diameter
+#
+# WAS 10.0, AND THE SEAT DIAMETER IS WHAT DECIDES WHERE THE SNAP ARMS CAN GO — not the
+# seam. At Ø10 the seats clip four of the nine relief slots: the north-east arm's root
+# relief collides outright (-0.24 mm), and the two east arms and the north-west arm graze
+# by 0.05-0.37 mm. At Ø8 the worst clearance across all nine is 4.94 mm, and the
+# north-east arm reaches its intended barb position (x 128.90, between SW5 and SW6)
+# instead of retreating 10 mm west. Moving a foot was tried on wip/snap-latches and did
+# not survive; shrinking the seat is the cheaper fix and 8 mm feet are as common as 10.
+FOOT_DIA   = 8.0    # mm, rubber-foot diameter → seat diameter
 FOOT_DEPTH = 0.6    # mm, shallow locating-seat depth
 FOOT_POSITIONS: tuple[tuple[float, float], ...] = (
     (20.0, 110.0),   # top-left
@@ -1134,6 +1144,229 @@ assert SEAM_WAVE_CREST_Z < SEAM_LEDGE_Z, (
 assert SEAM_WAVE_LAP_LEFT >= 2.0, (
     f"the crest at Z={SEAM_WAVE_CREST_Z:.2f} leaves only {SEAM_WAVE_LAP_LEFT:.2f} mm of rabbet "
     f"lap to locate the two halves against each other; 2.0 is the floor")
+
+# ---------- Rabbet snap latch ----------
+# Hold-shut for the case ends the 5 screws cannot reach: they span case-Y 35.5-96.7 of a 126 mm
+# case, so both ends are unclamped cantilevers held only by SEAM_FIT_CLEAR of rabbet friction.
+# These are NOT a second clamp — the screws remain the only precision Z reference, and a
+# fatigued latch degrades this joint back to friction-only rather than letting the case open.
+# Full derivation: .omc/specs/deep-dive-invisible-snap-latches.md
+#
+# EVERY FLEXING PART IS ON THE BOTTOM PLATE'S RIM, AND THAT IS A PRINT-ORIENTATION DECISION.
+# An FDM arm must bend PARALLEL to the layer lines. A strip of the bottom's rim, freed by a slot
+# and pushed inward, bends about a VERTICAL axis, so the stretched material runs along the
+# extrusions. An arm hanging off the tub's ledge would bend about a HORIZONTAL axis and peel its
+# layers apart — and the tub prints rim-down, so that is squarely across them.
+#
+# The arm must be a CANTILEVER, not a fixed-fixed strip. Freeing it with the inboard slot alone
+# leaves it built in at both ends, and fixed-fixed strain is 12*d*h/L^2 against a cantilever's
+# 3*d*h/(2L^2) — 8x worse, 2.84% at L=22, which fractures PLA. Hence the outboard leg.
+SNAP_TAB_L        = 22.0   # mm; default arm length. Per-arm; N2 is shorter, see SNAP_ARMS
+SNAP_TAB_SLOT_W   = 1.2    # mm; relief slot width — also the release port on the underside
+SNAP_BARB_PROUD   = 0.52   # mm; barb protrusion from the rim's outer face (guide: 0.5-1.2)
+SNAP_LEAD_IN_DEG  = 30.0   # deg from the insertion axis, barb's TOP face (guide: 25-35)
+SNAP_RETURN_DEG   = 90.0   # deg from the insertion axis, barb's BOTTOM face. SELF-LOCKING —
+#                            see the force note below; a flat face costs no Z at all.
+SNAP_BARB_X_LEN   = 8.0    # mm; barb length along the wall, near the arm's free end
+SNAP_ROOT_FILLET  = 1.0    # mm; drilled root relief, >= 0.5 * SEAM_RIM_THK
+SNAP_Z_PLAY       = 0.25   # mm; catch pocket taller than the barb, ALL of it below the barb
+SNAP_SKIRT_BELOW  = 0.3    # mm; skirt kept below the catch pocket
+SNAP_SKIRT_ABOVE_MIN = 1.0 # mm; skirt that must survive above the catch pocket
+# PLA is rated POOR for snaps (low strain tolerance, creep-prone). Staying on PLA is deliberate
+# and survivable ONLY because the screws are the load path. Budget set accordingly.
+SNAP_PLA_STRAIN_MAX = 0.005
+
+SNAP_DEFLECT = SNAP_BARB_PROUD - SEAM_FIT_CLEAR   # 0.32; the arm's working deflection
+
+# SNAP_Z_PLAY IS THE DEAD TRAVEL, and that is what a closed case feels like: the tub lifts by
+# exactly this much before any barb bites. It was 0.5, which reads as a loose case no matter how
+# strong the latches are. It cannot go much below 0.25 either — the closure Z is a five-link
+# chain (FLOOR + SHOULDER + PCB + MX_BODY_CLEAR + PLATE) whose error is ONE-DIRECTIONAL: the
+# standoff pin tops are a hard floor under the switch plate, so the tub can only ever sit at or
+# ABOVE nominal, never below. A high tub carries the pocket UP relative to the barb, so the
+# barb needs its clearance BELOW it, and the pocket FLOOR is therefore the retention face.
+# Too little play and the barb bottoms out on that floor and becomes the Z datum instead of the
+# standoffs — two datums for one face, which is the bug STANDOFF_PIN_RECESS exists to avoid.
+
+
+def snap_barb_h(barb_proud: float = SNAP_BARB_PROUD) -> float:
+    """Total Z height of a barb of this depth: lead-in ramp + return face.
+
+    Both ramps are measured from the insertion axis (Z), so each costs proud/tan(angle) of
+    height — the barb's Z extent is DERIVED from its depth, never guessed, and it therefore
+    GROWS with the barb. At SNAP_RETURN_DEG = 90 the return face is flat and costs nothing,
+    which is why the self-locking barb is also the SHORTEST one."""
+    per_mm = 1.0 / math.tan(math.radians(SNAP_LEAD_IN_DEG))
+    if SNAP_RETURN_DEG < 90.0:
+        per_mm += 1.0 / math.tan(math.radians(SNAP_RETURN_DEG))
+    return barb_proud * per_mm
+
+
+SNAP_BARB_H = snap_barb_h()                                   # 0.9007
+SNAP_Z_BUDGET = SNAP_BARB_H + SNAP_Z_PLAY + SNAP_SKIRT_ABOVE_MIN   # 2.1507
+# The hidden band a barb must fit into is (SEAM_LEDGE_Z - SEAM_LEAD_IN) - max(seam_z, mouth),
+# and the wave crests at SEAM_WAVE_CREST_Z, leaving less than the budget over part of the
+# ramp. That excluded stretch is the BARB DEAD ZONE — measured at y 83.25..88.50 for this
+# budget. It moves when SNAP_Z_PLAY moves, so tests compute it; nothing hard-codes it.
+SNAP_BAND_CEIL = SEAM_LEDGE_Z - SEAM_LEAD_IN                  # 5.70; below the rim's chamfer
+SNAP_BAND_FLOOR = SEAM_POCKET_LEAD_IN                         # 0.40; above the pocket mouth
+
+
+def snap_strain(thickness: float, tab_l: float = SNAP_TAB_L,
+                deflect: float = SNAP_DEFLECT) -> float:
+    """Peak root strain of a straight rim arm: e = 3*h*y / (2*L^2), the standard tip-loaded
+    cantilever result (Covestro publish it as d_max = e_perm*L^2 / (1.5*h), rearranged).
+
+    ``thickness`` is the radial bending thickness h. It is PER ARM and <= SEAM_RIM_THK: the
+    inboard slot can be widened to leave a thinner arm, which is the main tuning knob because
+    force goes as h^3 while strain only goes as h."""
+    return 3.0 * thickness * deflect / (2.0 * tab_l ** 2)
+
+
+def snap_force(thickness: float, arm_h: float, tab_l: float = SNAP_TAB_L,
+               deflect: float = SNAP_DEFLECT, e_mod: float = 3500.0) -> float:
+    """Deflection force of one straight arm, in N: P = E*b*h^3*y / (4*L^3).
+
+    ``arm_h`` is the beam WIDTH b — the LOCAL WALL HEIGHT, not SEAM_LEDGE_Z. The arm is freed
+    from the wedge's ground face up to the ledge, so b is 9.4 mm at the south front and ~20 mm
+    at the north where the wedge is deep. A single global thickness would therefore put half
+    the closing force in the north arms: uniform h=2.0 totals 49.9 N against 24.7 N tuned.
+    b cancels out of the strain entirely."""
+    return e_mod * arm_h * thickness ** 3 * deflect / (4.0 * tab_l ** 3)
+
+
+def snap_insertion_force(deflect_force: float, mu: float) -> float:
+    """Push-on force from the deflection force: W = P*(mu + tan a)/(1 - mu*tan a).
+
+    ASSEMBLY FORCE IS NOT DEFLECTION FORCE, and printed PLA on PLA is grippy — measured 0.4-0.7
+    static at 100% infill, not the 0.3 a smooth-plastic guide would suggest. Over that range
+    this multiplies P by 1.27 to 2.14, which is the largest single uncertainty in the numbers.
+
+    The same expression run at SNAP_RETURN_DEG gives the pull-off force, and it goes SINGULAR
+    at mu*tan(a) = 1 — i.e. self-locking above atan(1/mu), which is 68.2 deg at mu=0.4 and
+    55.0 deg at mu=0.7. The old 60 deg return sat inside that band only for mu >= 0.55, so its
+    behaviour depended on print quality. 90 deg is a pure undercut: it cannot cam out at all,
+    and the case comes apart by prying the shells, deliberately."""
+    t = math.tan(math.radians(SNAP_LEAD_IN_DEG))
+    return deflect_force * (mu + t) / (1.0 - mu * t)
+
+
+class SnapArm(NamedTuple):
+    """One latch. ``root`` is on the rim's OUTER face; ``out`` is that wall's outward normal.
+
+    ``sense`` multiplies snaps.arm_direction(out) = (out_y, -out_x). The old code derived the
+    direction from the normal alone so that "local +Y is outward" held without a second sign to
+    keep in step — but that fixes each wall's arm direction, and the free-end cut has to land
+    where the tub's skin still covers the rim. On the west wall and on the south front's west
+    arm the derived sense points the cut into the reveal, so it is now explicit."""
+    name: str
+    root: tuple[float, float]
+    out: tuple[float, float]
+    sense: float
+    length: float
+    thickness: float
+    barb_lo_z: float
+    hidden_cut: bool
+
+
+# ---- Where the arms go ----
+# Placements were surveyed on the MEASURED plate-rim outline, not on the PCB polygon: the rim is
+# that polygon offset outward by PCB_XY_CLEARANCE + SEAM_RIM_THK, and _plate_envelope offsets
+# with ARCS, so every convex corner is an R3.05 fillet and the straight runs are SHORTER than
+# the polygon edges (south front 55.84 not 56.50; north-east 34.95 not 38.00). A straight prism
+# laid across one of those arcs floats off the wall and produces disjoint solids — the failure
+# that sank the first attempt at this.
+#
+# ONLY THE FREE-END CUT HAS TO BE HIDDEN. The inboard slot opens on the cavity and the ground
+# face, and the barb sits above seam_z at every station used, so both are invisible everywhere.
+# The cut severs the rim's outer face, and that face is bare wherever the reveal exposes it:
+# exposure crosses zero at y = 48.196, so cuts south of TENT_SEAM_Y1 are covered by the skin
+# with a constant +0.200 mm margin (BOTTOM_CHAMFER 0.5 - TENT_SKIRT_LIFT 0.3), and cuts north
+# of it show a 1.2 mm slit in a 2.2 mm deep shadow recess. Four arms are hidden; five show a
+# slit, ACCEPTED so the canopy and the north switch row get real latches rather than pads.
+#
+# barb_lo_z is STAGGERED 0.30 mm apart. One shared datum makes all nine peak in the same
+# instant; staggering turns a single 53 N wall into nine small ones. Each arm's own floor is
+# max(seam_z at its barb + SNAP_SKIRT_BELOW, SNAP_BAND_FLOOR) and the ladder takes whichever is
+# higher — which is why E2 and W2 sit at the top of it, their skirt being higher there.
+SNAP_ARMS: tuple[SnapArm, ...] = (
+    #        name             root               out    sense  L     h     barb  hidden
+    SnapArm("N1-canopy-N",  (48.60, 118.80), (0.0, 1.0),  -1.0, 22.0, 1.75, 2.00, False),
+    SnapArm("N3-north-east",(146.50, 112.30), (0.0, 1.0), -1.0, 22.0, 1.75, 2.60, False),
+    SnapArm("S1-south-E",   (108.75, 20.20), (0.0, -1.0), +1.0, 22.0, 2.20, 2.90, True),
+    SnapArm("S2-south-W",   (57.50, 20.20),  (0.0, -1.0), -1.0, 22.0, 2.20, 3.20, True),
+    SnapArm("E1-east-S",    (151.80, 62.20), (1.0, 0.0),  +1.0, 22.0, 2.20, 3.50, True),
+    SnapArm("W1-west-S",    (10.70, 62.20),  (-1.0, 0.0), -1.0, 22.0, 2.20, 3.80, True),
+    SnapArm("E2-east-N",    (151.80, 84.00), (1.0, 0.0),  -1.0, 22.0, 1.75, 4.10, False),
+    SnapArm("W2-west-N",    (10.70, 113.75), (-1.0, 0.0), -1.0, 22.0, 1.75, 4.40, False),
+)
+# N2 sits on the 18.00 mm SW3 lobe, the only run too short for L=22. As a straight arm it has to
+# stay thin — h=1.20 gives 0.294% strain and 3.58 N, and it cannot be stiffened to match the
+# other north arms (h=1.75 on L=14 is 11.11 N, four times the set's average). Wrapping the R3
+# corner onto the 16.00 mm lobe-west run gives L_eff 25.4 mm, 0.082% strain and 1.86 N at
+# h=1.75 — but that needs a swept builder, so the straight arm above is the shipped fallback.
+
+# ---- N2, the one arm that wraps a corner ----
+# The SW3 lobe is the northernmost run on the case (y=123.80, over SW3 at x=82.52) and it is
+# 18.00 mm long — too short for L=22, and a straight L=14 there has to stay at h=1.20 to survive
+# (0.294% strain, 3.58 N) and cannot be stiffened with the rest: h=1.75 on L=14 is 11.11 N, four
+# times the set's average. So this arm runs past the end of the lobe.
+#
+# WHAT IT WRAPS IS A JOG, NOT AN ELBOW, and that distinction is the whole sizing argument. The
+# lobe is flanked at BOTH ends by a 4.24 mm arc dropping to a run at y=121.30 — measured on a
+# section of the built plate, where the 2.5 mm of west-facing wall between them is consumed
+# entirely by the two R3.05 offsets and never appears as a straight edge. Both runs therefore
+# face NORTH; the wall does not turn a corner, it steps sideways.
+#
+# An earlier pass modelled this as a 90 deg L-arm and got L_eff = (Lb^3 + 3*Lb^2*La)^(1/3) =
+# 25.4 mm. That formula is for perpendicular legs, where the load is axial to the root leg and
+# it carries a constant moment. Here the load is perpendicular to BOTH legs, so the thing
+# behaves as a nearly straight cantilever of 18.00 + 4.24 + 16.00 = 38.24 mm of continuous rim
+# with a 2.5 mm lateral offset partway along. Sized as a straight beam accordingly.
+SNAP_CORNER_LOBE = ((91.75, 123.80), (73.75, 123.80))   # measured rim run, east -> west
+SNAP_CORNER_ARC = 4.24                                  # the blend to the next run
+SNAP_CORNER_WEST = ((70.75, 121.30), (54.75, 121.30))   # measured rim run past the arc
+SNAP_CORNER_L = 26.0     # of the 38.24 available. Full length would be 0.545 N — too soft to
+#                          matter; 26 at h=2.0 lands on 2.59 N and 0.142%, in line with the rest
+SNAP_CORNER_CUT_S = 2.0  # arc-length from the lobe's east end to the cut's outboard face
+SNAP_CORNER_THK = 2.0
+SNAP_CORNER_BARB_LO_Z = 2.30
+
+assert len({a.name for a in SNAP_ARMS}) == len(SNAP_ARMS), "duplicate SNAP_ARMS name"
+_corner_run = ((SNAP_CORNER_LOBE[0][0] - SNAP_CORNER_LOBE[1][0]) + SNAP_CORNER_ARC
+               + (SNAP_CORNER_WEST[0][0] - SNAP_CORNER_WEST[1][0]))
+_corner_need = SNAP_CORNER_CUT_S + SNAP_TAB_SLOT_W + SNAP_CORNER_L + 2.0
+assert _corner_need <= _corner_run, (
+    f"the corner arm needs {_corner_need:.2f} mm of rim (cut + slot + arm + root) but the lobe "
+    f"stretch is only {_corner_run:.2f} mm")
+assert SNAP_CORNER_THK <= SEAM_RIM_THK, "corner arm is thicker than the rim it is cut from"
+assert SNAP_TAB_SLOT_W < SEAM_RIM_THK, "relief slot is wider than the rim it relieves"
+for _a in SNAP_ARMS:
+    assert _a.thickness <= SEAM_RIM_THK, (
+        f"{_a.name}: arm thickness {_a.thickness} exceeds the rim it is cut from "
+        f"({SEAM_RIM_THK}) — there is nothing to make it out of")
+    assert _a.length / _a.thickness >= 8.0, (
+        f"{_a.name}: L/t is {_a.length / _a.thickness:.1f}:1; rigid filaments want >= 8:1 or "
+        f"the root over-strains")
+    _e = snap_strain(_a.thickness, _a.length)
+    assert _e <= SNAP_PLA_STRAIN_MAX, (
+        f"{_a.name}: root strain {_e * 100:.3f}% exceeds the {SNAP_PLA_STRAIN_MAX * 100:.1f}% "
+        f"PLA budget — lengthen the arm (strain falls as L^2), thin it, or shrink "
+        f"SNAP_BARB_PROUD")
+    assert _a.length >= SNAP_BARB_X_LEN + 2.0, (
+        f"{_a.name}: an arm {_a.length} mm long cannot carry a {SNAP_BARB_X_LEN} mm barb and "
+        f"still have root material — the barb would run off one end or the other")
+    assert SNAP_BAND_FLOOR < _a.barb_lo_z and _a.barb_lo_z + SNAP_BARB_H <= SNAP_BAND_CEIL, (
+        f"{_a.name}: barb band {_a.barb_lo_z:.2f}..{_a.barb_lo_z + SNAP_BARB_H:.2f} is outside "
+        f"the rim's usable face ({SNAP_BAND_FLOOR:.2f}..{SNAP_BAND_CEIL:.2f}) — below the floor "
+        f"it lands on the pocket's mouth chamfer, above the ceiling on the rim's lead-in")
+    assert (SEAM_LEDGE_Z + SEAM_LEDGE_CLEAR) - (_a.barb_lo_z + SNAP_BARB_H) >= SNAP_SKIRT_ABOVE_MIN, (
+        f"{_a.name}: only "
+        f"{(SEAM_LEDGE_Z + SEAM_LEDGE_CLEAR) - (_a.barb_lo_z + SNAP_BARB_H):.2f} mm of skirt "
+        f"survives above its catch pocket, under SNAP_SKIRT_ABOVE_MIN={SNAP_SKIRT_ABOVE_MIN}")
+assert sum(1 for a in SNAP_ARMS if a.hidden_cut) == 4, (
+    "four arms are meant to have hidden cuts (S1, S2, E1, W1); the rest show a slit by "
+    "decision. If that count changed, the visibility test's exemption list changed with it")
 
 PCB_OFFSET_X = (OUTER_WIDTH - (PCB_X_MAX - PCB_X_MIN)) / 2 - PCB_X_MIN
 PCB_OFFSET_Y = (OUTER_DEPTH - (PCB_Y_MAX - PCB_Y_MIN)) / 2 - PCB_Y_MIN
