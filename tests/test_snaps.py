@@ -154,11 +154,16 @@ def test_hidden_cuts_are_hidden_and_the_rest_are_declared(bottom, top):
 
     A cut severs the rim's outer face, and that face is bare wherever the reveal exposes it.
     For every arm flagged ``hidden_cut`` the tub's skin must stand outboard of the cut at every
-    Z the cut spans. The five that are NOT flagged show a 1.2 mm slit in the reveal by
-    decision — they are asserted to be exactly the five expected, so the exemption cannot
-    quietly grow."""
+    Z the cut spans. The rest show a 1.2 mm slit in the reveal by decision — they are asserted
+    to be exactly the set expected, so the exemption cannot quietly grow.
+
+    That set grew from five to seven when the whole rim was evenly spaced. E1 and W1 used to
+    cut under the skin at y=39.60; even spacing carries their barbs north to y=53.50 and 55.71,
+    and a cut sits 5.0 mm beyond its own barb, so neither can reach back under the line in
+    either sense. Losing two hidden cuts is the price of even retention, taken deliberately."""
     slit = {a.name for a in C.SNAP_ARMS if not a.hidden_cut} | {"N2-sw3-lobe"}
-    assert slit == {"N1-canopy-N", "N2-sw3-lobe", "N3-north-east", "E2-east-N", "W2-west-N"}, (
+    assert slit == {"E1-east-S", "N1-canopy-N", "N2-sw3-lobe", "N3-north-east", "E2-east-N",
+                    "W1-west-S", "W2-west-N"}, (
         f"the set of arms showing a slit changed: {sorted(slit)}")
 
     for arm in C.SNAP_ARMS:
@@ -259,42 +264,40 @@ def _rim_arc_length_of(xy):
     return min(pts, key=lambda p: (p[0] - x) ** 2 + (p[1] - y) ** 2)[2], length
 
 
-def test_the_south_chain_is_evenly_spaced():
-    """THE reason the southern arms sit where they do — and the thing a well-meaning nudge is
-    most likely to undo, because nothing else in the suite would notice.
+def test_every_barb_is_evenly_spaced_around_the_whole_rim():
+    """THE reason the arms sit where they do — and the thing a well-meaning nudge is most likely
+    to undo, because nothing else in the suite would notice.
 
-    Walking the rim from E1's barb south and west to W1's is 203.46 mm, and the four arms
-    between them divide it into five EQUAL 40.69 mm steps. That interval is not a preference:
-    it is the coarsest spacing that puts every barb on a straight run, and a barb on a corner
-    arc cannot be built at all — a prism laid across an arc floats off the wall and comes back
-    as a disjoint solid. Three arms lands exactly there, which is why there are four.
+    All ELEVEN barbs (the ten straight arms plus N2 on the lobe) divide the 495.26 mm outline
+    into steps of 43.75-46.37 mm against an ideal of 45.02. An earlier layout evened out only
+    the southern stretch and left the rest alone, which ran 32.32 to 56.95.
 
-    It is also why the south front carries only ONE barb, at the centre of its run. Read alone
-    that is the weakest spot on it; the layout earns it by moving the neighbours in, so no
-    point on the southern perimeter is further than about 20.3 mm from a barb.
+    Eleven is not a free choice. Only about half the rim can carry a barb at all — corner arcs
+    are unbuildable, the north runs are too short, and the dead zone rules out part of both side
+    walls — so the best achievable max gap is 58.33 mm at nine arms, 55.28 at ten, 45.63 at
+    eleven and 45.58 at twelve. Deleting an arm to "thin out" a crowded-looking wall makes the
+    case worse, and the arm the spacing maths would drop is an EAST one, not a southern one.
 
-    Asserted as equality BETWEEN the gaps rather than against hard-coded stations, so the whole
-    chain is free to slide when the outline changes — it just may not go back to clustering."""
-    order = ["E1-east-S", "SE1-se-diag", "S1-south-C", "T1-thumb-gulf", "SW1-sw-diag",
-             "W1-west-S"]
+    Asserted as the SPREAD between gaps rather than against hard-coded stations, so the whole
+    ring may slide when the outline changes — it just may not go back to clustering."""
     arms = {a.name: a for a in C.SNAP_ARMS}
-    missing = [n for n in order if n not in arms]
-    assert not missing, f"the south chain lost {missing}; even spacing is no longer meaningful"
+    assert len(arms) == 10, f"expected 10 straight arms, found {len(arms)}"
 
+    centres = [barb_center(a) for a in C.SNAP_ARMS] + [corner_barb_center()]
     pos, length = [], 0.0
-    for name in order:
-        s, length = _rim_arc_length_of(barb_center(arms[name]))
+    for c in centres:
+        s, length = _rim_arc_length_of(c)
         pos.append(s)
-    gaps = [(pos[i + 1] - pos[i]) % length for i in range(len(pos) - 1)]
-    mean = sum(gaps) / len(gaps)
-    assert max(abs(g - mean) for g in gaps) < 0.6, (
-        "the south chain is no longer evenly spaced: gaps "
-        + ", ".join(f"{g:.2f}" for g in gaps) + f" against a mean of {mean:.2f}")
-    # direction-agnostic: if the wire winds the other way every gap is its complement instead
-    step = min(mean, length - mean)
-    assert step == pytest.approx(40.69, abs=0.6), (
-        f"the chain steps {step:.2f} mm, not the 40.69 mm five-way division of the E1->W1 run "
-        f"that is what keeps every barb on a straight run")
+    pos.sort()
+    gaps = [(pos[(i + 1) % len(pos)] - pos[i]) % length for i in range(len(pos))]
+    ideal = length / len(pos)
+    assert max(gaps) - min(gaps) < 4.0, (
+        "the barbs are no longer evenly spaced around the rim: gaps "
+        + ", ".join(f"{g:.2f}" for g in sorted(gaps))
+        + f" (spread {max(gaps) - min(gaps):.2f}, ideal step {ideal:.2f})")
+    assert max(gaps) < 48.0, (
+        f"widest unlatched stretch is {max(gaps):.2f} mm; at eleven arms it should be under 48")
+    assert sum(gaps) == pytest.approx(length, abs=1e-6)
 
 
 def test_both_halves_get_the_latches():

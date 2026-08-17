@@ -1290,7 +1290,7 @@ class SnapArm(NamedTuple):
     hidden_cut: bool
 
 
-# ---- The measured rim runs the southern arms sit on ----
+# ---- The measured rim runs the arms sit on ----
 # Endpoints read off a section of the BUILT plate rim at z=3.0 (25 edges, 495.26 mm total), NOT
 # off the PCB polygon: the rim is that polygon offset outward by PCB_XY_CLEARANCE + SEAM_RIM_THK
 # and _plate_envelope offsets with ARCS, so every convex corner is an R3.05 fillet and the
@@ -1307,6 +1307,13 @@ SNAP_RUN_SOUTH:   _Run = ((110.75, 20.20), (54.91, 20.20))    # 55.84 mm, east -
 SNAP_RUN_GULF_A:  _Run = ((54.91, 20.20), (38.16, 12.54))     # 18.42 mm, thumb gulf, east leg
 SNAP_RUN_GULF_B:  _Run = ((38.16, 12.54), (21.30, 2.62))      # 19.56 mm, thumb gulf, west leg
 SNAP_RUN_SW_DIAG: _Run = ((17.11, 3.72), (2.61, 28.72))       # 28.90 mm
+SNAP_RUN_EAST:    _Run = ((151.80, 109.25), (151.80, 33.25))  # 76.00 mm, north -> south
+SNAP_RUN_WEST:    _Run = ((10.70, 36.98), (10.70, 115.75))    # 78.77 mm, south -> north
+SNAP_RUN_CANOPY_N: _Run = ((13.75, 118.80), (51.75, 118.80))  # 38.00 mm, west -> east
+SNAP_RUN_NE:      _Run = ((113.80, 112.30), (148.75, 112.30))  # 34.95 mm, west -> east
+# Each pair is oriented so snap_run_outward() returns the OUTWARD normal: east -> (1,0),
+# west -> (-1,0), both north runs -> (0,1). Reverse a pair and every barb on it moves to the
+# inside of the rim, which builds without complaint and latches nothing.
 
 
 def snap_run_dir(run: _Run) -> tuple[tuple[float, float], float]:
@@ -1335,60 +1342,71 @@ def snap_run_point(run: _Run, s: float) -> tuple[float, float]:
 
 
 # ---- Where the arms go ----
-# THE SOUTHERN ARMS ARE SPACED BY ARC LENGTH, NOT BY RUN. Walking the rim from E1's barb south
-# and west to W1's barb is 203.46 mm, and the four arms between them sit at exactly 40.69 mm
-# intervals. That interval is not a preference — it is the only spacing that lands every barb on
-# a straight run. Three arms puts one on a corner arc (unbuildable); four is the coarsest count
-# that works. Five also works and would give the south front two barbs instead of one, at the
-# cost of two more arms.
+# EVERY ARM IS SPACED BY ARC LENGTH AROUND THE WHOLE RIM, NOT PER WALL. The outline is 495.26 mm
+# and the eleven barbs divide it into steps of 43.75-46.37 mm against an ideal of 45.02 — a
+# spread of 2.62 mm, where the previous layout ran 32.32 to 56.95 (spread 24.63) because only
+# the southern stretch had been evened out and the north and east had never been touched.
 #
-# The south front therefore carries a SINGLE barb, at x=84.80, dead centre of its 55.84 mm run.
-# On its own that is the weakest possible placement — but the point of even spacing is that its
-# neighbours moved in: the SE-diagonal barb now sits 14.7 mm from the run's east end and the
-# gulf barb 10.8 mm from its west end, where previously the nearest arms were E1 and W1 some
-# 55 mm away around the perimeter. No point on the southern perimeter is more than ~20.3 mm
-# from a barb. The old pair of south arms (barbs at x=91.15 and 75.10) both hugged the centre
-# and left the corners to friction; this trades their count for their reach.
+# ELEVEN IS THE RIGHT COUNT, and this was measured rather than assumed, because the obvious move
+# is to delete an arm and it makes the case WORSE. Best achievable max gap by count, with N2
+# anchored on the lobe:
+#
+#     9 arms  58.33   (perfectly even 55.03)
+#    10 arms  55.28   (49.53) — and the optimum drops an EAST arm, not a southern one
+#    11 arms  45.63   (45.02) — near perfect
+#    12 arms  45.58   (41.27) — no better than 11, the constraint binds
+#
+# Only 54% of the rim can carry a barb at all: corner arcs are unbuildable (a prism laid across
+# one floats off the wall and comes back as a disjoint solid), the north runs are too short, and
+# the barb dead zone at y 83.47-88.32 rules out a stretch of both side walls. So 2.62 mm of
+# spread is close to the floor, not a first attempt.
+#
+# EVERY CUT KEEPS >= 1.8 mm OF RIM BEYOND IT. The cut is a through-slot SNAP_TAB_SLOT_W wide, so
+# 1.8 leaves a 1.2 mm sliver — three perimeters at a 0.4 mm nozzle. An earlier solve of this
+# layout left N3 with 0.60 mm and T1 with 0.45 mm of feather against a run end, which prints as
+# a fin. Tightening the margin to 2.5 everywhere was tried and cost 9.00 mm of spread; the split
+# below (2.5 at the root, where the arm is actually anchored, and 1.8 past the cut, where only
+# printability is at stake) holds the spread at 2.62.
 #
 # ONLY THE FREE-END CUT HAS TO BE HIDDEN. The inboard slot opens on the cavity and the ground
 # face, and the barb sits above seam_z at every station used, so both are invisible everywhere.
 # The cut severs the rim's outer face, and that face is bare wherever the reveal exposes it:
 # exposure crosses zero at y = 48.196, so cuts south of TENT_SEAM_Y1 are covered by the skin
 # with a constant +0.200 mm margin (BOTTOM_CHAMFER 0.5 - TENT_SKIRT_LIFT 0.3), and cuts north
-# of it show a 1.2 mm slit in a 2.2 mm deep shadow recess. Every arm added to the south chain
-# cuts at y <= 28.3, far south of the line, so all four are hidden: SIX arms are now hidden and
-# five still show a slit, ACCEPTED so the canopy and the north switch row get real latches.
+# of it show a 1.2 mm slit in a 2.2 mm deep shadow recess.
 #
-# barb_lo_z is STAGGERED 0.30 mm apart. One shared datum makes all eleven peak in the same
-# instant; staggering turns a single 60 N wall into eleven small ones. Each arm's own floor is
-# max(seam_z at its barb + SNAP_SKIRT_BELOW, SNAP_BAND_FLOOR) and the ladder takes whichever is
-# higher — which is why E2 and W2 sit at the top of it, their skirt being higher there. Adding
-# two rungs pushed the NORTH arms DOWN (N1 2.00 -> 1.40, N2 2.30 -> 1.70, N3 2.60 -> 2.00)
-# rather than pushing W2 up: W2 + SNAP_BARB_H is already within 0.1 mm of SNAP_BAND_CEIL, and
-# the north arms' own floors are 0.40-0.54, so the headroom that existed was all at the bottom.
+# HIDDEN CUTS FELL FROM SIX TO FOUR, and that is the price of evenness rather than an oversight.
+# E1 and W1 used to cut at y=39.60, under the skin; even spacing carries their barbs north to
+# y=53.50 and 55.71, and a cut sits 5.0 mm beyond its own barb, so neither can reach back under
+# the line in either sense. They join the five arms that already show a slit by decision.
 #
-# THE SOUTH CHAIN RUNS THINNER THAN THE ARMS IT REPLACED (1.85 against the old south pair's
-# 2.20), and that is the force budget talking, not the geometry. Going from nine arms to eleven
-# adds deflection force that the 28 N cap in test_closing_force_stays_hand_assemblable has to
-# absorb, and force goes as h^3 while strain only goes as h — so shaving 0.35 mm off three arms
-# buys 2.0 N for 0.03 percentage points of strain. At 1.90 the set totalled 27.81 N, inside the
-# cap but with 0.19 N of margin, which is less than one arm's worth of future retuning.
+# barb_lo_z is STAGGERED 0.30 mm apart, 1.40 to 4.40. One shared datum makes all eleven peak in
+# the same instant; staggering turns a single 60 N wall into eleven small ones. Each arm's own
+# floor is max(seam_z at its barb + SNAP_SKIRT_BELOW, SNAP_BAND_FLOOR) and the ladder is handed
+# out floor-ascending, so the two arms whose skirt rides high — W2 at 2.67 and E2 at 3.16 — take
+# the top rungs and N2, whose floor is 0.40 up on the lobe, takes the last one.
+#
+# THICKNESS IS PER ARM AND FALLS OUT OF THE FORCE BUDGET, not the geometry. Each arm is sized to
+# carry about 2.4 N so the set totals 26.4 N against the 28 N cap in
+# test_closing_force_stays_hand_assemblable. Force goes as b*h^3 while strain goes as h, and the
+# beam width b runs 8.2 mm in the gulf to 19.8 mm on the canopy north, so a single global h would
+# put half the closing force in the northern arms.
 SNAP_ARMS: tuple[SnapArm, ...] = (
-    #        name              root                                     out                                sense  L     h     barb  hidden
-    SnapArm("N1-canopy-N",   (48.60, 118.80),                         (0.0, 1.0),                         -1.0, 22.0, 1.75, 1.40, False),
-    SnapArm("N3-north-east", (146.50, 112.30),                        (0.0, 1.0),                         -1.0, 22.0, 1.75, 2.00, False),
-    SnapArm("SE1-se-diag",   snap_run_point(SNAP_RUN_SE_DIAG, 7.73),  snap_run_outward(SNAP_RUN_SE_DIAG), +1.0, 22.0, 1.85, 2.30, True),
-    SnapArm("S1-south-C",    snap_run_point(SNAP_RUN_SOUTH, 8.35),    snap_run_outward(SNAP_RUN_SOUTH),   +1.0, 22.0, 1.85, 2.60, True),
-    SnapArm("T1-thumb-gulf", snap_run_point(SNAP_RUN_GULF_A, 2.21),   snap_run_outward(SNAP_RUN_GULF_A),  +1.0, 13.0, 1.25, 2.90, True),
-    SnapArm("SW1-sw-diag",   snap_run_point(SNAP_RUN_SW_DIAG, 26.30), snap_run_outward(SNAP_RUN_SW_DIAG), -1.0, 22.0, 1.85, 3.20, True),
-    SnapArm("E1-east-S",     (151.80, 62.20),                         (1.0, 0.0),                         +1.0, 22.0, 2.20, 3.50, True),
-    SnapArm("W1-west-S",     (10.70, 62.20),                          (-1.0, 0.0),                        -1.0, 22.0, 2.20, 3.80, True),
-    SnapArm("E2-east-N",     (151.80, 84.00),                         (1.0, 0.0),                         -1.0, 22.0, 1.75, 4.10, False),
-    SnapArm("W2-west-N",     (10.70, 113.75),                         (-1.0, 0.0),                        -1.0, 22.0, 1.75, 4.40, False),
+    #        name              root                                      out                                 sense  L     h     barb  hidden
+    SnapArm("SW1-sw-diag",   snap_run_point(SNAP_RUN_SW_DIAG, 3.19),   snap_run_outward(SNAP_RUN_SW_DIAG),  +1.0, 16.0, 1.55, 1.40, True),
+    SnapArm("T1-thumb-gulf", snap_run_point(SNAP_RUN_GULF_A, 2.96),    snap_run_outward(SNAP_RUN_GULF_A),   +1.0, 13.0, 1.30, 1.70, True),
+    SnapArm("S1-south-C",    snap_run_point(SNAP_RUN_SOUTH, 6.06),     snap_run_outward(SNAP_RUN_SOUTH),    +1.0, 22.0, 2.15, 2.00, True),
+    SnapArm("SE1-se-diag",   snap_run_point(SNAP_RUN_SE_DIAG, 4.14),   snap_run_outward(SNAP_RUN_SE_DIAG),  +1.0, 20.0, 1.90, 2.30, True),
+    SnapArm("E1-east-S",     snap_run_point(SNAP_RUN_EAST, 38.15),     snap_run_outward(SNAP_RUN_EAST),     +1.0, 22.0, 1.90, 2.60, False),
+    SnapArm("N1-canopy-N",   snap_run_point(SNAP_RUN_CANOPY_N, 8.82),  snap_run_outward(SNAP_RUN_CANOPY_N), +1.0, 22.0, 1.65, 2.90, False),
+    SnapArm("W1-west-S",     snap_run_point(SNAP_RUN_WEST, 36.33),     snap_run_outward(SNAP_RUN_WEST),     -1.0, 22.0, 1.90, 3.20, False),
+    SnapArm("N3-north-east", snap_run_point(SNAP_RUN_NE, 24.61),       snap_run_outward(SNAP_RUN_NE),       -1.0, 22.0, 1.70, 3.50, False),
+    SnapArm("W2-west-N",     snap_run_point(SNAP_RUN_WEST, 46.90),     snap_run_outward(SNAP_RUN_WEST),     +1.0, 22.0, 1.70, 3.80, False),
+    SnapArm("E2-east-N",     snap_run_point(SNAP_RUN_EAST, 29.11),     snap_run_outward(SNAP_RUN_EAST),     -1.0, 22.0, 1.75, 4.10, False),
 )
 # T1 IS THE ONE SHORT ARM, and it is short because even spacing pins its barb at arc-length
-# 122.08, which falls on gulf-A — an 18.42 mm run. Rooting it 2.21 mm in and cutting at 127.08
-# leaves 2.61 mm before the gulf's mitre, which caps the arm at L=13. Running it longer means
+# 73.0, which falls on gulf-A — an 18.42 mm run. Rooting it 2.96 mm in and cutting at 17.16
+# leaves 1.26 mm before the gulf's mitre, which caps the arm at L=13. Running it longer means
 # spanning that mitre, and although the kink is only 5.90 deg, a straight prism laid across it
 # deviates 1.24 mm over this arm's span — half the rim's thickness, so the arm would float off
 # the wall. Spanning it properly needs N2's concentric-band builder generalised to trim bounds
@@ -1425,7 +1443,8 @@ SNAP_CORNER_L = 26.0     # of the 38.24 available. Full length would be 0.545 N 
 #                          matter; 26 at h=2.0 lands on 2.59 N and 0.142%, in line with the rest
 SNAP_CORNER_CUT_S = 2.0  # arc-length from the lobe's east end to the cut's outboard face
 SNAP_CORNER_THK = 2.0
-SNAP_CORNER_BARB_LO_Z = 1.70   # was 2.30; the ladder shifted down when the south chain grew
+SNAP_CORNER_BARB_LO_Z = 4.40   # the ladder's top rung; N2's own floor is 0.40, so it is free
+#                                to take whichever rung the ten straight arms leave over
 
 assert len({a.name for a in SNAP_ARMS}) == len(SNAP_ARMS), "duplicate SNAP_ARMS name"
 _corner_run = ((SNAP_CORNER_LOBE[0][0] - SNAP_CORNER_LOBE[1][0]) + SNAP_CORNER_ARC
@@ -1459,11 +1478,13 @@ for _a in SNAP_ARMS:
         f"{_a.name}: only "
         f"{(SEAM_LEDGE_Z + SEAM_LEDGE_CLEAR) - (_a.barb_lo_z + SNAP_BARB_H):.2f} mm of skirt "
         f"survives above its catch pocket, under SNAP_SKIRT_ABOVE_MIN={SNAP_SKIRT_ABOVE_MIN}")
-assert sum(1 for a in SNAP_ARMS if a.hidden_cut) == 6, (
-    "six arms are meant to have hidden cuts (SE1, S1, T1, SW1, E1, W1 — the whole south chain, "
-    "which cuts at y <= 28.3, far south of the line where the reveal starts to open); the rest "
-    "show a slit by decision. If that count changed, the visibility test's exemption list "
-    "changed with it")
+assert sum(1 for a in SNAP_ARMS if a.hidden_cut) == 4, (
+    "four arms are meant to have hidden cuts (SW1, T1, S1, SE1 — the southern stretch, which "
+    "cuts at y <= 24.0, south of the line where the reveal starts to open); the rest show a "
+    "slit by decision. This was SIX before the whole rim was evenly spaced: E1 and W1 used to "
+    "cut under the skin at y=39.60, and even spacing carries their barbs north far enough that "
+    "no sense of the arm can reach back. If that count changed, the visibility test's exemption "
+    "list changed with it")
 
 PCB_OFFSET_X = (OUTER_WIDTH - (PCB_X_MAX - PCB_X_MIN)) / 2 - PCB_X_MIN
 PCB_OFFSET_Y = (OUTER_DEPTH - (PCB_Y_MAX - PCB_Y_MIN)) / 2 - PCB_Y_MIN

@@ -361,5 +361,14 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # carries a backing slab (8.0 x 0.15 x 0.9007 = 1.081) sunk into the rim so the fuse has a
     # real overlap instead of one tangent plane. It sits inside the arm, so it contributes
     # nothing to this total — the two figures differ by exactly the slab.
+    # Rebased again, +71.305234 mm³ (+0.038%), when every arm was re-spaced to divide the whole
+    # 495.26 mm rim evenly instead of only the southern stretch. The count did not change — ten
+    # straight arms plus N2 — so this is not arms appearing or vanishing, it is eleven slots and
+    # barbs moving to different walls. The volume goes UP because the relief slot is a constant
+    # 1.2 mm wide but runs the full local wall height, and the arms moved on balance toward the
+    # SOUTH and the shallow end of the wedge, where there is less material under them for the
+    # slot to overrun into. Arm lengths also changed (SW1 22->16, SE1 22->20) and thicknesses
+    # were re-derived per arm from the force budget, which moves the slot's radial position but
+    # not its width.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 187459.322876) < 2e-2
+    assert abs(build_bottom_part(side).volume - 187530.628110) < 2e-2
