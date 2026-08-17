@@ -1162,7 +1162,18 @@ assert SEAM_WAVE_LAP_LEFT >= 2.0, (
 # leaves it built in at both ends, and fixed-fixed strain is 12*d*h/L^2 against a cantilever's
 # 3*d*h/(2L^2) — 8x worse, 2.84% at L=22, which fractures PLA. Hence the outboard leg.
 SNAP_TAB_L        = 22.0   # mm; default arm length. Per-arm; N2 is shorter, see SNAP_ARMS
-SNAP_TAB_SLOT_W   = 1.2    # mm; relief slot width — also the release port on the underside
+SNAP_TAB_SLOT_W   = 0.9    # mm; relief slot width. IT IS ALSO WHAT YOU SEE: the same slot is
+#                            the release port on the underside and, on the arms whose cut is
+#                            north of the reveal line, the slit in the shadow recess. Narrowing
+#                            1.2 -> 0.9 shrinks both by 25% (port ~26 -> ~20 mm² per arm) and
+#                            costs nothing mechanically — the arm only deflects SNAP_DEFLECT,
+#                            0.32 mm, so 0.9 is still 2.8x the gap it has to swing through, and
+#                            every run margin GAINS 0.30 mm because cut_u and the slot's far
+#                            edge both scale with this. The slot cannot be hidden altogether:
+#                            it has to reach the ground face or the arm stops being a
+#                            vertical-axis cantilever (see the print-orientation note below).
+#                            WATCH THIS ON THE FIRST PRINT — 0.9 mm is a little over two 0.4 mm
+#                            extrusions, so it may partially bridge where 1.2 would not.
 SNAP_BARB_PROUD   = 0.52   # mm; barb protrusion from the rim's outer face (guide: 0.5-1.2)
 # PINNED, not tuned further — printed via a print-shop service with no coupon to calibrate
 # against, so raising this to chase a firmer click is not an option: the 28 N cap in
@@ -1380,11 +1391,26 @@ def snap_run_point(run: _Run, s: float) -> tuple[float, float]:
 # y=53.50 and 55.71, and a cut sits 5.0 mm beyond its own barb, so neither can reach back under
 # the line in either sense. They join the five arms that already show a slit by decision.
 #
-# barb_lo_z is STAGGERED 0.30 mm apart, 1.40 to 4.40. One shared datum makes all eleven peak in
-# the same instant; staggering turns a single 60 N wall into eleven small ones. Each arm's own
-# floor is max(seam_z at its barb + SNAP_SKIRT_BELOW, SNAP_BAND_FLOOR) and the ladder is handed
-# out floor-ascending, so the two arms whose skirt rides high — W2 at 2.67 and E2 at 3.16 — take
-# the top rungs and N2, whose floor is 0.40 up on the lobe, takes the last one.
+# barb_lo_z IS ONE SHARED NUMBER, 3.95, AND THE LADDER IT REPLACED WAS DOING NOTHING. That ladder
+# ran 1.40 to 4.40 in 0.30 steps on the claim that a shared datum "makes all eleven peak in the
+# same instant" and staggering "turns a single 60 N wall into eleven small ones". Simulating the
+# actual closure — the barb's profile against the skirt's inner face, with the catch pocket
+# travelling up with the tub — the peak is 26.57 N either way, 100% of the total, because the
+# pocket has cleared its own barb by about 1.15 mm above seated. Past that point every arm is
+# bearing on solid skirt at once no matter what height it sits at, so there is no instant to
+# stagger. The claim was never measured; it is now.
+#
+# What the ladder did cost was uniformity where it actually matters. Skirt left above the catch
+# pocket is (SEAM_LEDGE_Z + SEAM_LEDGE_CLEAR) - (barb_lo_z + SNAP_BARB_H), and across the ladder
+# that ran 1.30 mm on N2 to 4.30 mm on SW1 — the thin end being the place the skirt would split.
+# One height gives every arm 1.749 mm.
+#
+# 3.95 SPECIFICALLY, because it also retires the barb dead zone. Each arm's floor is
+# max(seam_z at its barb + SNAP_SKIRT_BELOW, SNAP_BAND_FLOOR); the seam wave crests at
+# SEAM_WAVE_CREST_Z, so the highest floor anywhere on the rim is 3.900. Sitting above that means
+# barb height no longer constrains WHERE an arm may go — the y 83.47-88.32 exclusion that used
+# to shape the layout is simply gone. The ceiling is 4.799 (band) / 4.699 (skirt), so 3.95 keeps
+# 0.75 mm of headroom over the tightest per-arm floor (E2 at 3.16) and 0.75 under the ceiling.
 #
 # THICKNESS IS PER ARM AND FALLS OUT OF THE FORCE BUDGET, not the geometry. Each arm is sized to
 # carry about 2.4 N so the set totals 26.4 N against the 28 N cap in
@@ -1393,16 +1419,16 @@ def snap_run_point(run: _Run, s: float) -> tuple[float, float]:
 # put half the closing force in the northern arms.
 SNAP_ARMS: tuple[SnapArm, ...] = (
     #        name              root                                      out                                 sense  L     h     barb  hidden
-    SnapArm("SW1-sw-diag",   snap_run_point(SNAP_RUN_SW_DIAG, 3.19),   snap_run_outward(SNAP_RUN_SW_DIAG),  +1.0, 16.0, 1.55, 1.40, True),
-    SnapArm("T1-thumb-gulf", snap_run_point(SNAP_RUN_GULF_A, 2.96),    snap_run_outward(SNAP_RUN_GULF_A),   +1.0, 13.0, 1.30, 1.70, True),
-    SnapArm("S1-south-C",    snap_run_point(SNAP_RUN_SOUTH, 6.06),     snap_run_outward(SNAP_RUN_SOUTH),    +1.0, 22.0, 2.15, 2.00, True),
-    SnapArm("SE1-se-diag",   snap_run_point(SNAP_RUN_SE_DIAG, 4.14),   snap_run_outward(SNAP_RUN_SE_DIAG),  +1.0, 20.0, 1.90, 2.30, True),
-    SnapArm("E1-east-S",     snap_run_point(SNAP_RUN_EAST, 38.15),     snap_run_outward(SNAP_RUN_EAST),     +1.0, 22.0, 1.90, 2.60, False),
-    SnapArm("N1-canopy-N",   snap_run_point(SNAP_RUN_CANOPY_N, 8.82),  snap_run_outward(SNAP_RUN_CANOPY_N), +1.0, 22.0, 1.65, 2.90, False),
-    SnapArm("W1-west-S",     snap_run_point(SNAP_RUN_WEST, 36.33),     snap_run_outward(SNAP_RUN_WEST),     -1.0, 22.0, 1.90, 3.20, False),
-    SnapArm("N3-north-east", snap_run_point(SNAP_RUN_NE, 24.61),       snap_run_outward(SNAP_RUN_NE),       -1.0, 22.0, 1.70, 3.50, False),
-    SnapArm("W2-west-N",     snap_run_point(SNAP_RUN_WEST, 46.90),     snap_run_outward(SNAP_RUN_WEST),     +1.0, 22.0, 1.70, 3.80, False),
-    SnapArm("E2-east-N",     snap_run_point(SNAP_RUN_EAST, 29.11),     snap_run_outward(SNAP_RUN_EAST),     -1.0, 22.0, 1.75, 4.10, False),
+    SnapArm("SW1-sw-diag",   snap_run_point(SNAP_RUN_SW_DIAG, 3.19),   snap_run_outward(SNAP_RUN_SW_DIAG),  +1.0, 16.0, 1.55, 3.95, True),
+    SnapArm("T1-thumb-gulf", snap_run_point(SNAP_RUN_GULF_A, 2.96),    snap_run_outward(SNAP_RUN_GULF_A),   +1.0, 13.0, 1.30, 3.95, True),
+    SnapArm("S1-south-C",    snap_run_point(SNAP_RUN_SOUTH, 6.06),     snap_run_outward(SNAP_RUN_SOUTH),    +1.0, 22.0, 2.15, 3.95, True),
+    SnapArm("SE1-se-diag",   snap_run_point(SNAP_RUN_SE_DIAG, 4.14),   snap_run_outward(SNAP_RUN_SE_DIAG),  +1.0, 20.0, 1.90, 3.95, True),
+    SnapArm("E1-east-S",     snap_run_point(SNAP_RUN_EAST, 38.15),     snap_run_outward(SNAP_RUN_EAST),     +1.0, 22.0, 1.90, 3.95, False),
+    SnapArm("N1-canopy-N",   snap_run_point(SNAP_RUN_CANOPY_N, 8.82),  snap_run_outward(SNAP_RUN_CANOPY_N), +1.0, 22.0, 1.65, 3.95, False),
+    SnapArm("W1-west-S",     snap_run_point(SNAP_RUN_WEST, 36.33),     snap_run_outward(SNAP_RUN_WEST),     -1.0, 22.0, 1.90, 3.95, False),
+    SnapArm("N3-north-east", snap_run_point(SNAP_RUN_NE, 24.61),       snap_run_outward(SNAP_RUN_NE),       -1.0, 22.0, 1.70, 3.95, False),
+    SnapArm("W2-west-N",     snap_run_point(SNAP_RUN_WEST, 46.90),     snap_run_outward(SNAP_RUN_WEST),     +1.0, 22.0, 1.70, 3.95, False),
+    SnapArm("E2-east-N",     snap_run_point(SNAP_RUN_EAST, 29.11),     snap_run_outward(SNAP_RUN_EAST),     -1.0, 22.0, 1.75, 3.95, False),
 )
 # T1 IS THE ONE SHORT ARM, and it is short because even spacing pins its barb at arc-length
 # 73.0, which falls on gulf-A — an 18.42 mm run. Rooting it 2.96 mm in and cutting at 17.16
@@ -1443,8 +1469,8 @@ SNAP_CORNER_L = 26.0     # of the 38.24 available. Full length would be 0.545 N 
 #                          matter; 26 at h=2.0 lands on 2.59 N and 0.142%, in line with the rest
 SNAP_CORNER_CUT_S = 2.0  # arc-length from the lobe's east end to the cut's outboard face
 SNAP_CORNER_THK = 2.0
-SNAP_CORNER_BARB_LO_Z = 4.40   # the ladder's top rung; N2's own floor is 0.40, so it is free
-#                                to take whichever rung the ten straight arms leave over
+SNAP_CORNER_BARB_LO_Z = 3.95   # the same shared height as every straight arm; see the note
+#                                above SNAP_ARMS for why there is no longer a ladder
 
 assert len({a.name for a in SNAP_ARMS}) == len(SNAP_ARMS), "duplicate SNAP_ARMS name"
 _corner_run = ((SNAP_CORNER_LOBE[0][0] - SNAP_CORNER_LOBE[1][0]) + SNAP_CORNER_ARC

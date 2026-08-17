@@ -300,6 +300,39 @@ def test_every_barb_is_evenly_spaced_around_the_whole_rim():
     assert sum(gaps) == pytest.approx(length, abs=1e-6)
 
 
+def test_every_barb_sits_at_one_height():
+    """The barbs share a single ``barb_lo_z``, and that is a CORRECTION, not a simplification.
+
+    They used to climb a 0.30 mm ladder from 1.40 to 4.40, on the grounds that a shared datum
+    would make all eleven peak in the same instant and that staggering would break "a single
+    60 N wall into eleven small ones". Simulating the closure — the barb's own profile against
+    the skirt's inner face, with the catch pocket riding up with the tub — puts the peak at
+    100% of the total either way: about 1.15 mm above seated every pocket has cleared its own
+    barb, and past that point every arm bears on solid skirt at once whatever height it sits at.
+    There is no instant to stagger. The claim was asserted in a comment and never measured.
+
+    What the ladder did change is the skirt left above each catch pocket, which ran 1.30 mm at
+    the top rung against 4.30 mm at the bottom. The thin end is where the skirt would split, so
+    one height is strictly better, and this test is what keeps it that way."""
+    zs = {a.barb_lo_z for a in C.SNAP_ARMS} | {C.SNAP_CORNER_BARB_LO_Z}
+    assert len(zs) == 1, f"barb heights have drifted apart again: {sorted(zs)}"
+    z = zs.pop()
+
+    skirt = (C.SEAM_LEDGE_Z + C.SEAM_LEDGE_CLEAR) - (z + C.SNAP_BARB_H)
+    assert skirt >= C.SNAP_SKIRT_ABOVE_MIN, (
+        f"only {skirt:.3f} mm of skirt survives above every pocket, under "
+        f"SNAP_SKIRT_ABOVE_MIN={C.SNAP_SKIRT_ABOVE_MIN}")
+
+    # And high enough that barb height no longer says WHERE an arm may sit. Each arm's floor is
+    # seam_z + SNAP_SKIRT_BELOW and the wave crests at SEAM_WAVE_CREST_Z, so clearing that crest
+    # retires the old y 83.47-88.32 dead zone outright rather than merely dodging it.
+    assert z >= C.SEAM_WAVE_CREST_Z + C.SNAP_SKIRT_BELOW, (
+        f"barb height {z:.2f} is below the wave crest's floor "
+        f"{C.SEAM_WAVE_CREST_Z + C.SNAP_SKIRT_BELOW:.2f}, so the dead zone is back and some rim "
+        f"positions have quietly become illegal again")
+    assert z + C.SNAP_BARB_H <= C.SNAP_BAND_CEIL, "the barb now runs into the rim's lead-in"
+
+
 def test_both_halves_get_the_latches():
     for side in ("left", "right"):
         part = build_bottom_part(side)

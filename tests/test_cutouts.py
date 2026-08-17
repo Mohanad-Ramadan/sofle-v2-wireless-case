@@ -370,5 +370,20 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # slot to overrun into. Arm lengths also changed (SW1 22->16, SE1 22->20) and thicknesses
     # were re-derived per arm from the force budget, which moves the slot's radial position but
     # not its width.
+    # Rebased +1176.396083 mm³ (+0.63%) for SNAP_TAB_SLOT_W 1.2 -> 0.9. The volume goes UP
+    # because a narrower relief slot REMOVES LESS: eleven arms, each slot 0.30 mm narrower over
+    # roughly (L + slot) of length and the local wall height, which is 7.6 mm at the gulf and
+    # ~20 mm at the north. 11 x 0.30 x ~22.9 x ~15 comes to ~1130 mm³ against the 1176 measured,
+    # and the balance is the wedge overrun the slot no longer cuts.
+    #
+    # The other half of this change contributes NOTHING here: barb_lo_z going from a 1.40-4.40
+    # ladder to a flat 3.95 moves every barb in Z but does not resize it, and the rim it stands
+    # on is a plain vertical prism through that whole band, so the same solid just sits higher
+    # or lower. The catch pockets that pair with it are cut from the TOP.
+    #
+    # Validated by rebuilding rather than by arithmetic, as before: with C.SNAP_TAB_SLOT_W put
+    # back to 1.2 and the old ladder restored onto SNAP_ARMS and SNAP_CORNER_BARB_LO_Z,
+    # build_bottom_part("right") returns 187530.628110 — the previous baseline, to all six
+    # decimals.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 187530.628110) < 2e-2
+    assert abs(build_bottom_part(side).volume - 188707.024193) < 2e-2
