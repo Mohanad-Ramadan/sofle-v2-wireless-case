@@ -1164,6 +1164,13 @@ assert SEAM_WAVE_LAP_LEFT >= 2.0, (
 SNAP_TAB_L        = 22.0   # mm; default arm length. Per-arm; N2 is shorter, see SNAP_ARMS
 SNAP_TAB_SLOT_W   = 1.2    # mm; relief slot width — also the release port on the underside
 SNAP_BARB_PROUD   = 0.52   # mm; barb protrusion from the rim's outer face (guide: 0.5-1.2)
+# PINNED, not tuned further — printed via a print-shop service with no coupon to calibrate
+# against, so raising this to chase a firmer click is not an option: the 28 N cap in
+# test_closing_force_stays_hand_assemblable already allows proud up to only ~0.552 before the
+# test itself fails, i.e. 0.52 already sits at ~94% of the force/strain budget. The 90 deg
+# SNAP_RETURN_DEG is what actually guarantees "not loose" — a pure undercut cannot pull straight
+# out regardless of barb depth — so there is no tightness upside to a deeper barb, only strain
+# risk. See "Open questions and risks" -> SNAP_BARB_PROUD in the deep-dive doc.
 SNAP_LEAD_IN_DEG  = 30.0   # deg from the insertion axis, barb's TOP face (guide: 25-35)
 SNAP_RETURN_DEG   = 90.0   # deg from the insertion axis, barb's BOTTOM face. SELF-LOCKING —
 #                            see the force note below; a flat face costs no Z at all.
@@ -1246,7 +1253,14 @@ def snap_insertion_force(deflect_force: float, mu: float) -> float:
     at mu*tan(a) = 1 — i.e. self-locking above atan(1/mu), which is 68.2 deg at mu=0.4 and
     55.0 deg at mu=0.7. The old 60 deg return sat inside that band only for mu >= 0.55, so its
     behaviour depended on print quality. 90 deg is a pure undercut: it cannot cam out at all,
-    and the case comes apart by prying the shells, deliberately."""
+    and the case comes apart by prying the shells, deliberately.
+
+    DESIGN POINT: mu=0.7 (this file's grippy end). Parts come from a print-shop service, so
+    there is no printer to calibrate against and no coupon to measure the real value — planning
+    for the pessimistic end costs nothing here, since a higher mu only ever predicts a HARDER
+    push, never a looser hold (retention is the 90 deg undercut's job, not friction's). At
+    mu=0.7 the worst-case insertion is 54.5 N, already accepted as the deliberate firm-press
+    target rather than an accident of the friction range."""
     t = math.tan(math.radians(SNAP_LEAD_IN_DEG))
     return deflect_force * (mu + t) / (1.0 - mu * t)
 
