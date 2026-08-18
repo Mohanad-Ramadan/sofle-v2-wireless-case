@@ -607,8 +607,8 @@ def _bottom_outer_shell() -> Part:
     z_top = C.SEAM_LEDGE_Z
     # THE STOCK STARTS AT THE LEDGE, NOT AT Z=0, and that is not tidiness. tub_outline_face() is
     # a face AT Z=0, so extruding it only downward caps the band there — but the parting line
-    # crests at seam_profile_max_z() = 3.60, so the band has to reach 1.60. Capped at zero it
-    # loses that 1.60 mm over the crest and the reveal silently opens to 3.6 mm there instead of
+    # crests at seam_profile_max_z() = 3.87, so the band has to reach 1.87. Capped at zero it
+    # loses that 1.87 mm over the crest and the reveal silently opens to 3.87 mm there instead of
     # SEAM_REVEAL_H. Nothing else in the suite sees it; only the crest measurement does.
     #
     # DIRECTION GIVEN EXPLICITLY — the face's own normal already points at -Z, so a negative

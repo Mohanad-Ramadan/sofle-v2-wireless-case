@@ -152,7 +152,7 @@ def test_the_dial_is_a_fraction_of_the_ledge(monkeypatch, frac):
     Read off the curve's ENDPOINT, not off a slab through the solid and not off the profile's
     global maximum. Two separate reasons, both learned the hard way:
       * the maximum is the crest (u≈0.67), which the dial does not move at all, so a bounding box
-        reports it stuck at 3.60 whatever the dial says;
+        reports it stuck at 3.87 whatever the dial says;
       * there is no flat run left to slab through — the ramp descends into the back edge, so any
         station short of it reads a little high and by an amount that depends on the tail slope."""
     monkeypatch.setattr(C, "SEAM_NORTH_RISE_Z", frac * C.SEAM_LEDGE_Z)

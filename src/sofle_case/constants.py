@@ -311,11 +311,13 @@ TENT_SEAM_RAMP_FRAC  = 0.64   # fraction of depth the wave takes to climb and co
 # NOT A FREE DIAL ANY MORE. Since the tail became a shoulder followed by a STRAIGHT run (see
 # SEAM_WAVE_KNOTS), the end tangent has to be the straight run's own gradient or the spline
 # curves out of the line it just spent 40 mm establishing. It is therefore derived:
-#     m * (crest_z - SEAM_NORTH_RISE_Z) / (OUTER_DEPTH - crest_y) / tan(TENT_ANGLE_DEG)
-#   = 1.4815 * 6.628 / 41.15 / 0.10510  =  2.27
-# Left as a literal because crest_y comes from the spline, which needs this value to exist --
-# regenerate it alongside the knots rather than editing either alone.
-SEAM_TAIL_SLOPE = 2.27   # x the desk slope; matches the straight run's gradient (was 1.5, an arc)
+#     m * (crest_z - SEAM_NORTH_RISE_Z) / ((1 - SEAM_WAVE_CREST_U) * OUTER_DEPTH) / tan(TENT_ANGLE_DEG)
+# USED TO BE LEFT AS A LITERAL (2.27) because crest_z came from re-reading the built spline, which
+# needed this value to exist first -- a circular recipe that could only run once. Re-anchoring the
+# tail model on the crest KNOT instead of the spline (see the WAVE block below) breaks that
+# circle, so this is now computed alongside SEAM_WAVE_KNOTS in the derived-seam block further
+# down, from the same crest_z and fall. Both live there because both need TENT_RISE /
+# TENT_WEDGE_MAX_H, which are not in scope yet at this point in the file.
 
 # ---- The REVEAL: the two shells do not touch, and the gap is the design ----
 # The reference's parting line is not one line, it is TWO -- the top case's lower edge and the
@@ -402,18 +404,23 @@ SEAM_REVEAL_H = 2.0   # mm; vertical gap from the parting line down to the botto
 # SEAM_NORTH_RISE_FRAC, which is negative for the same reason and sets where this lands.
 #
 #   u       band      -> at 6 deg: mm above desk   local Z    what it is
+# (table below is at SEAM_WAVE_BAND_SCALE=1.02 -- the digitised bands are printed BEFORE that
+#  dial's 1.02x, so they read as the ones actually traced off the reference; regenerate this
+#  table, don't hand-edit it, if either the scale or the digitised base points move.)
 #   0.360   (run)                   0.30           -5.47      end of the south run (computed)
-#   0.406   0.0716                  1.02           -5.36      the front knife-edge opening up
-#   0.485   0.2992                  4.26           -3.16
-#   0.558   0.6159                  8.77           +0.38      crosses Z=0 -- eats pocket wall above
-#   0.598   0.7690                 10.95           +2.03
-#   0.670   0.9459                 13.47           +3.60      CREST in local Z
-#   0.710   0.9565                 13.62           +3.22      crest in the VISIBLE BAND
-#   0.749   0.9256                 13.18           +2.26      easing
-#   0.820   0.8800                 12.53           +0.67      still easing; about to re-cross Z=0
-#   0.890   0.8500                 12.11           -0.68      rear skirt: the skin is back below Z=0
-#   0.950   0.8150                 11.61           -1.99
-#   1.000   (end)                  11.22           -3.02      the BACK EDGE, and still falling
+#   0.406   0.0716                  1.04           -5.34      the front knife-edge opening up
+#   0.485   0.2992                  4.35           -3.08
+#   0.558   0.6159                  8.95           +0.56      crosses Z=0 -- eats pocket wall above
+#   0.598   0.7690                 11.17           +2.25
+#   0.670   0.9459                 13.74           +3.87      CREST in local Z (the digitised one)
+#   0.700   (model)                14.07           +3.80      first tail knot, off the model
+#   0.740   (model)                14.32           +3.52      easing; visible band still widening
+#   0.780   (model)                14.33           +3.00      crest in the VISIBLE BAND, not local Z
+#   0.820   (model)                14.11           +2.25
+#   0.860   (model)                13.65           +1.27      still easing; about to re-cross Z=0
+#   0.900   (model)                12.99           +0.07      rear skirt: nearly back below Z=0
+#   0.950   (model)                12.10           -1.48
+#   1.000   (end)                  (n/a)           -3.02      the BACK EDGE, and still falling
 # THE TAIL KNOTS (u > 0.67) ARE NOT DIGITISED POINTS, they are a fitted curve, and that is a
 # deliberate difference from the climb above them. The climb's knots are read off the reference
 # directly. The tail's could not be: the reference's whole post-crest descent is 49 px in a
@@ -440,20 +447,24 @@ SEAM_REVEAL_H = 2.0   # mm; vertical gap from the parting line down to the botto
 # Knots are placed ON that model at even u, then the through-fit spline is checked back against
 # it: max error 0.076 mm, rms 0.056 mm. Move the model, regenerate the knots -- do not hand-edit
 # them, or the spline and the law it came from will drift apart.
-SEAM_WAVE_KNOTS = (
+#
+# THE CLIMB IS THE MEASURED BASE -- everything above this line describes it, and it never changes
+# except by SEAM_WAVE_BAND_SCALE (see the derived-seam block, further down) multiplying all five
+# band values by the same factor to raise the whole lens without touching their relative shape.
+# u=0.670 IS the digitised crest; scaling it is what "raise it from the middle" means here.
+SEAM_WAVE_CLIMB_KNOTS = (
     (0.406, 0.0716),
     (0.485, 0.2992),
     (0.558, 0.6159),
     (0.598, 0.7690),
     (0.670, 0.9459),
-    (0.700, 0.9706),
-    (0.740, 0.9892),
-    (0.780, 0.9920),
-    (0.820, 0.9788),
-    (0.860, 0.9498),
-    (0.900, 0.9058),
-    (0.950, 0.8467),
 )
+# THE TAIL IS NOT HERE ANY MORE. It used to be six more literal knots below this line, generated
+# once from the model and pasted -- exactly the "do not hand-edit" trap, because a paste cannot
+# regenerate itself when SEAM_WAVE_BAND_SCALE moves the crest it is anchored to. SEAM_WAVE_KNOTS
+# (climb + tail together, what every consumer actually reads) is assembled in the derived-seam
+# block near SEAM_WAVE_Y: the tail model needs TENT_RISE and TENT_WEDGE_MAX_H, which do not exist
+# yet at this point in the file.
 
 # ---- How far the skirt stops SHORT of the desk: the reveal ----
 # TENT_SEAM_SOUTH_FRAC dials the skirt's LENGTH (how far north it reaches). This dials its
@@ -551,13 +562,14 @@ assert TENT_SKIRT_CLEAR_MIN <= TENT_SKIRT_LIFT <= TENT_SKIRT_LIFT_MAX, (
 # the bottom stays inset 2.2 mm, so a lifted skin edge floats over a shadow slot with nothing
 # flush behind it.
 #
-# The wave changed the question. Its band CRESTS at u=0.71 and eases, and for that to read as a
-# lens rather than a ripple the band has to keep narrowing to the back. It cannot: the band at
-# the back is at least the wedge's height there (14.24 mm) for any parting line at or above Z=0,
-# which is wider than the 13.62 mm crest. A crest tall enough to beat it needs local Z +5.63 and
-# leaves 0.67 mm of rabbet lap, under the 2.0 floor. So the line has to go BELOW Z=0 at the back
-# — the top case's skin descends again there, exactly as it does at the front, and the lens
-# closes. Negative frac is that, as a fraction of the same SEAM_LEDGE_Z travel.
+# The wave changed the question. Its band crests around u=SEAM_WAVE_CREST_U and eases, and for
+# that to read as a lens rather than a ripple the band has to keep narrowing to the back. It
+# cannot: the band at the back is at least the wedge's height there (14.24 mm) for any parting
+# line at or above Z=0, which is wider than the crest's own 13.74 mm (at SEAM_WAVE_BAND_SCALE=
+# 1.02; it moves with that dial). A crest tall enough to beat 14.24 mm needs local Z +4.37 there
+# and leaves 1.91 mm of rabbet lap, still under the 2.0 floor. So the line has to go BELOW Z=0 at
+# the back — the top case's skin descends again there, exactly as it does at the front, and the
+# lens closes. Negative frac is that, as a fraction of the same SEAM_LEDGE_Z travel.
 #
 # THIS COSTS NO RABBET. Below Z=0 there is no pocket wall to give up; the lap is bounded by how
 # high the line climbs, and going down does not touch it. What it costs instead is a second
@@ -1113,10 +1125,76 @@ assert SEAM_NORTH_RISE_FRAC >= SEAM_NORTH_RISE_FRAC_MIN, (
     f"inside TENT_SKIRT_CLEAR_MIN={TENT_SKIRT_CLEAR_MIN} of it. The floor at this tent angle is "
     f"{SEAM_NORTH_RISE_FRAC_MIN:.3f}")
 
+# ---- Raising the wave: one dial, and the tail regenerated around it ----
+# SEAM_WAVE_BAND_SCALE multiplies SEAM_WAVE_CLIMB_KNOTS' band values -- the whole of "raise the
+# wave from the middle" is this one number, because the crest sits at the climb's own last knot
+# (u=SEAM_WAVE_CREST_U). Scaling rather than adding an offset keeps the front knife-edge pinched
+# (u=0.406 moves 0.0716 -> 0.0730 at 1.02x, i.e. +0.03 mm) and cannot introduce a second hump on
+# its own, since it preserves the climb's monotone shape exactly.
+#
+# 1.02, NOT HIGHER. The lap-left floor (below) alone would allow up to ~1.052x (crest 4.30, lap
+# exactly 2.0). Two other things bind first and are tighter:
+#   * tests/test_case.py's rear-skirt probe window shrinks as the crest rises (the shoulder holds
+#     the line high for longer, and the window it needs to probe the mouth chamfer through sits
+#     right where that shoulder now reaches). It needs > 0.6 mm and is already down to 0.71 mm at
+#     1.02x; at 1.03x it is 0.48 mm and the probe no longer fits without relocating it.
+#   * TENT_ANGLE_MAX (below) is the angle past which SEAM_WAVE_LAP_LEFT can no longer clear its
+#     own floor. It falls from 7.14 deg at 1.0x to 6.63 deg at 1.02x; the design runs at 6.0 deg,
+#     so 1.02x is the point past which there is barely any angle headroom left to spend, not the
+#     point past which the crest itself is illegal.
+# 1.02x was picked to leave both of those with real margin rather than shave either to its edge.
+SEAM_WAVE_CREST_U = SEAM_WAVE_CLIMB_KNOTS[-1][0]   # 0.670; the digitised crest, unchanged by scale
+SEAM_WAVE_BAND_SCALE = 1.02   # THE dial; multiplies every digitised climb band-fraction
+
+_SEAM_WAVE_TAIL_U = (0.700, 0.740, 0.780, 0.820, 0.860, 0.900, 0.950)   # even u past the crest
+_SEAM_WAVE_TAIL_S0 = 0.65                                    # the shoulder, as a fraction of the run
+_SEAM_WAVE_TAIL_M = 1.0 / (1.0 - _SEAM_WAVE_TAIL_S0 / 2.0)   # 1.4815...; the straight-run gradient
+
+
+def _seam_wave_ground(u: float) -> float:
+    """tent_ground_z(u * OUTER_DEPTH), written out. case.py has the real function; constants.py
+    cannot import it, and this has to run at import time (see SEAM_WAVE_KNOTS below)."""
+    return -(TENT_WEDGE_MIN_H + TENT_RISE * u)
+
+
+def _seam_wave_drop(s: float) -> float:
+    """The tail's fitted model: gradient ramps 0 -> m over the shoulder, then holds at m. See the
+    WAVE block above SEAM_WAVE_CLIMB_KNOTS for where this comes from and why it is not an arc."""
+    if s <= _SEAM_WAVE_TAIL_S0:
+        return _SEAM_WAVE_TAIL_M * s * s / (2.0 * _SEAM_WAVE_TAIL_S0)
+    return _SEAM_WAVE_TAIL_M * (s - _SEAM_WAVE_TAIL_S0 / 2.0)
+
+
+_SEAM_WAVE_CLIMB = tuple((u, SEAM_WAVE_BAND_SCALE * band) for u, band in SEAM_WAVE_CLIMB_KNOTS)
+# RE-ANCHORED ON THE CREST KNOT, not on a re-read of the built spline. The recipe this replaced
+# read crest_y/crest_z off the SPLINE it was about to regenerate -- a pass that could only run
+# once, because regenerating from its own output moves the crest a little further every time
+# (verified: re-running it as a fixed point at k=1 alone drifts the crest +0.03 mm and the barb
+# dead zone +2.3 mm). Anchoring on the knot instead is a closed form: the same inputs always
+# produce the same table, and it reproduces the original shipped tail to 0.041 mm -- inside the
+# 0.076 mm residual the model was already accepted at.
+_seam_wave_crest_z = _SEAM_WAVE_CLIMB[-1][1] * TENT_WEDGE_MAX_H + _seam_wave_ground(SEAM_WAVE_CREST_U)
+_seam_wave_fall = _seam_wave_crest_z - SEAM_NORTH_RISE_Z   # total drop from crest to the back edge
+
+
+def _seam_wave_tail_band(u: float) -> float:
+    s = (u - SEAM_WAVE_CREST_U) / (1.0 - SEAM_WAVE_CREST_U)
+    z = _seam_wave_crest_z - _seam_wave_fall * _seam_wave_drop(s)
+    return (z - _seam_wave_ground(u)) / TENT_WEDGE_MAX_H
+
+
+# SEAM_WAVE_KNOTS -- climb (measured, scaled) + tail (modelled, regenerated). Every consumer
+# (case.py's _seam_sweep_params, the guards below) reads this, not the climb/tail pieces alone.
+SEAM_WAVE_KNOTS = _SEAM_WAVE_CLIMB + tuple(
+    (u, _seam_wave_tail_band(u)) for u in _SEAM_WAVE_TAIL_U)
+
+# SEAM_TAIL_SLOPE, derived from the same crest_z/fall -- see the note above its old literal
+# definition for why this circle only closes now that the anchor is the knot, not the spline.
+SEAM_TAIL_SLOPE = (_SEAM_WAVE_TAIL_M * _seam_wave_fall
+                   / ((1.0 - SEAM_WAVE_CREST_U) * OUTER_DEPTH)
+                   / math.tan(math.radians(TENT_ANGLE_DEG)))
+
 # ---- The wave's knots, checked against the geometry they have to live inside ----
-# SEAM_WAVE_KNOTS is written as literal numbers because it is MEASURED DATA, not a formula, so
-# nothing here can derive it -- these only catch a table that has drifted out of the space the
-# rest of the design leaves for it.
 #   local Z = (band above the desk) + (Z of the desk there)
 #           = band * TENT_WEDGE_MAX_H  -  (TENT_WEDGE_MIN_H + TENT_RISE * u)
 # The second term is tent_ground_z() written out in terms of u; case.py has the function, but
@@ -1135,15 +1213,41 @@ assert all(a[0] < b[0] for a, b in zip(SEAM_WAVE_Y, SEAM_WAVE_Y[1:])), (
 # already taken the floor and inner wall out from behind it, so the cutter eats skin and nothing
 # else. Above the ledge it starts eating the tub proper. The crest is the same question asked at
 # a different Y, and it costs the same thing -- rabbet lap, 1 mm for 1 mm.
+SEAM_WAVE_LAP_MIN = 2.0       # mm; floor on the rabbet lap left once the crest has eaten into it
+SEAM_WAVE_SPLINE_SLOP = 0.02  # mm; the BUILT spline overshoots its highest knot (measured ~0.016
+#                                mm at 6 deg -- OCC's through-fit curve bows slightly past the
+#                                point that is nominally its maximum). Folded into the lap guard
+#                                so it protects the curve that actually gets cut, not just the
+#                                knot table that approximates it.
 SEAM_WAVE_CREST_Z = max(z for _y, z in SEAM_WAVE_Y)
-SEAM_WAVE_LAP_LEFT = SEAM_LEDGE_Z - max(SEAM_WAVE_CREST_Z, SEAM_NORTH_RISE_Z)   # 2.70 at crest 3.60
+SEAM_WAVE_LAP_LEFT = (SEAM_LEDGE_Z - max(SEAM_WAVE_CREST_Z, SEAM_NORTH_RISE_Z)
+                      - SEAM_WAVE_SPLINE_SLOP)   # 2.41 at crest 3.87 (SEAM_WAVE_BAND_SCALE=1.02)
 assert SEAM_WAVE_CREST_Z < SEAM_LEDGE_Z, (
     f"the wave crests at Z={SEAM_WAVE_CREST_Z:.2f}, at or above the rabbet ledge "
     f"SEAM_LEDGE_Z={SEAM_LEDGE_Z:.2f} — past there the seam cutter eats the tub itself, not its "
     f"skin. Lower the crest, or raise the ledge (which is FLOOR_THICKNESS and costs height)")
-assert SEAM_WAVE_LAP_LEFT >= 2.0, (
+assert SEAM_WAVE_LAP_LEFT >= SEAM_WAVE_LAP_MIN, (
     f"the crest at Z={SEAM_WAVE_CREST_Z:.2f} leaves only {SEAM_WAVE_LAP_LEFT:.2f} mm of rabbet "
-    f"lap to locate the two halves against each other; 2.0 is the floor")
+    f"lap to locate the two halves against each other; {SEAM_WAVE_LAP_MIN} is the floor")
+
+# TENT_ANGLE_MAX -- the angle past which SEAM_WAVE_LAP_LEFT can no longer clear SEAM_WAVE_LAP_MIN,
+# for THIS crest design (SEAM_WAVE_BAND_SCALE fixed). Band-fraction knots are angle-free, so the
+# crest in mm is TENT_WEDGE_MIN_H*(k*b_c - 1) + TENT_RISE*(k*b_c - u_c), linear in TENT_RISE, which
+# is what makes this solvable in closed form rather than swept numerically. Existed as a silent
+# gap before this change (see tests/test_seam.py's angle sweep): raising the crest just makes the
+# gap wide enough that it can no longer go unnoticed, so it is now an explicit, enforced ceiling
+# instead of one guard being quietly weaker than another guard on the same physical quantity.
+_seam_wave_kbc = SEAM_WAVE_BAND_SCALE * SEAM_WAVE_CLIMB_KNOTS[-1][1]
+_seam_wave_rise_max = (
+    (SEAM_LEDGE_Z - SEAM_WAVE_LAP_MIN - SEAM_WAVE_SPLINE_SLOP
+     - TENT_WEDGE_MIN_H * (_seam_wave_kbc - 1.0))
+    / (_seam_wave_kbc - SEAM_WAVE_CREST_U))
+TENT_ANGLE_MAX = math.degrees(math.atan(_seam_wave_rise_max / OUTER_DEPTH))
+assert TENT_ANGLE_DEG <= TENT_ANGLE_MAX, (
+    f"TENT_ANGLE_DEG={TENT_ANGLE_DEG} exceeds TENT_ANGLE_MAX={TENT_ANGLE_MAX:.2f} for "
+    f"SEAM_WAVE_BAND_SCALE={SEAM_WAVE_BAND_SCALE} — past this angle the wave's crest needs more "
+    f"than SEAM_WAVE_LAP_MIN of rabbet lap to stay under SEAM_LEDGE_Z. Lower "
+    f"SEAM_WAVE_BAND_SCALE, or raise SEAM_LEDGE_Z (costs height)")
 
 # ---------- Rabbet snap latch ----------
 # Hold-shut for the case ends the 5 screws cannot reach: they span case-Y 35.5-96.7 of a 126 mm
@@ -1231,8 +1335,9 @@ SNAP_BARB_H = snap_barb_h()                                   # 0.9007
 SNAP_Z_BUDGET = SNAP_BARB_H + SNAP_Z_PLAY + SNAP_SKIRT_ABOVE_MIN   # 2.1507
 # The hidden band a barb must fit into is (SEAM_LEDGE_Z - SEAM_LEAD_IN) - max(seam_z, mouth),
 # and the wave crests at SEAM_WAVE_CREST_Z, leaving less than the budget over part of the
-# ramp. That excluded stretch is the BARB DEAD ZONE — measured at y 83.25..88.50 for this
-# budget. It moves when SNAP_Z_PLAY moves, so tests compute it; nothing hard-codes it.
+# ramp. That excluded stretch is the BARB DEAD ZONE — measured at y 81.04..92.79 for this
+# budget and SEAM_WAVE_BAND_SCALE (it widened from 83.25..88.50 when the crest was raised). It
+# moves when SNAP_Z_PLAY or the crest move, so tests compute it; nothing hard-codes it.
 SNAP_BAND_CEIL = SEAM_LEDGE_Z - SEAM_LEAD_IN                  # 5.70; below the rim's chamfer
 SNAP_BAND_FLOOR = SEAM_POCKET_LEAD_IN                         # 0.40; above the pocket mouth
 
@@ -1382,7 +1487,8 @@ def snap_run_point(run: _Run, s: float) -> tuple[float, float]:
 # ONLY THE FREE-END CUT HAS TO BE HIDDEN. The inboard slot opens on the cavity and the ground
 # face, and the barb sits above seam_z at every station used, so both are invisible everywhere.
 # The cut severs the rim's outer face, and that face is bare wherever the reveal exposes it:
-# exposure crosses zero at y = 48.196, so cuts south of TENT_SEAM_Y1 are covered by the skin
+# exposure crosses zero at y = 54.87 (moves with SEAM_WAVE_BAND_SCALE), so cuts south of
+# TENT_SEAM_Y1 are covered by the skin
 # with a constant +0.200 mm margin (BOTTOM_CHAMFER 0.5 - TENT_SKIRT_LIFT 0.3), and cuts north
 # of it show a 1.2 mm slit in a 2.2 mm deep shadow recess.
 #
@@ -1405,12 +1511,24 @@ def snap_run_point(run: _Run, s: float) -> tuple[float, float]:
 # that ran 1.30 mm on N2 to 4.30 mm on SW1 — the thin end being the place the skirt would split.
 # One height gives every arm 1.749 mm.
 #
-# 3.95 SPECIFICALLY, because it also retires the barb dead zone. Each arm's floor is
-# max(seam_z at its barb + SNAP_SKIRT_BELOW, SNAP_BAND_FLOOR); the seam wave crests at
-# SEAM_WAVE_CREST_Z, so the highest floor anywhere on the rim is 3.900. Sitting above that means
-# barb height no longer constrains WHERE an arm may go — the y 83.47-88.32 exclusion that used
-# to shape the layout is simply gone. The ceiling is 4.799 (band) / 4.699 (skirt), so 3.95 keeps
-# 0.75 mm of headroom over the tightest per-arm floor (E2 at 3.16) and 0.75 under the ceiling.
+# 3.95, AND NOT HIGH ENOUGH TO RETIRE THE DEAD ZONE OUTRIGHT ANY MORE — that claim held at the
+# original crest (3.60) and stopped holding once SEAM_WAVE_BAND_SCALE raised it: the worst floor
+# anywhere on the rim, max(seam_z, ...) + SNAP_SKIRT_BELOW at the crest itself, is now
+# SEAM_WAVE_CREST_Z + SNAP_SKIRT_BELOW = 4.17, ABOVE 3.95. Barb height alone no longer says
+# "nowhere on the rim is excluded" — see test_every_barb_sits_at_one_height, which used to assert
+# exactly that and now asserts the fact underneath it instead.
+#
+# WHAT ACTUALLY BOUNDS WHERE AN ARM MAY GO is the BAND check (SNAP_BAND_CEIL - SNAP_Z_BUDGET =
+# 3.5493), asked at each arm's OWN barb y — not this barb-height check, worst-case-anywhere. The
+# band check has always been the tighter of the two (3.5493 < SNAP_SKIRT_BELOW's own 3.65 floor),
+# so nothing that ever cleared it was saved by the barb-height margin below; the barb-height check
+# was a REDUNDANT, weaker guarantee that happened to read as a stronger one. Per arm, only E2
+# (floor 2.75) and W2 (floor 2.85) sit anywhere near the crest — everywhere else floors at
+# SNAP_BAND_FLOOR (0.40) — and both clear 3.95 with margin (1.20 / 1.10 mm) once measured against
+# the BAND ceiling that actually governs (see test_every_barb_fits_its_hidden_band). The ceiling
+# is unchanged by the crest either way, 4.799 (band) / 5.699 (skirt), because it comes from
+# barb_lo_z and SNAP_BARB_H alone. (E2's floor moved with its own reposition to the run's ceiling,
+# below — it was 3.36 / margin 0.59 at its original arc-length.)
 #
 # THICKNESS IS PER ARM AND FALLS OUT OF THE FORCE BUDGET, not the geometry. Each arm is sized to
 # carry about 2.4 N so the set totals 26.4 N against the 28 N cap in
@@ -1423,12 +1541,12 @@ SNAP_ARMS: tuple[SnapArm, ...] = (
     SnapArm("T1-thumb-gulf", snap_run_point(SNAP_RUN_GULF_A, 2.96),    snap_run_outward(SNAP_RUN_GULF_A),   +1.0, 13.0, 1.30, 3.95, True),
     SnapArm("S1-south-C",    snap_run_point(SNAP_RUN_SOUTH, 6.06),     snap_run_outward(SNAP_RUN_SOUTH),    +1.0, 22.0, 2.15, 3.95, True),
     SnapArm("SE1-se-diag",   snap_run_point(SNAP_RUN_SE_DIAG, 4.14),   snap_run_outward(SNAP_RUN_SE_DIAG),  +1.0, 20.0, 1.90, 3.95, True),
-    SnapArm("E1-east-S",     snap_run_point(SNAP_RUN_EAST, 38.15),     snap_run_outward(SNAP_RUN_EAST),     +1.0, 22.0, 1.90, 3.95, False),
+    SnapArm("E1-east-S",     snap_run_point(SNAP_RUN_EAST, 35.81),     snap_run_outward(SNAP_RUN_EAST),     +1.0, 22.0, 1.90, 3.95, False),
     SnapArm("N1-canopy-N",   snap_run_point(SNAP_RUN_CANOPY_N, 8.82),  snap_run_outward(SNAP_RUN_CANOPY_N), +1.0, 22.0, 1.65, 3.95, False),
     SnapArm("W1-west-S",     snap_run_point(SNAP_RUN_WEST, 36.33),     snap_run_outward(SNAP_RUN_WEST),     -1.0, 22.0, 1.90, 3.95, False),
-    SnapArm("N3-north-east", snap_run_point(SNAP_RUN_NE, 24.61),       snap_run_outward(SNAP_RUN_NE),       -1.0, 22.0, 1.70, 3.95, False),
+    SnapArm("N3-north-east", snap_run_point(SNAP_RUN_NE, 24.70),       snap_run_outward(SNAP_RUN_NE),       -1.0, 22.0, 1.70, 3.95, False),
     SnapArm("W2-west-N",     snap_run_point(SNAP_RUN_WEST, 46.90),     snap_run_outward(SNAP_RUN_WEST),     +1.0, 22.0, 1.70, 3.95, False),
-    SnapArm("E2-east-N",     snap_run_point(SNAP_RUN_EAST, 29.11),     snap_run_outward(SNAP_RUN_EAST),     -1.0, 22.0, 1.75, 3.95, False),
+    SnapArm("E2-east-N",     snap_run_point(SNAP_RUN_EAST, 24.75),     snap_run_outward(SNAP_RUN_EAST),     -1.0, 22.0, 1.75, 3.95, False),
 )
 # T1 IS THE ONE SHORT ARM, and it is short because even spacing pins its barb at arc-length
 # 73.0, which falls on gulf-A — an 18.42 mm run. Rooting it 2.96 mm in and cutting at 17.16
@@ -1444,6 +1562,43 @@ SNAP_ARMS: tuple[SnapArm, ...] = (
 # other north arms (h=1.75 on L=14 is 11.11 N, four times the set's average). Wrapping the R3
 # corner onto the 16.00 mm lobe-west run gives L_eff 25.4 mm, 0.082% strain and 1.86 N at
 # h=1.75 — but that needs a swept builder, so the straight arm above is the shipped fallback.
+
+# ---- E2 MOVED TO ITS RUN'S CEILING, AND THE NE CORNER'S EVENNESS IS THE DELIBERATE PRICE ----
+# Raising the crest (SEAM_WAVE_BAND_SCALE) thinned the TOP part's ambient rim wall in the stretch
+# between E2's root and its own catch pocket — not the pocket/barb interface itself, which stays
+# clear at every position tried, but the plain wall the arm's inboard relief leg sits against.
+# Checked on the built solid, not just the band-margin formula: at the ORIGINAL root (arc-length
+# 29.11) that wall was already thinned by up to ~0.55 mm just south of the pocket, a pre-existing
+# condition (baseline, before any crest raise, thinned by ~0.5 mm there too) that the raise made
+# a little worse.
+#
+# MOVING E2 FURTHER NORTH ON ITS OWN RUN CANNOT FULLY CLEAR IT. SNAP_RUN_EAST simply runs out —
+# past arc-length ~24.7 (root y=84.55) the outboard relief cut's own far edge is inside
+# SNAP_TAB_SLOT_W + 1.8 mm of the run's north end, the same "floats off the wall" failure T1 and
+# N2 exist to dodge. Even at that ceiling the residual thinning does not reach zero (~0.20 mm).
+#
+# E2 SITS AT THAT CEILING (arc-length 24.75, root y=84.55) — the most this run can give — because
+# a snap that feels wrong on one specific arm was judged worse than an uneven rim. That is a
+# deliberate reversal of test_every_barb_is_evenly_spaced_around_the_whole_rim's usual priority,
+# not an oversight: the whole point of that test is normally that spacing wins over local
+# convenience, and here it does not. E1-east-S (38.15 -> 35.81) and N3-north-east (24.61 -> 24.70)
+# are pushed to the positions that do the LEAST damage to the rest of the rim for E2 sitting at
+# its ceiling, not to hit any spacing target of their own.
+#
+# THE DAMAGE IS SCOPED TO EXACTLY THREE ARMS' WORTH OF GAPS. The other eight (everything from
+# SE1-se-diag round through N3-north-east's OWN far side back to E1-east-S) still divide their
+# stretch of the rim to a 2.39 mm spread — tighter than the original all-eleven 2.62 mm, because
+# they were re-solved around E2's fixed new position rather than left where a uniform solve put
+# them. Only the four gaps touching E1/E2/N3 carry the cost: SE1-E1 and E1-E2 open to 46.31 mm
+# each, E2-N3 compresses to 39.70 mm, and N3-N2 opens to 46.22 mm — a local bulge-then-pinch around
+# the NE corner, not a rim-wide drift. See the same test for the explicit exemption and why the
+# other eight still get the strict check.
+#
+# THE RESIDUAL IS ACCEPTED, NOT HIDDEN, on both fronts. The ~0.20 mm of ambient-wall thinning is
+# on the wall next to the relief leg, not on the barb/pocket interface that actually carries load.
+# Closing it to zero needs either less crest (SEAM_WAVE_BAND_SCALE back down) or a wrapped/banded
+# builder for E2 like N2's; closing the NE corner's spacing back up needs the same, since it is
+# the run running out that forces both trade-offs at once.
 
 # ---- N2, the one arm that wraps a corner ----
 # The SW3 lobe is the northernmost run on the case (y=123.80, over SW3 at x=82.52) and it is

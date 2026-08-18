@@ -385,5 +385,20 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # back to 1.2 and the old ladder restored onto SNAP_ARMS and SNAP_CORNER_BARB_LO_Z,
     # build_bottom_part("right") returns 187530.628110 — the previous baseline, to all six
     # decimals.
+    # Rebased +66.075821 mm³ (+0.035%) for SEAM_WAVE_BAND_SCALE 1.0 -> 1.02 (the seam-wave crest
+    # raised from 3.60 to 3.87 mm). The bottom part's visible band is taller wherever the wave is
+    # taller, and nothing else in this build depends on the wave -- the wedge, plate, pins,
+    # pockets and feet are all either below the seam or governed by their own dials. Validated by
+    # rebuilding, not arithmetic, as this file insists on: SEAM_WAVE_KNOTS is baked in at import
+    # time (like the literal table it replaced), so this was checked by reverting the working tree
+    # to before SEAM_WAVE_BAND_SCALE existed and rebuilding, which reproduces the previous
+    # 188707.024193 baseline to all six decimals.
+    # Rebased -17.261403 mm³ (-0.009%) for moving E2-east-N to its rim run's physical ceiling
+    # (SNAP_RUN_EAST 29.11 -> 24.75) to buy back as much ambient-wall clearance as that run has to
+    # give, at the cost of the NE corner's even-spacing (see the SNAP_ARMS note above E2 and
+    # test_every_barb_is_evenly_spaced_around_the_whole_rim's named exception). E1-east-S
+    # (38.15 -> 35.81) and N3-north-east (24.61 -> 24.70) moved to do the least damage to the rest
+    # of the rim given E2 fixed at that ceiling, not to hit a spacing target of their own. The
+    # relief slot's footprint shifts with each arm, hence the volume change; nothing else moved.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 188707.024193) < 2e-2
+    assert abs(build_bottom_part(side).volume - 188755.839037) < 2e-2
