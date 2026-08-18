@@ -1121,7 +1121,7 @@ def _corner_markers() -> Part:
 
 # %%
 if __name__ == "__main__":
-    from ocp_vscode import show
+    from ocp_vscode import Camera, show
     from sofle_case.case import build_bottom_part, build_top_part
     from sofle_case import constants as C
 
@@ -1178,4 +1178,8 @@ if __name__ == "__main__":
     parts.append(_corner_markers())
     names.append("corner_markers")
 
-    show(*parts, names=names)
+    # reset_camera=RESET: ocp_vscode defaults to KEEP, which reuses whatever camera
+    # transform the viewer last had (a stale zoom/pan from an earlier, differently
+    # scaled model). Without forcing a reset, the freshly built geometry can end up
+    # floating outside the visible frame relative to the grid/ruler.
+    show(*parts, names=names, reset_camera=Camera.RESET)
