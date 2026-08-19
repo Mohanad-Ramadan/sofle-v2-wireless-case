@@ -121,7 +121,20 @@ def test_the_south_is_untouched():
         assert got is not None, f"no material at y={y}"
         assert abs(got - want) < 0.06, (
             f"y={y}: skin bottom at {got:.3f}, expected {want:.3f} — the south moved")
-    y = 40.0
+    # y=42, NOT y=40, and the station was picked by MEASURING the gap along the wall rather than
+    # by reasoning about it — two plausible-looking choices were wrong first.
+    #
+    # E1 and W1's free-end cuts span y 39.0-40.2, and a cut removes the rim's outer face, so a
+    # span at y=40 reads 5.600 instead of 2.200. The arm BODY does not: it is still rim, its
+    # outer face is untouched, and only the inboard slot moves — which is why y=42 reads a clean
+    # 2.200 despite sitting in the middle of both arms.
+    #
+    # The other trap is that INSET is measured in X, so it is the perpendicular offset only on a
+    # wall whose normal is ±X. y=30 was tried and read 3.879 on the east: correct geometry, wrong
+    # ruler, because at y=30 the outline is on the SE diagonal. y=38 was tried and read 2.926 on
+    # the west, where the SW corner blend has not yet straightened out. Measured, both walls give
+    # exactly 2.200 from y=38.5 north, so y=42 clears every one of those edges.
+    y = 42.0
     t = _x_span_at(top, y, ABOVE_LINE)
     b = _x_span_at(bot, y, 1.0)
     assert t is not None and b is not None
@@ -139,7 +152,7 @@ def test_the_dial_is_a_fraction_of_the_ledge(monkeypatch, frac):
     Read off the curve's ENDPOINT, not off a slab through the solid and not off the profile's
     global maximum. Two separate reasons, both learned the hard way:
       * the maximum is the crest (u≈0.67), which the dial does not move at all, so a bounding box
-        reports it stuck at 3.60 whatever the dial says;
+        reports it stuck at 3.87 whatever the dial says;
       * there is no flat run left to slab through — the ramp descends into the back edge, so any
         station short of it reads a little high and by an amount that depends on the tail slope."""
     monkeypatch.setattr(C, "SEAM_NORTH_RISE_Z", frac * C.SEAM_LEDGE_Z)

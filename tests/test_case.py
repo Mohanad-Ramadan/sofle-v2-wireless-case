@@ -206,6 +206,7 @@ def test_split_conserves_volume(side):
                                  _foot_recesses, tent_wedge, skirt_extension, seam_skirt_tub,
                                  _bottom_outer_shell, _plate_pocket, _below_seam_cutter)
     from tests.shared_builds import build_canopy
+    from sofle_case.snaps import snap_reliefs, snap_barbs
 
     ref = build_tray(rim_z=C.COVER_TOP_Z, bottom_chamfer=False)
     # Both parts now carry material below Z=0 that exists in no other build: the BOTTOM's tent
@@ -231,6 +232,13 @@ def test_split_conserves_volume(side):
     ref = cast(Part, ref - jst_pocket())
     ref = cast(Part, ref - jst_wire_channel())
     ref = cast(Part, ref - _foot_recesses())   # anti-slip feet are cut from the bottom plate
+    # The snap latches are the same kind of bookkeeping as the floor recesses above: the reliefs
+    # are a void cut from the bottom and the barbs are material added to it, so both have to be
+    # named here or the net (-4226 mm³) masquerades as the seam having eaten 2.2% of the case.
+    # Order matters here as it does in build_bottom_part — a barb fuses onto a rim the reliefs
+    # have already opened, so cutting second would put back material the slot removed.
+    ref = cast(Part, ref - snap_reliefs())
+    ref = cast(Part, ref + snap_barbs())
 
     # The RECESS is a void by design, not a seam gap: north of the sweep the parting line rides
     # up to SEAM_NORTH_RISE_Z and the tub's skin below it is carved away, with nothing put back

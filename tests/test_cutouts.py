@@ -305,5 +305,100 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     #
     # Still no outer dimension moved: the pocket and channel both bottom at Z 1.80, far above the
     # wedge's own surfaces, so the ground plane and parting line are untouched.
+    # Rebased +67.88 mm³ (+0.035%) for FOOT_DIA 10.0 -> 8.0. The seats are the ONLY thing that
+    # moved, and they give material back rather than taking it:
+    #   Ø10:  4 x π x 5² x FOOT_DEPTH(0.6) = 188.50 mm³ removed
+    #   Ø8:   4 x π x 4² x 0.6             = 120.64 mm³ removed
+    #   net                                = + 67.86 predicted vs +67.875 measured
+    # The 0.015 residual is the seats meeting a TILTED ground face: _foot_recesses cuts
+    # perpendicular to the tent plane, so a seat's rim sits at slightly different depths across
+    # its diameter, and a smaller disc samples that 6° slope differently. Nothing else in the
+    # bottom part is a function of FOOT_DIA — the wedge, band and parting line are untouched,
+    # which is the same invariant the rest of this baseline's history exists to prove.
+    # The seats shrank because they, not the seam, decide where the snap arms can go: at Ø10
+    # four of the nine relief slots foul a seat. See the FOOT_DIA note in constants.py.
+    # Rebased −4578.55 mm³ (−2.38%) for the NINE SNAP LATCHES. Accounted for in full:
+    #   8 straight reliefs  −3805.907  (their cutters total more; the surplus is air below the
+    #                                   wedge, because every slot deliberately overruns the
+    #                                   ground face so the release port opens on the underside)
+    #   N2's wrapped relief −  788.811  (a concentric band, not local boxes — it follows the
+    #                                   4.24 mm arc between the lobe and the run past it)
+    #   8 straight barbs    +   14.987
+    #   N2's barb           +    1.873
+    #   predicted           = −4577.858  vs −4578.546 measured, −0.69 residual (0.015%)
+    #
+    # AN EARLIER VERSION OF THIS NUMBER WAS OFF BY 1.4 mm³ AND THAT WAS A REAL BUG, not noise.
+    # The barb sits at 0.8L and runs SNAP_BARB_X_LEN long, so on the short N2 arm (L=14) its
+    # outboard half landed PAST the free end, inside the relief slot — and barbs are fused on
+    # AFTER the slot is cut, so it plugged the slot and welded the arm back to the rim it is
+    # supposed to be free of. Every geometric test still passed; only the volume disagreed.
+    # barb_u() now clamps to keep the barb on the arm (inactive at L=22, to 4 decimals).
+    #
+    # THE ORDER OF THOSE TWO OPS AGAINST _chamfer_wedge_ground_edge MATTERS, and this number is
+    # what caught it. Cutting the reliefs BEFORE the chamfer left a 27.4 mm³ discrepancy: that
+    # helper selects ground_face(part).outer_wire().edges(), and nine through-slots hand it the
+    # slot mouths as extra edges to chamfer — putting a 0.5 mm chamfer inside each release port.
+    # Chamfering first drops the residual to 1.38. A helper with a silent no-op fallback and a
+    # documented history of taking it (docs/z-stack.md) is exactly the kind that fails quietly,
+    # so the sequencing is asserted here by arithmetic rather than trusted.
+    # Rebased −481.021325 mm³ (−0.256%) for the SOUTH CHAIN going from two arms to four:
+    # S2-south-W deleted, S1 re-aimed to the run's centre, and SE1-se-diag, T1-thumb-gulf and
+    # SW1-sw-diag added, so the four of them divide the E1->W1 perimeter into five equal
+    # 40.69 mm steps. Arm count goes 9 -> 11.
+    #
+    # THE DELTA WAS VALIDATED BY REBUILDING, NOT BY ARITHMETIC, because the arithmetic does not
+    # close here and it is worth saying why. The relief cutters total 1121.777 mm³ more than
+    # before (SE1 683.645 + T1 438.132 + SW1 683.645, less S2's 683.645) against a measured
+    # swing of only 481.021 — the rest is cutter that never met material, since every slot
+    # deliberately overruns the wedge's ground face so its release port opens on the underside,
+    # and the wedge is thinnest exactly where the south chain lives (b = 9.42 mm at the south
+    # front, 7.58 at the gulf). So the check that actually stands behind this number is: with
+    # C.SNAP_ARMS monkeypatched back to the previous nine-arm tuple and SNAP_CORNER_BARB_LO_Z
+    # back to 2.30, build_bottom_part("right") returns 187940.344201 — the old baseline, to all
+    # six decimals. The geometry is otherwise untouched.
+    #
+    # Barb volumes read 2.954 mm³ each now rather than 1.873. That is SNAP_BARB_EMBED: the barb
+    # carries a backing slab (8.0 x 0.15 x 0.9007 = 1.081) sunk into the rim so the fuse has a
+    # real overlap instead of one tangent plane. It sits inside the arm, so it contributes
+    # nothing to this total — the two figures differ by exactly the slab.
+    # Rebased again, +71.305234 mm³ (+0.038%), when every arm was re-spaced to divide the whole
+    # 495.26 mm rim evenly instead of only the southern stretch. The count did not change — ten
+    # straight arms plus N2 — so this is not arms appearing or vanishing, it is eleven slots and
+    # barbs moving to different walls. The volume goes UP because the relief slot is a constant
+    # 1.2 mm wide but runs the full local wall height, and the arms moved on balance toward the
+    # SOUTH and the shallow end of the wedge, where there is less material under them for the
+    # slot to overrun into. Arm lengths also changed (SW1 22->16, SE1 22->20) and thicknesses
+    # were re-derived per arm from the force budget, which moves the slot's radial position but
+    # not its width.
+    # Rebased +1176.396083 mm³ (+0.63%) for SNAP_TAB_SLOT_W 1.2 -> 0.9. The volume goes UP
+    # because a narrower relief slot REMOVES LESS: eleven arms, each slot 0.30 mm narrower over
+    # roughly (L + slot) of length and the local wall height, which is 7.6 mm at the gulf and
+    # ~20 mm at the north. 11 x 0.30 x ~22.9 x ~15 comes to ~1130 mm³ against the 1176 measured,
+    # and the balance is the wedge overrun the slot no longer cuts.
+    #
+    # The other half of this change contributes NOTHING here: barb_lo_z going from a 1.40-4.40
+    # ladder to a flat 3.95 moves every barb in Z but does not resize it, and the rim it stands
+    # on is a plain vertical prism through that whole band, so the same solid just sits higher
+    # or lower. The catch pockets that pair with it are cut from the TOP.
+    #
+    # Validated by rebuilding rather than by arithmetic, as before: with C.SNAP_TAB_SLOT_W put
+    # back to 1.2 and the old ladder restored onto SNAP_ARMS and SNAP_CORNER_BARB_LO_Z,
+    # build_bottom_part("right") returns 187530.628110 — the previous baseline, to all six
+    # decimals.
+    # Rebased +66.075821 mm³ (+0.035%) for SEAM_WAVE_BAND_SCALE 1.0 -> 1.02 (the seam-wave crest
+    # raised from 3.60 to 3.87 mm). The bottom part's visible band is taller wherever the wave is
+    # taller, and nothing else in this build depends on the wave -- the wedge, plate, pins,
+    # pockets and feet are all either below the seam or governed by their own dials. Validated by
+    # rebuilding, not arithmetic, as this file insists on: SEAM_WAVE_KNOTS is baked in at import
+    # time (like the literal table it replaced), so this was checked by reverting the working tree
+    # to before SEAM_WAVE_BAND_SCALE existed and rebuilding, which reproduces the previous
+    # 188707.024193 baseline to all six decimals.
+    # Rebased -17.261403 mm³ (-0.009%) for moving E2-east-N to its rim run's physical ceiling
+    # (SNAP_RUN_EAST 29.11 -> 24.75) to buy back as much ambient-wall clearance as that run has to
+    # give, at the cost of the NE corner's even-spacing (see the SNAP_ARMS note above E2 and
+    # test_every_barb_is_evenly_spaced_around_the_whole_rim's named exception). E1-east-S
+    # (38.15 -> 35.81) and N3-north-east (24.61 -> 24.70) moved to do the least damage to the rest
+    # of the rim given E2 fixed at that ceiling, not to hit a spacing target of their own. The
+    # relief slot's footprint shifts with each arm, hence the volume change; nothing else moved.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 192451.015398) < 2e-2
+    assert abs(build_bottom_part(side).volume - 188755.839037) < 2e-2

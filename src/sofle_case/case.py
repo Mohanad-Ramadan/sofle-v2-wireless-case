@@ -24,6 +24,9 @@ from .standoffs import stepped_standoff
 from .battery import battery_pocket, jst_pocket, jst_wire_channel
 from .top_cover import build_top_cover, _load_plate_cutouts
 from .canopy import build_canopy, usb_port_cutter, CANOPY_RIDGE_TOP_Z
+# snaps imports wedge_deep_z/tent_ground_z from here, but only inside its functions, so this
+# top-level import does not close a cycle.
+from .snaps import snap_reliefs, snap_barbs, snap_catches
 
 
 Side = Literal["left", "right"]
@@ -604,8 +607,8 @@ def _bottom_outer_shell() -> Part:
     z_top = C.SEAM_LEDGE_Z
     # THE STOCK STARTS AT THE LEDGE, NOT AT Z=0, and that is not tidiness. tub_outline_face() is
     # a face AT Z=0, so extruding it only downward caps the band there — but the parting line
-    # crests at seam_profile_max_z() = 3.60, so the band has to reach 1.60. Capped at zero it
-    # loses that 1.60 mm over the crest and the reveal silently opens to 3.6 mm there instead of
+    # crests at seam_profile_max_z() = 3.87, so the band has to reach 1.87. Capped at zero it
+    # loses that 1.87 mm over the crest and the reveal silently opens to 3.87 mm there instead of
     # SEAM_REVEAL_H. Nothing else in the suite sees it; only the crest measurement does.
     #
     # DIRECTION GIVEN EXPLICITLY — the face's own normal already points at -Z, so a negative
@@ -764,6 +767,22 @@ def build_bottom_part(side: Side) -> Part:
     bottom = cast(Part, bottom - jst_wire_channel())
     bottom = cast(Part, bottom - _foot_recesses())
     bottom = _chamfer_wedge_ground_edge(_as_part(bottom))
+    # Snap latches, AFTER the ground-edge chamfer and last of everything.
+    #
+    # The order is load-bearing in both directions. They come after the wedge and outer band
+    # are fused because each arm's slot runs from the ground face up to the ledge, so it has to
+    # cut a bottom part that is already whole — cut earlier it would only free the plate's
+    # share of the wall and leave the arm rooted along its whole bottom edge, which is the
+    # horizontal-axis bending this design exists to avoid.
+    #
+    # And they come after _chamfer_wedge_ground_edge because that op selects
+    # ``ground_face(part).outer_wire().edges()``. Nine through-slots break that wire into nine
+    # more edges and hand the chamfer the slot mouths as well as the footprint — it cost
+    # 27.4 mm³ of extra cut and, worse, put a 0.5 mm chamfer on the inside of a release port.
+    # This helper already has a silent no-op fallback and a history of taking it (see
+    # docs/z-stack.md); handing it a rim it cannot chamfer would fail quietly.
+    bottom = cast(Part, bottom - snap_reliefs())
+    bottom = cast(Part, bottom + snap_barbs())
     bottom = _as_part(bottom)
 
     if side == "left":
@@ -1074,6 +1093,10 @@ def build_top_part(side: Side) -> Part:
     top = cast(Part, top - _slide_scoop())
     # Slide-switch drop-in pocket: registered switch-shaped cavity.
     top = cast(Part, top - _slide_actuator_cavity())
+    # Catch pockets for the snap latches, blind notches in the skirt's INNER face. Cut last of
+    # the TOP's rabbet features and after _below_seam_cutter, so a pocket can never survive on
+    # skin the parting line has already taken away.
+    top = cast(Part, top - snap_catches())
     top = _as_part(top)
 
     if side == "left":
@@ -1098,7 +1121,7 @@ def _corner_markers() -> Part:
 
 # %%
 if __name__ == "__main__":
-    from ocp_vscode import show
+    from ocp_vscode import Camera, show
     from sofle_case.case import build_bottom_part, build_top_part
     from sofle_case import constants as C
 
@@ -1155,4 +1178,8 @@ if __name__ == "__main__":
     parts.append(_corner_markers())
     names.append("corner_markers")
 
-    show(*parts, names=names)
+    # reset_camera=RESET: ocp_vscode defaults to KEEP, which reuses whatever camera
+    # transform the viewer last had (a stale zoom/pan from an earlier, differently
+    # scaled model). Without forcing a reset, the freshly built geometry can end up
+    # floating outside the visible frame relative to the grid/ruler.
+    show(*parts, names=names, reset_camera=Camera.RESET)

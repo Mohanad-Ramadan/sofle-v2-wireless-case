@@ -266,7 +266,17 @@ def test_the_band_is_one_smooth_wall():
     assert len(band.faces()) <= 60, (
         f"the band came back with {len(band.faces())} faces (expected ~29). Something has "
         f"reintroduced a per-Y construction — see _bottom_outer_shell")
-    assert len(build_bottom_part("right").faces()) <= 200
+    # Raised 200 -> 300 for the nine snap latches, then 300 -> 360 when the south chain took the
+    # count to eleven — broken down rather than bumped, because a bound raised without
+    # accounting is exactly the decay this docstring warns about.
+    # Measured: the bottom is 163 faces bare, was 272 with nine arms (12.1 each: an L-slot's two
+    # legs, the root-relief cylinder, and a barb prism), and is 306 with eleven (13.0 each). The
+    # extra ~0.9 per arm is SNAP_BARB_EMBED's backing slab, which buys the barb a real overlap
+    # to fuse across instead of a single tangent plane. It was 677 while the barb was still a
+    # 23-slab staircase; rebuilding it as one triangular prism, which SNAP_RETURN_DEG = 90 makes
+    # exact, took 405 faces back out. 360 leaves ~4 arms of headroom and still catches a per-Y
+    # reconstruction of the band, which is what this really guards.
+    assert len(build_bottom_part("right").faces()) <= 360
 
     # The swoosh is ONE face. That is the claim the face count is a proxy for, stated directly:
     # the top surface is what the reveal exposes, and a divided one IS the defect.
@@ -352,6 +362,30 @@ def test_the_ramp_crests_once_and_eases_back():
     assert abs(zs[-1] - C.SEAM_NORTH_RISE_Z) < 0.06, "ramp does not finish on the northern run"
     assert max(zs) > C.SEAM_NORTH_RISE_Z + 1.0, \
         "the ramp never rises meaningfully above the northern run — the crest has gone flat"
+
+
+def test_the_through_fit_spline_tracks_the_tail_model():
+    """"Move the model, regenerate the knots" (see constants.py's WAVE block) only protects the
+    curve if something actually checks the spline against the model it claims to come from — this
+    is that check. It did not exist before SEAM_WAVE_KNOTS' tail became a live generator; there
+    was nothing to regenerate against but a paste.
+
+    Sampled BETWEEN the knots deliberately: at the knots themselves the through-fit spline is
+    exact by construction (it was told to pass through exactly those points), so that would
+    prove nothing about the fit. Off them, the spline can still bow away from the model it was
+    fit to — this is the file's own accepted tolerance (max 0.076 mm, rms 0.056 mm) restated as a
+    live assertion instead of a comment nobody re-checks."""
+    u_c = C.SEAM_WAVE_CREST_U
+    errs = []
+    for i in range(1, 200):
+        u = u_c + i * (1.0 - u_c) / 200.0
+        model_z = C._seam_wave_crest_z - C._seam_wave_fall * C._seam_wave_drop(
+            (u - u_c) / (1.0 - u_c))
+        errs.append(_seam_z_at(u * C.OUTER_DEPTH) - model_z)
+    worst = max(abs(e) for e in errs)
+    rms = math.sqrt(sum(e * e for e in errs) / len(errs))
+    assert worst < 0.076, f"spline strays {worst:.4f} mm from the tail model, want < 0.076"
+    assert rms < 0.056, f"spline's rms deviation from the tail model is {rms:.4f}, want < 0.056"
 
 
 def test_the_handover_costs_no_height():
@@ -582,7 +616,7 @@ def test_the_handover_actually_sits_where_the_dial_says():
         "the ramp does not finish on the dial"
 
 
-@pytest.mark.parametrize("angle", [1.0, 3.0, 7.0, 10.0])
+@pytest.mark.parametrize("angle", [1.0, 3.0, 6.0])
 def test_the_seam_cutter_never_reaches_above_the_rabbet_ledge(monkeypatch, angle):
     """The cutter's ceiling — restated for the wave, because its old form was Z=0 and the wave
     deliberately crests above that.
@@ -594,6 +628,15 @@ def test_the_seam_cutter_never_reaches_above_the_rabbet_ledge(monkeypatch, angle
     starts taking the tub proper. That is the same reason SEAM_NORTH_RISE_FRAC's ceiling is 1.0,
     asked at a different Y.
 
+    THE BAR IS SEAM_WAVE_LAP_MIN, NOT SEAM_LEDGE_Z ITSELF, and that used to be the wrong check.
+    ``got < C.SEAM_LEDGE_Z`` is the same physical fact ``SEAM_WAVE_LAP_LEFT >= SEAM_WAVE_LAP_MIN``
+    guards at import time, but 2.0 mm weaker — it only complains once the cutter has climbed all
+    the way to the ledge, not once it has eaten the rabbet lap down to nothing. Swept to 10 deg the
+    old bar passed with 0.20 mm of lap left, silently inside TENT_ANGLE_MAX's territory. Angles
+    above TENT_ANGLE_MAX are no longer swept here because they are no longer a legal
+    configuration — see TENT_ANGLE_MAX itself for that guard, enforced at import time on the
+    constant everyone actually sets.
+
     Also pinned to seam_profile_max_z(), so the built solid and the measured curve agree — the
     two are consumed by different callers (_lead_in_relief gates on the measurement) and a drift
     between them would strand the channel mouth exactly where the crest needs it opened."""
@@ -602,9 +645,10 @@ def test_the_seam_cutter_never_reaches_above_the_rabbet_ledge(monkeypatch, angle
     inside = cutter & Solid.make_box(400.0, C.OUTER_DEPTH, 200.0).translate((-100.0, 0.0, -100.0))
     assert inside.volume > 1e-9, f"{angle} deg: the cutter missed the case entirely"
     got = inside.bounding_box().max.Z
-    assert got < C.SEAM_LEDGE_Z, (
-        f"{angle} deg: the seam cutter reaches Z={got:.4f}, at or above the rabbet ledge "
-        f"{C.SEAM_LEDGE_Z:.4f} — it is eating the tub, not its skin")
+    assert got <= C.SEAM_LEDGE_Z - C.SEAM_WAVE_LAP_MIN, (
+        f"{angle} deg: the seam cutter reaches Z={got:.4f}, leaving less than "
+        f"SEAM_WAVE_LAP_MIN={C.SEAM_WAVE_LAP_MIN} mm of rabbet lap under the ledge "
+        f"{C.SEAM_LEDGE_Z:.4f} — it is eating into the two halves' own registration")
     assert abs(got - seam_profile_max_z()) < 0.01, (
         f"{angle} deg: the built cutter tops out at {got:.4f} but the measured profile says "
         f"{seam_profile_max_z():.4f} — solid and curve have drifted apart")
