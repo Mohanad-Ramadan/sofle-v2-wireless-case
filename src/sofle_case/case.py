@@ -11,9 +11,10 @@ from __future__ import annotations
 import math
 from functools import cache
 from typing import Literal, cast
-from build123d import (Part, Face, mirror, Plane, Pos, fillet, chamfer, Axis, BuildPart,
+from build123d import (Part, Face, mirror, Plane, Pos, Rot, fillet, chamfer, Axis, BuildPart,
                        BuildSketch, BuildLine, Line, Spline, Locations, Cylinder,
-                       Sphere, Solid, Box, Location, GeomType, add, extrude, make_face)
+                       Sphere, Solid, Box, Location, GeomType, add, extrude, make_face,
+                       RectangleRounded, Rectangle, Polyline, revolve, loft, Circle)
 from OCP.Standard import Standard_Failure
 from OCP.ShapeFix import ShapeFix_Shape
 from OCP.TopoDS import TopoDS
@@ -27,6 +28,7 @@ from .canopy import build_canopy, usb_port_cutter, CANOPY_RIDGE_TOP_Z
 # snaps imports wedge_deep_z/tent_ground_z from here, but only inside its functions, so this
 # top-level import does not close a cycle.
 from .snaps import snap_reliefs, snap_barbs, snap_catches
+from . import canopy_puzzle as PZ
 
 
 Side = Literal["left", "right"]
@@ -813,6 +815,362 @@ def _encoder_bbox() -> tuple[float, float, float, float]:
     return enc_cx, enc_cy, bbox_w, bbox_h
 
 
+def encoder_feature_top_z() -> float:
+    """Case Z of the tallest COVER feature at the encoder — what the knob's hem must clear."""
+    style = C.ENCODER_COVER_STYLE
+    if style == "mound":
+        return C.ENCODER_SHELL_TOP_Z
+    if style in ("ring", "ring_bevel", "two_step"):
+        return C.COVER_TOP_Z + C.ENCODER_RING_PROUD
+    if style == "plinth":
+        return C.ENCODER_PLINTH_TOP_Z
+    if style == "racetrack":
+        return C.COVER_TOP_Z + C.ENCODER_PAD_H
+    return C.COVER_TOP_Z          # reveal / engraved / strokes add nothing proud
+
+
+def _aperture_cutters(enc_cx: float, enc_cy: float, dia: float) -> list[Solid]:
+    """Round the encoder window out to ``dia`` and chamfer its lip.
+
+    The lip is cut with a CONE rather than found as an edge and chamfered: once the cover is fused
+    the window rim sits among the membrane's other faces, which is exactly where OCC's edge-hunting
+    gives up (the same reason the old mound needed a lid-stub to blend against)."""
+    ch = C.ENCODER_APERTURE_CHAMFER
+    z0 = C.MAIN_RIM_Z - 0.5
+    bore = Solid.make_cylinder(dia / 2, encoder_feature_top_z() + 0.5 - z0).translate(
+        (enc_cx, enc_cy, z0))
+    lip = Solid.make_cone(dia / 2 + ch, dia / 2, ch).translate(
+        (enc_cx, enc_cy, C.COVER_TOP_Z - ch))
+    return [bore, lip]
+
+
+def _engraved_circle(enc_cx: float, enc_cy: float) -> Part:
+    """A groove CIRCLE round the knob, in the canopy strokes' own section (1.6 × 0.5): the knob
+    gets a drawn ring without a single millimetre of proud material."""
+    d, w = C.ENCODER_GROOVE_CIRCLE_DIA, C.ENCODER_GROOVE_W
+    h = C.ENCODER_GROOVE_DEPTH + 0.2
+    z0 = C.COVER_TOP_Z - C.ENCODER_GROOVE_DEPTH
+    outer = Solid.make_cylinder((d + w) / 2, h).translate((enc_cx, enc_cy, z0))
+    inner = Solid.make_cylinder((d - w) / 2, h).translate((enc_cx, enc_cy, z0))
+    return cast(Part, outer - inner)
+
+
+def _stroke_grooves(enc_cx: float, enc_cy: float, side: str) -> list[Part]:
+    """PUZZLE LINE A, continued across the deck with the knob standing on it.
+
+    This is not a stroke that imitates the roof's: ``canopy_puzzle.line_in_canopy`` hands back the
+    same fitted line the canopy roofs are cut with. On the RIGHT half it passes 6.10 mm from the
+    encoder centre — inside the Ø13 knob's own 6.5 mm radius, so it genuinely runs under the knob
+    and the knob interrupts it, the way each roof stroke runs off its edge and is picked up by the
+    other half. The break is set by a keep-out CIRCLE, so the two stubs stop the same distance out
+    instead of being nibbled unevenly by the aperture.
+
+    ON THE LEFT HALF THERE IS NOTHING TO CONTINUE. The MCU is flipped there, so the canopy and its
+    strokes sit elsewhere and the nearest line passes 26.1 mm from the encoder. Continuing it would
+    not read as an interrupted stroke — it would be an unexplained groove across bare deck, drawn
+    26 mm from the thing it is supposed to be about. So the half is skipped, and the treatment is
+    honestly asymmetric rather than symmetrically meaningless."""
+    a, b, c = PZ.line_in_canopy(side, 0)
+    h = a * enc_cx + b * enc_cy - c                 # signed distance, centre → line
+    px, py = enc_cx - a * h, enc_cy - b * h          # foot of the perpendicular
+    dx, dy = -b, a                                   # unit direction along the line
+    r = C.ENCODER_STROKE_KEEPOUT_R
+    if abs(h) >= r:
+        # The line misses the keep-out entirely, so the knob never interrupts it and the premise of
+        # the style is gone. Cut nothing rather than a groove that means nothing.
+        return []
+    t_break = (r * r - h * h) ** 0.5
+    run = C.ENCODER_STROKE_RUN
+    w, depth = C.ENCODER_GROOVE_W, C.ENCODER_GROOVE_DEPTH
+    height = depth + 0.2
+    z_mid = C.COVER_TOP_Z - depth + height / 2
+    ang = math.degrees(math.atan2(dy, dx))
+
+    # The stroke must stay on the FLAT deck. Line A runs nearly north–south here, so its northern
+    # arm would climb the canopy ramp, where a flat-bottomed cutter shaves a wedge out of the slope
+    # instead of cutting a groove. Clip that arm at the ramp toe; in practice the clip lands inside
+    # the knob's own keep-out, so what survives is a single stroke leaving the knob southward.
+    from .canopy import CANOPY_RAMP_FOOT_Y
+    y_limit = CANOPY_RAMP_FOOT_Y - 1.0
+
+    out = []
+    for sign in (+1, -1):
+        reach = run
+        if dy * sign > 0:                       # this arm heads north, toward the ramp
+            reach = min(run, (y_limit - py) / (dy * sign))
+        length = reach - t_break
+        if length <= 0.5:                       # nothing worth cutting on this side
+            continue
+        t_mid = sign * (t_break + length / 2)
+        out.append(cast(Part, Pos(px + dx * t_mid, py + dy * t_mid, z_mid)
+                        * Rot(0, 0, ang) * Box(length, w, height)))
+    return out
+
+
+def _pad_capsule(enc_cx: float, enc_cy: float) -> Part:
+    """A LOW capsule pad running from south of the encoder up to the canopy's ramp toe, so knob →
+    pad → ramp read as one form.
+
+    1.2 mm proud was chosen when the pad was believed to close the gap under the knob to ~0.5. It
+    does not: the knob bottoms on its own bore at Z 21.4 regardless, leaving 3.8 mm of bare shaft
+    over a 1.2 mm pad. Only the 4.5 mm mound reaches that hem. So this is a pad about the DECK's
+    form — knob, pad, ramp as one silhouette — and it costs bare shaft to have it."""
+    from .canopy import CANOPY_RAMP_FOOT_Y
+    y0 = enc_cy - C.ENCODER_PAD_SOUTH
+    y1 = CANOPY_RAMP_FOOT_Y + 1.0            # overlap the ramp toe so the two fuse
+    w, length = C.ENCODER_PAD_W, y1 - y0
+    with BuildSketch() as sk:
+        RectangleRounded(w, length, w / 2 - 0.01)     # capsule
+    base = cast(Face, sk.sketch.faces()[0].moved(
+        Location((enc_cx, (y0 + y1) / 2, C.MAIN_RIM_Z))))
+    pad = cast(Part, extrude(base, amount=C.COVER_THICKNESS + C.ENCODER_PAD_H))
+    top_z = C.COVER_TOP_Z + C.ENCODER_PAD_H
+    edge = [e for e in pad.edges() if abs(e.center().Z - top_z) < 0.05]
+    if edge:
+        try:
+            pad = cast(Part, chamfer(edge, length=C.ENCODER_PAD_CHAMFER))
+        except (ValueError, Standard_Failure):
+            pass
+    return pad
+
+
+def _encoder_ring(enc_cx: float, enc_cy: float, *,
+                  top_dia: float | None = None,
+                  bevel_run: float | None = None,
+                  bevel_drop: float | None = None,
+                  groove: bool = True,
+                  step: bool = False) -> Part:
+    """SEALED bezel: circular, closed roof over the encoder body, bevelled top, shadow groove foot.
+
+    The outer form is a SOLID OF REVOLUTION, not a cylinder with a chamfer hunted afterwards. That
+    buys two things: the bevel can be asymmetric (a RUN and a DROP, so it can sit at the case's own
+    26.6° instead of a generic 45°), and the treatment cannot silently fail the way an edge chamfer
+    does when OCC dislikes the edge.
+
+    THE DIAMETER IS SET BY THE BEVEL, not by taste. The cavity has to clear the EC11 body, so its
+    rounded corners sit at r 8.92; the bevel eats ``bevel_run`` off the outside at the top; what is
+    left between them is the wall that carries the roof at those four corners. Ø20.5 with the
+    original 1.5 mm bevel leaves −0.17 — i.e. the bevel cut past the cavity and knife-edged the
+    roof at the corners. The guard below refuses that."""
+    top_dia = C.ENCODER_RING_TOP_DIA if top_dia is None else top_dia
+    run = C.ENCODER_RING_BEVEL_RUN if bevel_run is None else bevel_run
+    drop = C.ENCODER_RING_BEVEL_DROP if bevel_drop is None else bevel_drop
+    proud = C.ENCODER_RING_PROUD
+    top_z = C.COVER_TOP_Z + proud
+    r_top = top_dia / 2
+    r_out = r_top + run                       # base radius, derived from the top face
+
+    # The guard has to measure the cavity THIS FUNCTION ACTUALLY CUTS, not the one constants.py
+    # estimated at import time — that estimate is built on a hardcoded window size and can only
+    # drift as the gerber-derived bbox moves. Same figures as the cavity sketch below.
+    _, _, bbox_w, bbox_h = _encoder_bbox()
+    cav_corner_r = math.hypot(
+        (bbox_w + 2 * C.ENCODER_SHELL_CAVITY_CLEAR) / 2 - C.ENCODER_RING_CAVITY_R,
+        (bbox_h + 2 * C.ENCODER_SHELL_CAVITY_CLEAR) / 2 - C.ENCODER_RING_CAVITY_R,
+    ) + C.ENCODER_RING_CAVITY_R
+
+    # TWO walls, binding at different heights, and both are load-bearing:
+    #   ceiling — the roof is carried here, where the bevel has already flared out;
+    #   foot    — the cavity is full width down here, so this is the thinner one on a steep bevel.
+    # Checking only the ceiling let a Ø18.10 base through once, with 0.13 mm of wall at the corners.
+    wall_ceiling = r_top + C.ENCODER_RING_ROOF * run / drop - cav_corner_r
+    wall_foot = r_out - cav_corner_r
+    if min(wall_ceiling, wall_foot) < 0.8:
+        raise ValueError(
+            f"ring top Ø{top_dia} with bevel {run}/{drop} leaves {wall_ceiling:.2f} mm of wall at "
+            f"the cavity ceiling and {wall_foot:.2f} mm at the foot (cavity corners r "
+            f"{cav_corner_r:.2f}); widen the ring or open the bevel")
+    if drop > proud:
+        raise ValueError(f"bevel drop {drop} exceeds the ring's own height {proud}")
+
+    # Outer profile, axis → rim, base → bevelled top.
+    with BuildPart() as bp:
+        with BuildSketch(Plane.XZ) as sk:
+            with BuildLine():
+                Polyline((0.0, C.MAIN_RIM_Z),
+                         (r_out, C.MAIN_RIM_Z),
+                         (r_out, top_z - drop),
+                         (r_top, top_z),
+                         (0.0, top_z),
+                         close=True)
+            make_face()
+        revolve(axis=Axis.Z)
+    body = cast(Part, bp.part.translate((enc_cx, enc_cy, 0)))
+
+    if step:
+        tier = cast(Part, Solid.make_cylinder(
+            C.ENCODER_STEP_DIA / 2,
+            C.COVER_THICKNESS + C.ENCODER_STEP_H).translate((enc_cx, enc_cy, C.MAIN_RIM_Z)))
+        tier_top = C.COVER_TOP_Z + C.ENCODER_STEP_H
+        edge = [e for e in tier.edges() if abs(e.center().Z - tier_top) < 0.05]
+        if edge:
+            try:
+                tier = cast(Part, chamfer(edge, length=C.ENCODER_STEP_CHAMFER))
+            except (ValueError, Standard_Failure):
+                pass
+        body = cast(Part, body + tier)
+
+    cav_w = bbox_w + 2 * C.ENCODER_SHELL_CAVITY_CLEAR
+    cav_h = bbox_h + 2 * C.ENCODER_SHELL_CAVITY_CLEAR
+    cav_z0, cav_z1 = C.MAIN_RIM_Z - 0.2, top_z - C.ENCODER_RING_ROOF
+    with BuildSketch() as sk:
+        RectangleRounded(cav_w, cav_h, C.ENCODER_RING_CAVITY_R)
+    cavity = extrude(cast(Face, sk.sketch.faces()[0].moved(Location((enc_cx, enc_cy, cav_z0)))),
+                     amount=cav_z1 - cav_z0)
+    shaft = Solid.make_cylinder(C.ENCODER_SHAFT_HOLE_DIA / 2, top_z - cav_z1 + 0.4).translate(
+        (enc_cx, enc_cy, cav_z1 - 0.2))
+    ring = cast(Part, body - cavity - shaft)
+
+    if groove and C.ENCODER_RING_FOOT_GROOVE_H > 0 and C.ENCODER_RING_FOOT_GROOVE_D > 0:
+        # A shadow line where the ring meets the deck, so the ring reads as a separate object
+        # standing on the cover — the trick the case already uses at its own skirt. It prints as a
+        # 0.5 mm outward step: the TOP part goes on the bed face-down, so this is a short overhang
+        # near the bed, not a bridge over air.
+        gh, gd = C.ENCODER_RING_FOOT_GROOVE_H, C.ENCODER_RING_FOOT_GROOVE_D
+        outer = Solid.make_cylinder(r_out + 1.0, gh).translate((enc_cx, enc_cy, C.COVER_TOP_Z))
+        inner = Solid.make_cylinder(r_out - gd, gh).translate((enc_cx, enc_cy, C.COVER_TOP_Z))
+        ring = cast(Part, ring - cast(Part, outer - inner))
+    return ring
+
+
+ENCODER_COVER_STYLES = ("mound", "ring", "ring_bevel", "two_step", "plinth",
+                        "reveal", "engraved", "strokes", "racetrack")
+
+
+def apply_encoder_cover_style(top: Part, side: str = "right") -> Part:
+    """Add/cut the encoder treatment on the fused TOP, per ``C.ENCODER_COVER_STYLE``.
+
+    Only "mound" seats the knob without trimming its shaft — see the seating table in
+    ``constants.py`` and ``knob.knob_seating_report()``. The rest are aesthetic choices that buy
+    their look with bare shaft on show."""
+    style = C.ENCODER_COVER_STYLE
+    # Validated up front: the old check sat after the sealed branch had already returned and after
+    # the racetrack pad had been fused, so a typo'd style could do work before being rejected.
+    if style not in ENCODER_COVER_STYLES:
+        raise ValueError(f"unknown ENCODER_COVER_STYLE {style!r}; expected one of "
+                         f"{', '.join(ENCODER_COVER_STYLES)}")
+    if style == "mound":
+        return cast(Part, top + _encoder_shell())
+
+    enc_cx, enc_cy, _, _ = _encoder_bbox()
+
+    if style == "plinth":
+        # Sealed, so no aperture cut, for the same reason as the ring below: the skin lands on the
+        # cover just outside the window and boring first would undercut what it stands on.
+        return cast(Part, top + _encoder_plinth(enc_cx, enc_cy))
+
+    if style in ("ring", "ring_bevel", "two_step"):
+        # NO aperture cut for the sealed styles: the ring's wall lands on the cover just outside
+        # the Ø17.91 window, and boring the aperture first undercuts what it stands on.
+        if style == "ring_bevel":
+            return cast(Part, top + _encoder_ring(enc_cx, enc_cy))
+        # "ring" / "two_step" keep the plain symmetric 45° edge and no foot groove.
+        return cast(Part, top + _encoder_ring(
+            enc_cx, enc_cy, top_dia=C.ENCODER_RING_BASE_DIA - 2 * C.ENCODER_RING_CHAMFER,
+            bevel_run=C.ENCODER_RING_CHAMFER, bevel_drop=C.ENCODER_RING_CHAMFER,
+            groove=False, step=(style == "two_step")))
+
+    if style == "racetrack":
+        # Pad first, aperture second — it is a solid capsule and has to be bored through together
+        # with the cover, or its centre stays filled.
+        top = cast(Part, top + _pad_capsule(enc_cx, enc_cy))
+
+    dia = C.ENCODER_REVEAL_DIA if style == "reveal" else C.ENCODER_APERTURE_DIA
+    for cutter in _aperture_cutters(enc_cx, enc_cy, dia):
+        top = cast(Part, top - cutter)
+
+    if style == "engraved":
+        top = cast(Part, top - _engraved_circle(enc_cx, enc_cy))
+    elif style == "strokes":
+        for groove in _stroke_grooves(enc_cx, enc_cy, side):
+            top = cast(Part, top - groove)
+    return top
+
+
+def _encoder_plinth(enc_cx: float, enc_cy: float) -> Part:
+    """SEALED bezel that is a rounded SQUARE at the deck and a small CIRCLE at the top.
+
+    Two ideas, and both exist to answer "the ring under the knob is too large":
+
+    THE SKIN FOLLOWS THE CAVITY. The cavity is square, so its corners sit further out than its
+    flats. A circular bezel has to reach those corners in EVERY direction, which is the entire
+    reason the sealed ring is Ø19.5 — across its flats it carries ~3 mm/side of material spanning
+    corners that are somewhere else. A square skin hugs the square, and the flats come in by
+    2.2 mm/side for the same wall thickness.
+
+    THE CAVITY STEPS IN ABOVE THE LEG. The top can only be small if there is nothing wide left to
+    roof. Below ``ENCODER_PLINTH_STEP_Z`` the cavity has to clear the whole EC11 including its
+    locating leg; above it, the only occupant is the Ø6 shaft, so the bezel necks to a circle that
+    fits under the knob. The sealed-ring round concluded a hidden bezel was impossible — it was
+    impossible only while the cavity ran full height.
+
+    The morph is 45° across the flats and ~74° at the corners (a square cannot become a circle in
+    a fixed height without the corners travelling further). Every section shrinks going up, so the
+    whole thing is self-supporting printed bezel-up; ``test_the_plinth_only_ever_shrinks_going_up``
+    is what actually holds that, not this docstring."""
+    _, _, bbox_w, bbox_h = _encoder_bbox()
+    clr = C.ENCODER_SHELL_CAVITY_CLEAR
+    cav_w, cav_h = bbox_w + 2 * clr, bbox_h + 2 * clr
+    out_w = cav_w + 2 * C.ENCODER_PLINTH_WALL
+    out_h = cav_h + 2 * C.ENCODER_PLINTH_WALL
+
+    # Guard on the cavity THIS FUNCTION CUTS, not on constants' import-time estimate — the same
+    # discipline _encoder_ring uses, and for the same reason: the estimate is built on a hardcoded
+    # window size and can only drift as the gerber-derived bbox moves.
+    cav_r, skin_r = C.ENCODER_PLINTH_CAVITY_R, C.ENCODER_PLINTH_CORNER_R
+    cav_corner = math.hypot(cav_w / 2 - cav_r, cav_h / 2 - cav_r) + cav_r
+    # Thinnest wall is the cavity's corner POINT against the skin's corner ARC, not the diagonal
+    # gap — see the note in constants.py. While the arc stays within the wall the binding point is
+    # on a flat instead, and the wall is just the wall.
+    wall = (C.ENCODER_PLINTH_WALL if skin_r <= C.ENCODER_PLINTH_WALL
+            else skin_r - (skin_r - C.ENCODER_PLINTH_WALL) * math.sqrt(2))
+    if wall < C.ENCODER_PLINTH_WALL:
+        raise ValueError(
+            f"skin rounding R{skin_r} cuts the wall at the cavity's corner points to {wall:.2f} mm "
+            f"(need {C.ENCODER_PLINTH_WALL}); crisper skin corners or a wider ENCODER_PLINTH_WALL")
+    # The cavity is SQUARE on purpose: rounding a concave corner refills it, straight at the
+    # corners of the steel box it exists to clear.
+    if cav_corner - 8.768 <= 0.5:
+        raise ValueError(
+            f"cavity corners reach r {cav_corner:.2f}, only {cav_corner - 8.768:.2f} mm clear of "
+            f"the EC11 body's corners — do not round ENCODER_PLINTH_CAVITY_R")
+
+    shoulder_z, top_z = C.ENCODER_PLINTH_SHOULDER_Z, C.ENCODER_PLINTH_TOP_Z
+
+    # Square prism, deck → shoulder. Starts at MAIN_RIM_Z so it bites into the cover membrane and
+    # fuses robustly, exactly as the mound and the ring do.
+    with BuildSketch() as sk:
+        RectangleRounded(out_w, out_h, C.ENCODER_PLINTH_CORNER_R)
+    base_face = cast(Face, sk.sketch.faces()[0].moved(
+        Location((enc_cx, enc_cy, C.MAIN_RIM_Z))))
+    body = cast(Part, extrude(base_face, amount=shoulder_z - C.MAIN_RIM_Z))
+
+    # The morph. A LOFT between the square shoulder and the circular top, not a chamfer hunted on
+    # the finished solid: there is no edge to chamfer between a square and a circle, and OCC's
+    # edge-hunting is exactly what fails once this is fused into the lid's other faces.
+    with BuildSketch(Plane.XY.offset(shoulder_z)) as sk_lo:
+        RectangleRounded(out_w, out_h, C.ENCODER_PLINTH_CORNER_R)
+    with BuildSketch(Plane.XY.offset(top_z)) as sk_hi:
+        Circle(C.ENCODER_PLINTH_TOP_DIA / 2)
+    cap = loft([cast(Face, sk_lo.sketch.faces()[0]), cast(Face, sk_hi.sketch.faces()[0])])
+    body = cast(Part, body + cast(Part, cap.moved(Location((enc_cx, enc_cy, 0)))))
+
+    # Stepped cavity: full section up to the leg, shaft bore above it.
+    with BuildSketch() as sk_cav:
+        if cav_r > 0:
+            RectangleRounded(cav_w, cav_h, cav_r)
+        else:
+            Rectangle(cav_w, cav_h)      # square — RectangleRounded rejects a zero radius
+    cav_z0 = C.MAIN_RIM_Z - 0.2
+    cavity = extrude(cast(Face, sk_cav.sketch.faces()[0].moved(
+        Location((enc_cx, enc_cy, cav_z0)))), amount=C.ENCODER_PLINTH_STEP_Z - cav_z0)
+    shaft = Solid.make_cylinder(
+        C.ENCODER_SHAFT_HOLE_DIA / 2,
+        top_z - C.ENCODER_PLINTH_STEP_Z + 0.6).translate(
+            (enc_cx, enc_cy, C.ENCODER_PLINTH_STEP_Z - 0.2))
+    return cast(Part, body - cavity - shaft)
+
+
 def _encoder_shell() -> Part:
     """Single-body plateau over the EC11 encoder in the TOP part.
 
@@ -1084,7 +1442,7 @@ def build_top_part(side: Side) -> Part:
     if seam_profile_max_z() > 0.0:
         top = cast(Part, top - _lead_in_relief(wedge_deep_z() - 1.0))
     top = cast(Part, top + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
-    top = cast(Part, top + _encoder_shell())
+    top = apply_encoder_cover_style(top, side)
     top = cast(Part, top + build_canopy(side=side))
     # USB port re-cut AFTER the fuse: the flipped half's port floor sits below COVER_TOP_Z, so
     # the cover backfills the bottom of the window otherwise. See canopy.usb_port_cutter.
@@ -1121,7 +1479,7 @@ def _corner_markers() -> Part:
 
 # %%
 if __name__ == "__main__":
-    from ocp_vscode import Camera, show
+    from ocp_vscode import show
     from sofle_case.case import build_bottom_part, build_top_part
     from sofle_case import constants as C
 
@@ -1178,8 +1536,4 @@ if __name__ == "__main__":
     parts.append(_corner_markers())
     names.append("corner_markers")
 
-    # reset_camera=RESET: ocp_vscode defaults to KEEP, which reuses whatever camera
-    # transform the viewer last had (a stale zoom/pan from an earlier, differently
-    # scaled model). Without forcing a reset, the freshly built geometry can end up
-    # floating outside the visible frame relative to the grid/ruler.
-    show(*parts, names=names, reset_camera=Camera.RESET)
+    show(*parts, names=names)

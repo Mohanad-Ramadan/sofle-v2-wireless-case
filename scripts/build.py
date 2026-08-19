@@ -93,8 +93,11 @@ def main(side: str, out_dir: Path, show_viewer: bool, export_png: bool,
             names.append(f"{side}_{name}")
 
     if show_viewer or export_png:
+        from viewer_guard import require_live_viewer   # scripts/ is on sys.path as this file's dir
+        port = require_live_viewer()
         from ocp_vscode import show
         show(*parts, names=names)
+        click.echo(f"sent to the OCP viewer on port {port}")
 
     if export_png:
         import time
