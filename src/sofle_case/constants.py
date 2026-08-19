@@ -144,7 +144,7 @@ COVER_SCREW_CLEARANCE_DIA = 2.4  # mm; M2 screw shaft clearance through the cove
 # notch merges with the window; OUTER_R reaches ~1.2 mm past the 7.8 mm collar for
 # claw room). OUTER_R is capped so two facing notches on 19.05 mm-pitch neighbours
 # leave a ~1 mm cover bridge between them (cover stays one solid, plate barely shows).
-COVER_PULLER_NOTCH        = False   # False → flush cover with no puller access (swap needs shell removal)
+COVER_PULLER_NOTCH        = True   # False → flush cover with no puller access (swap needs shell removal)
 COVER_PULLER_NOTCH_W      = 4.0    # mm; notch width (tangential) — sized for a puller claw
 COVER_PULLER_NOTCH_INNER_R = 7.0   # mm; radial inner edge (inside the window, so it merges)
 COVER_PULLER_NOTCH_OUTER_R = 9.0   # mm; radial outer edge (~1.2 mm claw pocket past the 7.8 collar)
