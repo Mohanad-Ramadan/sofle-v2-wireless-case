@@ -635,6 +635,13 @@ ENCODER_BODY_H         = 7.0   # mm; PCB top -> EC11 box top. See note above.
 ENCODER_BODY_TOP_Z     = PCB_TOP_Z + ENCODER_BODY_H          # box top (cavity must clear this)
 ENCODER_BODY_PROUD     = ENCODER_BODY_TOP_Z - PLATE_TOP_Z    # derived, informational only: how far
                                                               # the box stands above the CURRENT plate
+# THE BOX TOP IS NOT THE TALLEST OBSTRUCTION. A small metal locating leg stands on the body top,
+# on the pin edge and in line with the shaft, and any roof over the encoder has to clear IT — not
+# ENCODER_BODY_TOP_Z. The mound never noticed because its cavity ceiling sits 1.2 mm above the leg
+# by luck of ENCODER_PLATEAU_H; a sealed bezel sized off the box top alone buries the leg.
+# ``encoder_phantom.LEG_H`` reads this constant so the phantom and the clearance cannot disagree.
+ENCODER_LEG_H          = 0.8   # mm; leg height above the box top — measured with calipers
+ENCODER_OBSTRUCTION_TOP_Z = ENCODER_BODY_TOP_Z + ENCODER_LEG_H   # what a roof must actually clear
 ENCODER_SHELL_WALL     = 1.5   # mm; plateau side-wall thickness (thin → smaller footprint)
 ENCODER_SHELL_ROOF     = 1.5   # mm; closed top-face thickness
 ENCODER_SHELL_CAVITY_CLEAR = 0.4  # mm/side; cavity grows past the plate cutout so the ring
@@ -655,6 +662,318 @@ ENCODER_CAVITY_TOP_Z   = ENCODER_SHELL_TOP_Z - ENCODER_SHELL_ROOF   # derived; r
 ENCODER_BEZEL_FOOT_R   = 1.5   # mm; concave foot radius (plateau → cover)
 ENCODER_BEZEL_TOP_R    = 1.5   # mm; convex round-over of the plateau top edge
 # NB: PLATEAU_H MUST exceed FOOT_R + TOP_R or the two rolls collide and OCC aborts.
+
+# ---------- COVER-SIDE encoder styles ----------
+# THESE STYLES WERE DRAWN AGAINST HARDWARE FACTS THAT HAVE SINCE BEEN MEASURED AND CORRECTED.
+# The header below is the corrected set; where a style's own rationale still leans on the old
+# assumptions it is called out at the constant.
+#
+# The knob is BOUGHT HARDWARE and it is SMALL: Ø13 × 17, bored Ø6 × 16 — every figure measured,
+# see ``knob.py``. It has no skirt over the encoder; the bore takes the Ø6 shaft and nothing else.
+# The brainstorm assumed an Ø18 knob with a ~15 mm skirt that could swallow the encoder body, and
+# that knob does not exist. Four facts box in everything the cover may do:
+#
+#   • deck (COVER_TOP_Z) = 16.4, EC11 body top (ENCODER_BODY_TOP_Z) = 17.4 → 1.0 mm of encoder
+#     stands above the deck. Both are +0.4 on the numbers the brainstorm used: MAIN_RIM_Z went
+#     15.0 → 15.4 and the body was re-datumed onto the PCB (ENCODER_BODY_H). The 1.0 mm
+#     RELATIONSHIP did not move, which is why the derived constants below still hold — but never
+#     write either absolute into a formula.
+#   • the plate's encoder window is Ø17.91 ACROSS ITS CORNERS (``case._encoder_bbox`` →
+#     12.716 × 12.616, corner r 8.956), not the Ø18.04 this style set was drawn against. It is
+#     WIDER THAN THE KNOB,
+#     so the knob hides none of it: any style that opens an aperture opens one Ø13 cannot cover.
+#     A ~2.3 mm annulus of plate and encoder body shows all round the knob on every non-sealed
+#     style. Only the sealed ring, which roofs the body over, hides it.
+#   • THE KNOB'S HEIGHT IS NOT THE COVER'S TO SET. The bore bottoms on the untrimmed 20 mm shaft
+#     with the hem at Z 21.4 whatever is underneath it. The brainstorm's "its hem sits ≥ 0.5 above
+#     whatever is tallest" is the DESIGN hem, not where the knob lands. What the cover actually
+#     decides is how much bare Ø6 shaft shows under the hem, or how much shaft has to be CUT.
+#   • ENCODER_PLATEAU_H = 4.5 is therefore not a styling number, it is the SEATING DATUM: it puts
+#     a bezel top at 20.9, exactly KNOB_HEM_CLEAR under that bottomed hem. Any style that wants
+#     the knob to seat untrimmed has to reach it. The sealed ring is built to it for that reason
+#     (ENCODER_RING_PROUD), not to its own 3.4 mm structural minimum.
+#
+# What each style costs at the knob — bare shaft on show / shaft trim needed to close it:
+#
+#     mound                        0.50 / 0.00
+#     ring, ring_bevel, two_step   0.50 / 0.00   (only because they are built to PLATEAU_H)
+#     racetrack                    3.80 / 3.30
+#     reveal, engraved, strokes    5.00 / 3.50
+#
+# tests/test_encoder_styles.py recomputes this rather than trusting it, because the table is a
+# comment and the Z stack has moved under this file once already.
+#
+# Trimming is a one-way cut on a metal shaft, and ``knob.py`` records a near-miss where that cut
+# was nearly made on a guessed bore depth. So every style except "mound" is a decision to SHOW
+# bare shaft, and has to be judged with the knob on: scripts/dev/section_encoder.py draws exactly
+# that gap, and ``knob.knob_seating_report()`` prints it for the live style.
+#
+# Every style is therefore either a SEALED ring deliberately wider than the knob, or a treatment
+# of the deck AROUND it. Styles:
+#
+#   "mound"      — the original ogee plateau (today's geometry; the default until one is chosen)
+#   "ring"       — F6: sealed circular bezel, vertical wall, hard 0.8 top chamfer, NO foot groove
+#   "ring_bevel" — F5: THE SAME COLLAR with a 0.6 × 1.0 shadow groove at its foot
+#
+# Those two started as different rings — E was a plain chamfered cylinder, F a band that was all
+# bevel (1.5) with a groove under it. They CONVERGED during the K round, which re-picked the
+# diameter and replaced F's 1.5 bevel with the same plain 0.8 chamfer E already had. Since then the
+# only thing separating them is the groove, which is exactly the F5/F6 question, so they are
+# labelled by those panels rather than by their original letters. Anything that reopens the bevel
+# on one of them has to say what the other should do — see the guard in tests/test_encoder_styles.
+#   "two_step"   — L: same ring on a lower 0.8 mm tier, so it reads as two thin concentric rings
+#   "reveal"     — G: no proud material; aperture opened to ENCODER_REVEAL_DIA. Drawn to turn a
+#                  hairline round an Ø18 knob into a deliberate 1 mm reveal; against the real Ø13
+#                  knob the aperture is already a 2.6 mm/side opening, so this style now only
+#                  widens a gap that was never a hairline. Kept for the record, not recommended.
+#   "engraved"   — H: no proud material; a puzzle-stroke-section groove CIRCLE round the knob
+#   "strokes"    — I: no proud material; puzzle line A continued across the deck, the knob
+#                  interrupting it — the same line the canopy roofs carry, not a copy of it
+#   "racetrack"  — J: a low capsule pad running from south of the encoder up to the canopy ramp
+#                  toe, so knob-pad-ramp read as one form at 1.2 mm tall
+#   "plinth"     — a rounded-SQUARE skin hugging the square cavity, morphing to a small circular
+#                  top that tucks under the knob. The answer to "the ring under the knob is too
+#                  large": the ring was large because a circle has to span square corners. See the
+#                  plinth block below.
+#
+# NB "strokes" only has a line to continue on the RIGHT half. Puzzle line A passes 6.10 mm from
+# the encoder centre there; on the LEFT half the nearest line is 26.1 mm away (the MCU is flipped,
+# so the canopy — and its strokes — sit elsewhere). ``case._stroke_grooves`` skips the half where
+# no line comes near rather than cutting a stray groove across bare deck.
+# F6: the K1 collar with the foot groove removed. What shipped before this was a MIX of two
+# rounds — K1's diameter carrying F5's groove — because the groove constants were adopted in the F
+# round and never revisited when K re-picked the ring. "mound" is the old ogee plateau.
+ENCODER_COVER_STYLE = "plinth"
+
+# --- Aperture (used by every non-sealed style) ---
+ENCODER_APERTURE_DIA = 18.2      # mm; clears the window's real 17.91 corners by 0.14 (the 18.04
+                                 # figure this was sized against was itself stale). The floor is
+                                 # the EC11 body, Ø17.54 across ITS corners, so this cannot be
+                                 # closed down to the Ø13 knob — the annulus is unavoidable here.
+ENCODER_APERTURE_CHAMFER = 0.5   # mm; lip chamfer, cut as a CONE (no post-fuse edge hunting)
+ENCODER_REVEAL_DIA = 20.0        # mm; "reveal" style. Was "1.0 mm of dark ring outside an Ø18
+                                 # knob"; against Ø13 it is 3.5 mm/side, and 1.05 mm outside the
+                                 # window's own corners. The number is unchanged, the claim is not.
+
+# --- Sealed ring (E / F / L) ---
+# A circular bezel is thinnest where its cavity corners come closest to the outside, and that is
+# what sets the diameter: the cavity must land on solid cover OUTSIDE the Ø17.91 window, so its
+# corners are ROUNDED to pull them back in. Without that rounding Ø20 leaves 0.45 mm of wall.
+ENCODER_RING_CAVITY_R = 1.5      # mm; plan rounding of the cavity
+ENCODER_RING_ROOF = 1.5          # mm; closed roof over the encoder body
+ENCODER_RING_BOX_CLEAR = 0.1     # mm; roof underside above ENCODER_OBSTRUCTION_TOP_Z
+# Measured off the LEG, not the box top. Sized off the box top this came out at 2.6 mm and the roof
+# sat 0.7 mm inside the encoder's locating leg — a hard clash with a metal part, caught by
+# tests/test_canopy.py::test_cover_clears_the_encoder_body once the ring was switched on. The
+# brainstorm's "2.6 mm — the sealed minimum" was a minimum against the wrong obstruction.
+ENCODER_RING_SEALED_MIN = (ENCODER_OBSTRUCTION_TOP_Z + ENCODER_RING_BOX_CLEAR
+                           + ENCODER_RING_ROOF - COVER_TOP_Z)     # 3.4 mm; roof clears the leg
+# ...but the minimum is not what gets built. A bezel that stops short of ENCODER_PLATEAU_H leaves
+# bare Ø6 shaft under the knob, because the knob's hem is fixed by its own bore and does not come
+# down to meet a shorter bezel. PLATEAU_H is not a styling number — it is the SEATING datum, the
+# height at which a bezel top lands KNOB_HEM_CLEAR under the hem's bottomed rest. So the sealed
+# ring is built to it too, and the two bezels top out at the same Z for the same reason.
+#
+# constants cannot import ``knob`` to prove that (knob imports this module), so the tie is enforced
+# in tests/test_encoder_styles.py::test_plateau_height_is_the_knob_seating_datum instead. If that
+# test fails, this constant is the thing that has to move.
+ENCODER_RING_PROUD = max(ENCODER_RING_SEALED_MIN, ENCODER_PLATEAU_H)   # 4.5 mm
+assert ENCODER_RING_PROUD >= ENCODER_RING_SEALED_MIN, (
+    "the ring's roof would sit inside the encoder's tallest obstruction")
+# The ring is dimensioned from its TOP FACE. With the large knob first assumed, that face could be
+# tucked UNDER the knob and the two read as one turned part. The actual knob is Ø13 × 17, and Ø13
+# is SMALLER THAN THE ENCODER: the plate window is Ø17.91 across its corners and the roof has to
+# span cavity corners at r 8.90, so the smallest ring that can carry a roof at all is ~Ø16.5 at the
+# top. The bezel therefore CANNOT hide — it is a visible concentric collar, and the honest design
+# goal becomes making it the smallest, most deliberate collar available rather than a hidden one.
+# At the shipped Ø19.5 foot that collar shows 3.25 mm per side beyond the knob. It stands 4.5 mm
+# proud — the seating datum, not its 3.4 mm structural minimum — so the knob's hem rests 0.5 above
+# it with no shaft cut. Buying that costs the ring 1.1 mm of height it does not structurally need,
+# which is the trade: a taller collar, or bare shaft on show.
+#
+# TWO walls have to survive, and they bind at different diameters:
+#   • at the FOOT the cavity is full width, so the base needs r ≥ 8.92 + 0.8 → base ≥ Ø19.44;
+#   • at the CAVITY CEILING the bevel has flared out, so a smaller top face is allowed.
+# Checking only the second is how a Ø18.10 base first got through here — 0.13 mm of wall at four
+# points down the whole ring.
+#
+# Shipped: the minimum-footprint option — a vertical wall on a Ø19.5 foot with a single 0.8
+# chamfer, K1 on docs/encoder-illustration/k_sheet.png. Two alternatives, both built and rendered
+# on that same sheet:
+#   26.6° house-angle cone : top Ø17.94, base Ø20.54   (shows 2.47 / 3.77 per side)
+#   45° cone to the deck   : top Ø16.44, base Ø21.64   (shows 1.72 / 4.32 per side)
+#
+# The FOOT is a separate decision from the diameter, settled on an earlier sheet
+# (docs/encoder-illustration/f_sections.png): F5 cut a 0.6 × 1.0 shadow groove where the collar
+# meets the deck, F6 left it plain. F6 ships. Note both sheets were drawn against the wrong knob
+# (Ø18 on F, Ø17 on K) — that misled the DIAMETER reasoning, which K1 and the Ø13 correction have
+# since resettled, but it does not bear on the groove: the groove is read against the deck, not
+# against the knob.
+ENCODER_RING_TOP_DIA = 17.9      # mm; Ø19.5 foot less the chamfer
+ENCODER_RING_BEVEL_RUN = 0.8     # mm horizontal
+ENCODER_RING_BEVEL_DROP = 0.8    # mm vertical → a 45° chamfer on an otherwise vertical wall
+ENCODER_RING_BASE_DIA = ENCODER_RING_TOP_DIA + 2 * ENCODER_RING_BEVEL_RUN   # 19.50
+# The wall that carries the roof is measured at the CAVITY CEILING, not at the top face: the
+# cavity stops ENCODER_RING_ROOF below the top, and the bevel has flared out by then.
+#
+#     wall = TOP_DIA/2 + ROOF × (RUN / DROP) − 8.92
+#
+# There is no fit margin against the knob any more — the knob is smaller than the ring, so nothing
+# has to be undersized to stay hidden. What matters instead is that the collar stays CONCENTRIC and
+# minimal; a wider ring is pure visible mass.
+# THE SHIPPED COLLAR'S OWN EDGE. "ring"/"two_step" build their top face as
+# ENCODER_RING_BASE_DIA − 2 × this, which lands back on ENCODER_RING_TOP_DIA *only because this
+# equals ENCODER_RING_BEVEL_RUN*. That was a harmless coincidence while "ring" was an also-ran;
+# with F6 shipping it is load-bearing, so the two must stay equal unless the styles are being
+# deliberately separated — and if they are, both diameters need re-deciding, not just one.
+ENCODER_RING_CHAMFER = 0.8       # mm; symmetric 45° top edge
+# The F5 groove. Kept wired up, and "ring_bevel" kept alongside "ring", so the F5/F6 comparison
+# stays reproducible from scripts/dev/build_encoder_variant.py rather than only from a stale PNG.
+ENCODER_RING_FOOT_GROOVE_H = 1.0  # mm tall shadow groove at the foot
+ENCODER_RING_FOOT_GROOVE_D = 0.6  # mm deep
+assert ENCODER_RING_BEVEL_DROP <= ENCODER_RING_PROUD, (
+    "bevel drop is taller than the ring — it would eat into the deck")
+# "two_step": a lower tier under the ring. The sealed roof cannot come DOWN (the box fixes it at
+# 2.6 proud), so the second step is added below instead — the ring keeps its height but the eye
+# reads two 0.8-ish bands rather than one 2.6 mm wall.
+ENCODER_STEP_DIA = 22.5          # mm; lower tier outer
+ENCODER_STEP_H = 0.8             # mm proud
+ENCODER_STEP_CHAMFER = 0.4       # mm; lower tier top edge
+
+# The cavity is built in ``case._encoder_ring`` from the REAL plate-window bbox, so the guard has
+# to use the same figures or it guards the wrong ring. 12.716 × 12.616 is that bbox (gerber-derived
+# via ``case._encoder_bbox``); tests/test_encoder_styles.py pins these two against it, because the
+# 12.7 stand-in used here before was a rounded guess that quietly made the guard 0.02 pessimistic.
+_ENC_WINDOW_W, _ENC_WINDOW_H = 12.716, 12.616
+_cav_half_x = (_ENC_WINDOW_W + 2 * ENCODER_SHELL_CAVITY_CLEAR) / 2
+_cav_half_y = (_ENC_WINDOW_H + 2 * ENCODER_SHELL_CAVITY_CLEAR) / 2
+_cav_corner_r = (((_cav_half_x - ENCODER_RING_CAVITY_R) ** 2
+                  + (_cav_half_y - ENCODER_RING_CAVITY_R) ** 2) ** 0.5) + ENCODER_RING_CAVITY_R
+_ring_corner_wall = ENCODER_RING_BASE_DIA / 2 - _cav_corner_r     # at the ring's FOOT
+assert _ring_corner_wall > 0.8, (
+    f"sealed ring leaves only {_ring_corner_wall:.2f} mm of wall at its cavity corners; "
+    f"raise ENCODER_RING_TOP_DIA or the bevel run")
+# The rounded cavity must still clear the EC11 body's own corners (body ~12.4 sq → r 8.77).
+assert _cav_corner_r > 8.85, (
+    f"cavity corner radius {_cav_corner_r:.2f} would clip the EC11 body's corners")
+# ...and the wall that carries the roof is measured at the CAVITY CEILING, not at the top face:
+# the cavity stops ENCODER_RING_ROOF below the top, and the bevel has flared out by then.
+_ring_wall_at_ceiling = (ENCODER_RING_TOP_DIA / 2
+                         + ENCODER_RING_ROOF * ENCODER_RING_BEVEL_RUN / ENCODER_RING_BEVEL_DROP
+                         - _cav_corner_r)
+assert _ring_wall_at_ceiling >= 0.8, (
+    f"ring leaves {_ring_wall_at_ceiling:.2f} mm of wall over the cavity corners; open the bevel "
+    f"(raise RUN/DROP) or widen ENCODER_RING_TOP_DIA")
+
+# --- Square plinth with a circular top ("plinth") ---
+# WHY A CIRCLE HAS TO BE BIG HERE, AND A SQUARE DOES NOT.
+# The cavity is SQUARE. Its corners sit at r 8.90, so any roof over it must reach 8.90 + 0.8 in
+# every direction — and a CIRCLE that reaches that is Ø19.40 at the least. That is the whole of
+# why the sealed ring is Ø19.5: across the flats it carries ~3 mm/side of material solely to span
+# corners that lie somewhere else. A square skin hugs the square cavity instead, so the flats come
+# in to 15.12 while the corners barely move.
+#
+# The circular TOP needs one further move. The cavity only has to be full-size up to the encoder's
+# locating leg (ENCODER_OBSTRUCTION_TOP_Z); above that the only occupant is the Ø6 shaft. Stepping
+# the cavity down to the shaft bore at ENCODER_PLINTH_STEP_Z frees the top to be small enough to
+# tuck under the knob — which is the thing the whole sealed-ring round concluded was impossible,
+# and it was impossible only while the cavity ran full-height.
+#
+#   Z 20.90  ----  Ø12.5 circular top       tucks TOP_TUCK/side under the Ø13 knob
+#                   \    lofted morph
+#   Z 19.80  ------  15.12 × 15.02 rounded square, plan R1.2
+#                    |   roof over the cavity
+#   Z 18.30  --------+   cavity steps in to the shaft bore
+#   Z 16.40  --------+   deck                proud 4.5 = the seating datum
+#
+# The morph is 45° ACROSS THE FLATS ONLY. At the corners the section runs r 10.24 → 6.46 in the
+# same 1.1 mm, about 74° from vertical — unavoidable when a square becomes a circle in a fixed
+# height, and the height IS fixed (the roof cannot start lower, the top cannot rise higher). It is
+# tolerable because every section shrinks going up, so the bezel is self-supporting printed
+# bezel-up and has no overhang at all; tests/test_encoder_styles.py pins that monotonicity rather
+# than leaving it as a claim in a comment.
+ENCODER_PLINTH_WALL = 0.8        # mm; skin past the cavity — this is what sets the flats
+# THE CAVITY IS SQUARE. Rounding a CONCAVE corner puts material back INTO it, straight at the
+# corners of the square steel box the cavity exists to clear — which is how the mound once came to
+# sit on the encoder and hold the whole TOP off the switch plate. The sealed ring rounds its cavity
+# at R1.5 on purpose (it needs the corners pulled in or its own circular wall knife-edges), and
+# that leaves only 0.133 mm to the body's corners. A square cavity gives 0.754. FDM also rounds
+# internal corners slightly on its own, so the printed corner is always tighter than the model —
+# 0.13 of modelled clearance is not a margin, it is a coin toss.
+ENCODER_PLINTH_CAVITY_R = 0.0    # mm; square, deliberately — NOT ENCODER_RING_CAVITY_R
+ENCODER_PLINTH_CORNER_R = 0.8    # mm; plan rounding of the OUTER skin. Capped by the corner-wall
+                                 # assert below: past ENCODER_PLINTH_WALL the skin's corner arc
+                                 # starts cutting inside the square cavity's corner point, and at
+                                 # the 1.2 first chosen here the wall fell to 0.64. The flats do
+                                 # not move with this number — only the corners do.
+ENCODER_PLINTH_ROOF = ENCODER_RING_ROOF          # one roof thickness for both sealed bezels
+ENCODER_PLINTH_STEP_Z = ENCODER_OBSTRUCTION_TOP_Z + ENCODER_RING_BOX_CLEAR   # 18.30
+ENCODER_PLINTH_SHOULDER_Z = ENCODER_PLINTH_STEP_Z + ENCODER_PLINTH_ROOF      # 19.80; morph starts
+ENCODER_PLINTH_TOP_Z = COVER_TOP_Z + ENCODER_PLATEAU_H                       # 20.90; seating datum
+# The top is dimensioned FROM THE KNOB, because tucking under it is the requirement and the morph
+# angle is merely what falls out. A true 45° morph would land it at Ø12.92 — 0.04 mm/side inside a
+# Ø13 knob, which is not a tuck at any FDM tolerance. constants cannot import ``knob`` (knob imports
+# this module), so the number is a literal here and
+# tests/test_encoder_styles.py::test_the_plinth_top_tucks_under_the_knob ties it back to KNOB_OD.
+ENCODER_PLINTH_TOP_TUCK = 0.25   # mm/side inside the knob's outline
+ENCODER_PLINTH_TOP_DIA = 12.5    # mm; = KNOB_OD − 2 × TOP_TUCK
+
+_plinth_half_x = _cav_half_x + ENCODER_PLINTH_WALL
+_plinth_half_y = _cav_half_y + ENCODER_PLINTH_WALL
+_plinth_corner_r = (((_plinth_half_x - ENCODER_PLINTH_CORNER_R) ** 2
+                     + (_plinth_half_y - ENCODER_PLINTH_CORNER_R) ** 2) ** 0.5
+                    + ENCODER_PLINTH_CORNER_R)
+# The thinnest wall is NOT measured along the diagonal. With a square cavity inside a rounded skin
+# the binding point is the cavity's corner POINT against the skin's corner ARC: while the arc
+# radius stays within ENCODER_PLINTH_WALL the nearest skin material is on a flat and the wall is
+# simply the wall, and only past that does the arc start biting in. Measuring diagonally instead
+# understates it by ~0.5 mm and would have rejected geometry that is fine.
+_plinth_corner_wall = (
+    ENCODER_PLINTH_WALL if ENCODER_PLINTH_CORNER_R <= ENCODER_PLINTH_WALL
+    else ENCODER_PLINTH_CORNER_R - (ENCODER_PLINTH_CORNER_R - ENCODER_PLINTH_WALL) * 2 ** 0.5)
+assert _plinth_corner_wall >= ENCODER_PLINTH_WALL, (
+    f"skin rounding R{ENCODER_PLINTH_CORNER_R} cuts the wall at the cavity's corner points to "
+    f"{_plinth_corner_wall:.2f} mm (need {ENCODER_PLINTH_WALL}); crisper skin corners, or a "
+    f"wider ENCODER_PLINTH_WALL")
+# The square cavity has to clear the EC11 body's own corners with room to spare — this is the
+# regression that made a printed case unassemblable once.
+_plinth_cav_corner_r = ((_cav_half_x - ENCODER_PLINTH_CAVITY_R) ** 2
+                        + (_cav_half_y - ENCODER_PLINTH_CAVITY_R) ** 2) ** 0.5 + ENCODER_PLINTH_CAVITY_R
+assert _plinth_cav_corner_r - 8.768 > 0.5, (
+    f"plinth cavity corners reach r {_plinth_cav_corner_r:.2f}, only "
+    f"{_plinth_cav_corner_r - 8.768:.2f} mm clear of the EC11 body's corners")
+assert ENCODER_PLINTH_TOP_DIA / 2 > ENCODER_SHAFT_HOLE_DIA / 2 + ENCODER_PLINTH_ROOF - 0.5, (
+    "the circular top is too small to carry a wall around the shaft bore")
+assert ENCODER_PLINTH_SHOULDER_Z < ENCODER_PLINTH_TOP_Z, (
+    "no height left between the roof and the seating datum for the square→circle morph")
+
+# --- Cut-line styles (G / H / I): same section as the canopy's puzzle strokes ---
+ENCODER_GROOVE_W = 1.6           # mm; = CANOPY_PUZZLE_W
+ENCODER_GROOVE_DEPTH = 0.5       # mm; = CANOPY_PUZZLE_DEPTH. Cover is 1.0 thick → 0.5 left under
+assert ENCODER_GROOVE_DEPTH < COVER_THICKNESS - 0.3, "groove leaves too little cover membrane"
+ENCODER_GROOVE_CIRCLE_DIA = 22.0  # mm; centreline of the engraved circle ("engraved")
+ENCODER_STROKE_RUN = 16.0        # mm; how far the continued puzzle stroke runs each way ("strokes").
+                                 # 16 keeps its far end ~1.5 mm clear of the SW27 switch window —
+                                 # a stroke that crosses a window would just vanish into the hole.
+ENCODER_STROKE_KEEPOUT_R = 9.9   # mm; stroke stops here so the interruption is even instead of
+                                 #   being nibbled by the aperture. Was justified as "0.9 clear of
+                                 #   the Ø18 knob"; the knob is Ø13, so what this actually clears
+                                 #   is the Ø18.2 APERTURE, by 0.8 — which is the constraint that
+                                 #   mattered all along. Value unchanged, reason corrected.
+
+# --- Low pad (J) ---
+ENCODER_PAD_W = 22.0             # mm; capsule width
+ENCODER_PAD_H = 1.2              # mm proud. Was "holds the gap under an Ø18 knob to ~0.5"; with
+                                 # the real knob bottoming at Z 21.4 the gap here is 3.8 mm, and no
+                                 # pad height short of the mound's own 4.5 closes it. 1.2 is now
+                                 # purely the pad's own read against the ramp, not a seating figure.
+ENCODER_PAD_CHAMFER = 0.8        # = TOP_CHAMFER, the deck's own edge treatment
+ENCODER_PAD_SOUTH = 14.0         # mm; how far south of the encoder centre the capsule runs. Must
+                                 # leave the capsule LONGER than it is wide (the ramp toe is only
+                                 # 9.8 mm north of centre, so the length has to be bought southward)
+                                 # and still clear the SW26 window 26.9 mm south — 14.0 gives 24 mm
+                                 # of length against 22 mm of width, with ~5.9 mm of deck to SW26.
+
 
 # ---------- Standoff geometry ----------
 STANDOFF_OD_LOWER  = 5.5   # PCB-seat shoulder OD

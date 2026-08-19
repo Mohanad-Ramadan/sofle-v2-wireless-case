@@ -58,7 +58,10 @@ PIN_W = 0.8
 # short of ENCODER_CAVITY_TOP_Z, so this 0.8 mm leg has 0.8 mm to spare — no collision, purely
 # cosmetic accuracy for the phantom.
 LEG_W = 1.0            # mm; square post, tiny — no listing/datasheet reference, just calipers
-LEG_H = 0.8            # mm; above the body top
+LEG_H = C.ENCODER_LEG_H   # mm; above the body top. Single-sourced from constants because it is a
+                          # CLEARANCE datum, not just a phantom detail: a sealed bezel's roof is
+                          # sized off it. When it lived only here, the ring was sized off the box
+                          # top instead and buried the leg by 0.7 mm.
 
 SHAFT_TOP_Z = BODY_TOP_Z + SHAFT_LEN       # 37.0 with the assumed 20 mm
 BUSHING_TOP_Z = BODY_TOP_Z + BUSHING_H     # 22.0

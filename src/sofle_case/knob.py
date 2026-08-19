@@ -147,9 +147,20 @@ def knob_seating_report() -> str:
         return (f"{head} | BORE TOO DEEP: the knob bottoms {knob_hem_z() - knob_hem_z_if_bottomed():.2f}"
                 f" mm inside the Ø{E.BUSHING_DIA} bushing, so it lands on the collar. Cutting the "
                 f"shaft cannot fix this")
-    return (f"{head} | shaft trim needed {shaft_trim_needed():.2f} mm "
-            f"({E.SHAFT_LEN} → {shaft_len_for_seating():.2f}) | bare shaft on show above the ring "
-            f"top ({cover_feature_top_z():.2f}): {knob_hem_z() - cover_feature_top_z():.2f} mm")
+    # Two gaps, and only one of them is what you look at. The design gap is KNOB_HEM_CLEAR by
+    # construction whenever the cover is the floor, so quoting it alone says nothing — it read
+    # "0.50 mm" for a cover-side style that actually leaves 2.40 mm of bare shaft showing. What is
+    # ON SHOW is measured from the hem where the knob ACTUALLY lands, which is the bottomed one
+    # until somebody takes a saw to the shaft.
+    feature_z = cover_feature_top_z()
+    trim = shaft_trim_needed()
+    on_show = knob_hem_z_if_bottomed() - feature_z
+    tail = (f"as-assembled bare shaft above the cover feature ({feature_z:.2f}): {on_show:.2f} mm")
+    if trim > 0:
+        tail += (f" — closing it to the {KNOB_HEM_CLEAR} design gap means cutting {trim:.2f} mm "
+                 f"off the shaft ({E.SHAFT_LEN} → {shaft_len_for_seating():.2f}), which is "
+                 f"one-way")
+    return f"{head} | shaft trim needed {trim:.2f} mm | {tail}"
 
 
 def build_knob_phantom(bottomed: bool = False) -> Part:

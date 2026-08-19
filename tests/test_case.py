@@ -268,10 +268,15 @@ def test_top_screw_holes_open():
 
 def test_encoder_bezel_is_hollow_shell():
     """The encoder bezel must be a HOLLOW cap, not a solid block: its cavity
-    clears the 12 mm EC11 box, the roof is closed, and only the shaft hole is open."""
+    clears the 12 mm EC11 box, the roof is closed, and only the shaft hole is open.
+
+    Probes ``_encoder_shell`` itself rather than the built TOP. The mound is now one of several
+    ``ENCODER_COVER_STYLE`` options, so the built TOP only carries it when that style is live —
+    and a test of the MOUND'S SHAPE should not pass or fail on which style is currently chosen.
+    ``test_the_mound_style_fuses_exactly_the_shell`` below is what ties the two back together."""
     from build123d import Solid
-    from sofle_case.case import _encoder_bbox
-    top = build_top_part("right")
+    from sofle_case.case import _encoder_bbox, _encoder_shell
+    top = _encoder_shell()
     enc_cx, enc_cy, _, _ = _encoder_bbox()
 
     # Cavity is hollow where the encoder box sits (5 mm off-centre, box level).
@@ -294,10 +299,15 @@ def test_encoder_bezel_is_hollow_shell():
 def test_encoder_bezel_base_is_plateau_not_box():
     """The plateau leaves the cover as a tangent ogee: the concave foot flares out
     wider than the straight wall. Probe just beyond the wall — solid at the foot
-    (bulge), empty at the straight mid-wall."""
+    (bulge), empty at the straight mid-wall.
+
+    On ``_encoder_shell`` directly, for the reason given in
+    ``test_encoder_bezel_is_hollow_shell``: this is a test of the mound's profile, not of which
+    style the cover happens to be wearing. Against the built TOP under a sealed-ring style it
+    failed on the ring's own vertical wall, which is not a defect — it is a different bezel."""
     from build123d import Solid
-    from sofle_case.case import _encoder_bbox
-    top = build_top_part("right")
+    from sofle_case.case import _encoder_bbox, _encoder_shell
+    top = _encoder_shell()
     enc_cx, enc_cy, bw, _ = _encoder_bbox()
     wall_half = bw / 2 + C.ENCODER_SHELL_CAVITY_CLEAR + C.ENCODER_SHELL_WALL
     # Just past the straight wall — only the flared foot reaches this radius.
@@ -310,6 +320,18 @@ def test_encoder_bezel_base_is_plateau_not_box():
     mid_z = (C.COVER_TOP_Z + C.ENCODER_CAVITY_TOP_Z) / 2
     wall = Solid.make_box(0.4, 0.4, 0.3).translate((probe_x, enc_cy, mid_z))
     assert (top & wall).volume < 1e-4, "straight wall as wide as the foot — no ogee flare"
+
+
+def test_the_mound_style_fuses_exactly_the_shell(monkeypatch):
+    """The join between the two tests above and the built part: under ``ENCODER_COVER_STYLE``
+    "mound", what lands on the TOP is ``_encoder_shell`` and nothing else."""
+    from sofle_case.case import apply_encoder_cover_style, _encoder_shell
+    from sofle_case import constants as CC
+    monkeypatch.setattr(CC, "ENCODER_COVER_STYLE", "mound")
+    shell = _encoder_shell()
+    base = build_top_part("right")
+    assert apply_encoder_cover_style(base).volume == pytest.approx(
+        (base + shell).volume, rel=1e-9)
 
 
 def test_encoder_window_matches_the_plateau_cavity():
