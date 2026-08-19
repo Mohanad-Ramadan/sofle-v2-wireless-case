@@ -275,3 +275,32 @@ def test_the_plinth_is_smaller_than_the_ring_it_replaces():
         assert extent < C.ENCODER_RING_BASE_DIA, (
             f"plinth is {extent:.2f} across {axis}, no tighter than the Ø"
             f"{C.ENCODER_RING_BASE_DIA} ring")
+
+
+def test_the_cavity_corner_has_room_for_the_printed_fillet_without_a_dogbone():
+    """Why there are no corner reliefs here, recorded so the question does not get reopened blind.
+
+    FDM cannot print a sharp internal corner: the nozzle leaves a fillet, so the printed cavity
+    corner always carries material the model does not. The usual answer is a dog-bone relief. This
+    cavity does not need one — squaring it left 0.754 mm at the corners, and a 0.4 mm printed
+    fillet intrudes only 0.166 mm along the diagonal.
+
+    A dog-bone would also not be free. The skin's corner arc is centred on the cavity's corner
+    point (skin R equals the wall), so the wall there is a uniform annulus and a relief eats it
+    1:1 — r0.3 would take it to 0.5, under the minimum, unless the flats grow by the same amount
+    and give back part of what the square skin won.
+
+    If the cavity clearance ever drops toward the printed-fillet intrusion, this fails and the
+    relief question genuinely reopens."""
+    _, _, bw, bh = CA._encoder_bbox()
+    clr = C.ENCODER_SHELL_CAVITY_CLEAR
+    corner_clear = (math.hypot((bw + 2 * clr) / 2, (bh + 2 * clr) / 2)
+                    - math.hypot(E.BODY_W / 2, E.BODY_W / 2))
+    worst_fillet = 0.4 * (math.sqrt(2) - 1)          # a 0.4 mm printed radius, along the diagonal
+    assert corner_clear > 3 * worst_fillet, (
+        f"corner clearance {corner_clear:.3f} mm is no longer comfortably clear of the "
+        f"{worst_fillet:.3f} mm a printed fillet intrudes — a dog-bone relief may now be needed")
+    # And the wall really is the uniform annulus the argument above depends on.
+    assert C.ENCODER_PLINTH_CORNER_R == pytest.approx(C.ENCODER_PLINTH_WALL), (
+        "the skin's corner arc is no longer centred on the cavity's corner point, so the "
+        "dog-bone cost argument in this test no longer holds")
