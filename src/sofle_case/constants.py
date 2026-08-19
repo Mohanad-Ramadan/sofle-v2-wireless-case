@@ -1,4 +1,5 @@
 """All dimensions in mm. Single source of truth for the case geometry."""
+import math as _math
 import math
 from typing import NamedTuple
 
@@ -918,6 +919,24 @@ ENCODER_PLINTH_TOP_Z = COVER_TOP_Z + ENCODER_PLATEAU_H                       # 2
 ENCODER_PLINTH_TOP_TUCK = 0.25   # mm/side inside the knob's outline
 ENCODER_PLINTH_TOP_DIA = 12.5    # mm; = KNOB_OD − 2 × TOP_TUCK
 
+# THE WHOLE WALL IS THE CHAMFER. There is no vertical stretch: the skin runs as one straight taper
+# from the shoulder down to the deck, so the bezel is a square frustum standing in the cover rather
+# than a box with a broken edge. A 0.8 mm foot chamfer was tried first and was too small to read at
+# all against a 3.4 mm wall.
+#
+# The taper only flares OUTWARD. The shoulder section is fixed — it is what carries the roof, at
+# exactly ENCODER_PLINTH_WALL over the cavity — so the angle can only add material below it, and
+# the section merely gets thicker on the way down. No new wall risk anywhere.
+#
+# One number sets the shape. The flare follows from it and the wall height, and every derived
+# figure and guard below reads the flare, so trying another angle is a one-line change.
+ENCODER_PLINTH_TAPER_DEG = 26.6   # degrees from vertical. 45 (run == rise) was tried and read
+                                  # far too broad — it put the foot at 21.92, wider than the
+                                  # Ø19.5 collar this shape exists to beat. 26.6° is the angle
+                                  # the K-round sheets and _encoder_ring's docstring both call
+                                  # "the case's own"; no constant defines it, so that is a
+                                  # convention in prose rather than something enforced.
+
 _plinth_half_x = _cav_half_x + ENCODER_PLINTH_WALL
 _plinth_half_y = _cav_half_y + ENCODER_PLINTH_WALL
 _plinth_corner_r = (((_plinth_half_x - ENCODER_PLINTH_CORNER_R) ** 2
@@ -942,6 +961,29 @@ _plinth_cav_corner_r = ((_cav_half_x - ENCODER_PLINTH_CAVITY_R) ** 2
 assert _plinth_cav_corner_r - 8.768 > 0.5, (
     f"plinth cavity corners reach r {_plinth_cav_corner_r:.2f}, only "
     f"{_plinth_cav_corner_r - 8.768:.2f} mm clear of the EC11 body's corners")
+_plinth_taper_flare = ((ENCODER_PLINTH_SHOULDER_Z - COVER_TOP_Z)
+                       * _math.tan(_math.radians(ENCODER_PLINTH_TAPER_DEG)))
+_plinth_foot_half_x = _plinth_half_x + _plinth_taper_flare
+_plinth_foot_half_y = _plinth_half_y + _plinth_taper_flare
+# WHAT ACTUALLY BOUNDS THE FLARE: the neighbouring plate windows. Two earlier bounds were both
+# wrong and both were proxies rather than the real thing.
+#
+#   • the canopy's ramp toe is NOT a wall. It is at deck level where it meets the encoder and
+#     climbs very slowly (0.00 proud at +9.0 and +9.5, 0.10 at +10.5, 0.60 at +12.0, measured on
+#     the built TOP), and canopy.CANOPY_ENCODER_OVERLAP shows the canopy's foot is *designed* to
+#     overlap the encoder plateau so the two fuse without an open strip. A guard asserting 0.3 mm
+#     of clearance to it was measuring against nothing;
+#   • the mound's lid-stub was a stand-in for "plan area known to be safe", not a limit.
+#
+# The nearest plate-window edge is 14.30 mm from the encoder centre (+X), measured by walking
+# _load_plate_cutouts() in case coords; tests/test_encoder_styles.py recomputes it rather than
+# trusting this number.
+ENCODER_PLINTH_NEIGHBOUR_GAP = 14.30   # mm; encoder centre → nearest other plate-window edge
+assert _plinth_foot_half_x < ENCODER_PLINTH_NEIGHBOUR_GAP - 1.0, (
+    f"a {ENCODER_PLINTH_TAPER_DEG}° taper flares the foot to {_plinth_foot_half_x:.2f} from the "
+    f"encoder centre, too close to the nearest plate window at "
+    f"{ENCODER_PLINTH_NEIGHBOUR_GAP}; shallow the taper")
+assert _plinth_taper_flare > 0, "a taper of zero leaves the raw 90° butt joint this replaced"
 assert ENCODER_PLINTH_TOP_DIA / 2 > ENCODER_SHAFT_HOLE_DIA / 2 + ENCODER_PLINTH_ROOF - 0.5, (
     "the circular top is too small to carry a wall around the shaft bore")
 assert ENCODER_PLINTH_SHOULDER_Z < ENCODER_PLINTH_TOP_Z, (

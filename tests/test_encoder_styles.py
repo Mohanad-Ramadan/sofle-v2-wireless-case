@@ -242,6 +242,34 @@ def test_the_plinth_top_tucks_under_the_knob():
     assert C.ENCODER_PLINTH_TOP_DIA < K.KNOB_OD
 
 
+def test_the_whole_plinth_wall_is_one_straight_taper():
+    """No vertical stretch: the skin runs as a single constant slope from the deck to the shoulder.
+
+    Measured as a SLOPE at several heights rather than by hunting a face, and parameterised on
+    ENCODER_PLINTH_TAPER_DEG so trying another angle does not mean rewriting the test. Sampling the
+    whole wall (not just the ends) is what proves the taper is continuous — a chamfer at one end
+    with a vertical stretch above it would pass an endpoints-only check, and that is exactly the
+    shape this replaced."""
+    cx, cy, _, _ = CA._encoder_bbox()
+    plinth = CA._encoder_plinth(cx, cy)
+    want = 2 * math.tan(math.radians(C.ENCODER_PLINTH_TAPER_DEG))
+
+    def width_at(z):
+        sect = plinth & Solid.make_box(60, 60, 0.02).translate((cx - 30, cy - 30, z))
+        bb = sect.bounding_box()
+        return bb.max.X - bb.min.X
+
+    zs = [C.COVER_TOP_Z + 0.1 + k * 0.5 for k in range(7)]
+    for lo, hi in zip(zs, zs[1:]):
+        slope = (width_at(lo) - width_at(hi)) / (hi - lo)
+        assert slope == pytest.approx(want, abs=0.02), (
+            f"between Z {lo:.2f} and {hi:.2f} the wall slopes {slope:.3f} per mm, not {want:.3f} — "
+            f"the taper is not constant over the whole wall")
+    assert width_at(C.COVER_TOP_Z + 0.01) == pytest.approx(2 * C._plinth_foot_half_x, abs=0.05)
+    assert width_at(C.ENCODER_PLINTH_SHOULDER_Z - 0.01) == pytest.approx(
+        2 * C._plinth_half_x, abs=0.05)
+
+
 def test_the_plinth_only_ever_shrinks_going_up():
     """THE self-support claim, held as a test rather than a comment.
 
@@ -265,16 +293,58 @@ def test_the_plinth_only_ever_shrinks_going_up():
         prev_w, prev_h = w, h
 
 
-def test_the_plinth_is_smaller_than_the_ring_it_replaces():
-    """The whole point. A circle has to span the SQUARE cavity's corners, so it wastes material
-    across its flats; a square skin does not. If this ever stops holding, the plinth has no reason
-    to exist over the simpler ring."""
-    cx, cy, _, _ = CA._encoder_bbox()
-    bb = CA._encoder_plinth(cx, cy).bounding_box()
-    for extent, axis in ((bb.max.X - bb.min.X, "X"), (bb.max.Y - bb.min.Y, "Y")):
-        assert extent < C.ENCODER_RING_BASE_DIA, (
-            f"plinth is {extent:.2f} across {axis}, no tighter than the Ø"
-            f"{C.ENCODER_RING_BASE_DIA} ring")
+def test_the_tapered_foot_clears_the_neighbouring_plate_windows():
+    """What actually bounds the flare — recomputed from the gerber-derived cutouts, not trusted
+    from a constant.
+
+    Two earlier bounds were both wrong, and both were proxies. The canopy's ramp toe is not a wall:
+    it sits at deck level where it meets the encoder and climbs very slowly, and
+    canopy.CANOPY_ENCODER_OVERLAP shows the canopy's foot is *designed* to overlap the encoder
+    plateau so the two fuse without an open strip — a guard asserting 0.3 mm of clearance to it was
+    measuring against nothing. The mound's lid-stub was a stand-in for "plan area known to be
+    safe", never a limit. The switch windows are the real constraint."""
+    ecx, ecy, _, _ = CA._encoder_bbox()
+    gaps = []
+    for cut in CA._load_plate_cutouts():
+        pts = [C.pcb_to_case(x, y) for x, y in cut]
+        mx = sum(q[0] for q in pts) / len(pts)
+        my = sum(q[1] for q in pts) / len(pts)
+        if math.hypot(mx - ecx, my - ecy) < 1.0:      # the encoder's own window
+            continue
+        xs = [q[0] for q in pts]
+        ys = [q[1] for q in pts]
+        gx = max(min(xs) - ecx, ecx - max(xs), 0.0)
+        gy = max(min(ys) - ecy, ecy - max(ys), 0.0)
+        gaps.append(math.hypot(gx, gy) if (gx and gy) else max(gx, gy))
+    nearest = min(gaps)
+    assert C.ENCODER_PLINTH_NEIGHBOUR_GAP == pytest.approx(nearest, abs=0.05), (
+        f"ENCODER_PLINTH_NEIGHBOUR_GAP says {C.ENCODER_PLINTH_NEIGHBOUR_GAP}, the cutouts say "
+        f"{nearest:.2f}")
+    assert max(C._plinth_foot_half_x, C._plinth_foot_half_y) < nearest - 1.0, (
+        f"the {C.ENCODER_PLINTH_TAPER_DEG}° taper reaches "
+        f"{max(C._plinth_foot_half_x, C._plinth_foot_half_y):.2f} from the encoder centre against "
+        f"a nearest window at {nearest:.2f}")
+
+
+def test_the_plinth_wall_hugs_the_cavity_more_tightly_than_a_circle_can():
+    """The reason this shape exists, stated where it is still true.
+
+    It was originally "the plinth is smaller than the ring everywhere", and at a 0° or small taper
+    it was. It is NOT any more: a 45° taper puts the foot at 21.92 against the ring's Ø19.5, wider
+    by choice — a slope reads lighter than a vertical collar of the same ground area, because the
+    eye follows it down into the deck instead of hitting a wall.
+
+    What survives, and is the actual argument for a square bezel, is the WALL: a circle carrying a
+    roof over this square cavity cannot come in under Ø19.40, because it has to span corners that
+    lie further out than its flats. The square shoulder does it at 15.12."""
+    assert C.ENCODER_RING_BASE_DIA >= 19.4, "the ring is no longer the roof-span-limited circle"
+    for extent, axis in ((2 * C._plinth_half_x, "X"), (2 * C._plinth_half_y, "Y")):
+        assert extent < C.ENCODER_RING_BASE_DIA - 3.0, (
+            f"the plinth's wall is {extent:.2f} across {axis}, no longer meaningfully tighter "
+            f"than the Ø{C.ENCODER_RING_BASE_DIA} a circle needs")
+
+
+# --- "plinth": rounded square at the deck, small circle at the top ---------------------------
 
 
 def test_the_cavity_corner_has_room_for_the_printed_fillet_without_a_dogbone():
