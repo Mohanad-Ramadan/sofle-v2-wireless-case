@@ -856,10 +856,16 @@ def _engraved_circle(enc_cx: float, enc_cy: float) -> Part:
 
 
 def _stroke_grooves(enc_cx: float, enc_cy: float, side: str) -> list[Part]:
-    """PUZZLE LINE A, continued across the deck with the knob standing on it.
+    """PUZZLE LINE A's BASELINE, continued across the deck with the knob standing on it.
 
     This is not a stroke that imitates the roof's: ``canopy_puzzle.line_in_canopy`` hands back the
-    same fitted line the canopy roofs are cut with. On the RIGHT half it passes 6.10 mm from the
+    same fitted line the canopy roofs' marks are drawn from. It is the BASELINE, though, not the
+    mark — the roofs are cut with that line plus the lateral profile, and this groove is straight.
+    Straight on purpose: the roof curve earns its bend from running across two splayed halves, and a
+    3 mm bow in a 13 mm stub under a knob would read as a wobble rather than as the same gesture.
+    It also keeps the deck groove's own width (``ENCODER_GROOVE_W``, still 1.6) legible where the
+    roof's 1.0 would read as a scratch across bare deck. On the RIGHT half the line passes 6.10 mm
+    from the
     encoder centre — inside the Ø13 knob's own 6.5 mm radius, so it genuinely runs under the knob
     and the knob interrupts it, the way each roof stroke runs off its edge and is picked up by the
     other half. The break is set by a keep-out CIRCLE, so the two stubs stop the same distance out

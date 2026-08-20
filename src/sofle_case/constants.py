@@ -989,8 +989,11 @@ assert ENCODER_PLINTH_TOP_DIA / 2 > ENCODER_SHAFT_HOLE_DIA / 2 + ENCODER_PLINTH_
 assert ENCODER_PLINTH_SHOULDER_Z < ENCODER_PLINTH_TOP_Z, (
     "no height left between the roof and the seating datum for the square→circle morph")
 
-# --- Cut-line styles (G / H / I): same section as the canopy's puzzle strokes ---
-ENCODER_GROOVE_W = 1.6           # mm; = CANOPY_PUZZLE_W
+# --- Cut-line styles (G / H / I): the canopy strokes' DEPTH, but not their width any more ---
+# The width diverged on purpose when the roof strokes became curves and narrowed to 1.0: a curve reads
+# as a line at 1.0 mm, a straight groove across bare deck does not — it reads as a scratch. These are
+# separate numbers now rather than a copied one, so neither can drift while pretending to agree.
+ENCODER_GROOVE_W = 1.6           # mm; deliberately NOT CANOPY_PUZZLE_W (1.0) — see above
 ENCODER_GROOVE_DEPTH = 0.5       # mm; = CANOPY_PUZZLE_DEPTH. Cover is 1.0 thick → 0.5 left under
 assert ENCODER_GROOVE_DEPTH < COVER_THICKNESS - 0.3, "groove leaves too little cover membrane"
 ENCODER_GROOVE_CIRCLE_DIA = 22.0  # mm; centreline of the engraved circle ("engraved")
