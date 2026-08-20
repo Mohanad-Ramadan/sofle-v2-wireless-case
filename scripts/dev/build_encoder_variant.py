@@ -72,12 +72,18 @@ def main(argv: list[str]) -> None:
                  f"shows past the Ø{K.KNOB_OD} knob {(base - K.KNOB_OD) / 2:.2f} all round")
     elif style == "plinth":
         fx, fy = 2 * C._plinth_half_x, 2 * C._plinth_half_y
-        shape = (f"square base {fx:.2f} x {fy:.2f} (plan R{C.ENCODER_PLINTH_CORNER_R}) -> "
+        bx, by = 2 * C._plinth_foot_half_x, 2 * C._plinth_foot_half_y
+        # Quote the FOOT as well as the wall. Reporting only the wall understated the footprint by
+        # 2 x the chamfer the moment the foot flare was added — the number a reader cares about is
+        # how much deck the bezel actually covers.
+        shape = (f"foot {bx:.2f} x {by:.2f} at the deck -{C.ENCODER_PLINTH_TAPER_DEG}° taper-> "
+                 f"shoulder {fx:.2f} x {fy:.2f} (plan R{C.ENCODER_PLINTH_CORNER_R}) -> "
                  f"round top Ø{C.ENCODER_PLINTH_TOP_DIA} | cavity steps in at Z"
                  f"{C.ENCODER_PLINTH_STEP_Z:.2f}, morph from Z{C.ENCODER_PLINTH_SHOULDER_Z:.2f} | "
                  f"corner wall {C._plinth_corner_wall:.2f} | "
-                 f"shows past the Ø{K.KNOB_OD} knob {(fx - K.KNOB_OD) / 2:.2f} at the flats, "
-                 f"{C._plinth_corner_r - K.KNOB_OD / 2:.2f} at the corners")
+                 f"shows past the Ø{K.KNOB_OD} knob {(bx - K.KNOB_OD) / 2:.2f} at the flats, "
+                 f"{C._plinth_corner_r + C._plinth_taper_flare - K.KNOB_OD / 2:.2f} "
+                 f"at the corners (measured at the foot)")
     elif style == "mound":
         shape = (f"ogee plateau: top Z{C.ENCODER_SHELL_TOP_Z:.2f}, "
                  f"foot R{C.ENCODER_BEZEL_FOOT_R} / top R{C.ENCODER_BEZEL_TOP_R}")

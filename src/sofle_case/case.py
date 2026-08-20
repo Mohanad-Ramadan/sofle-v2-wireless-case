@@ -856,10 +856,16 @@ def _engraved_circle(enc_cx: float, enc_cy: float) -> Part:
 
 
 def _stroke_grooves(enc_cx: float, enc_cy: float, side: str) -> list[Part]:
-    """PUZZLE LINE A, continued across the deck with the knob standing on it.
+    """PUZZLE LINE A's BASELINE, continued across the deck with the knob standing on it.
 
     This is not a stroke that imitates the roof's: ``canopy_puzzle.line_in_canopy`` hands back the
-    same fitted line the canopy roofs are cut with. On the RIGHT half it passes 6.10 mm from the
+    same fitted line the canopy roofs' marks are drawn from. It is the BASELINE, though, not the
+    mark — the roofs are cut with that line plus the lateral profile, and this groove is straight.
+    Straight on purpose: the roof curve earns its bend from running across two splayed halves, and a
+    3 mm bow in a 13 mm stub under a knob would read as a wobble rather than as the same gesture.
+    It also keeps the deck groove's own width (``ENCODER_GROOVE_W``, still 1.6) legible where the
+    roof's 1.0 would read as a scratch across bare deck. On the RIGHT half the line passes 6.10 mm
+    from the
     encoder centre — inside the Ø13 knob's own 6.5 mm radius, so it genuinely runs under the knob
     and the knob interrupts it, the way each roof stroke runs off its edge and is picked up by the
     other half. The break is set by a keep-out CIRCLE, so the two stubs stop the same distance out
@@ -1137,13 +1143,34 @@ def _encoder_plinth(enc_cx: float, enc_cy: float) -> Part:
 
     shoulder_z, top_z = C.ENCODER_PLINTH_SHOULDER_Z, C.ENCODER_PLINTH_TOP_Z
 
-    # Square prism, deck → shoulder. Starts at MAIN_RIM_Z so it bites into the cover membrane and
-    # fuses robustly, exactly as the mound and the ring do.
-    with BuildSketch() as sk:
-        RectangleRounded(out_w, out_h, C.ENCODER_PLINTH_CORNER_R)
-    base_face = cast(Face, sk.sketch.faces()[0].moved(
-        Location((enc_cx, enc_cy, C.MAIN_RIM_Z))))
-    body = cast(Part, extrude(base_face, amount=shoulder_z - C.MAIN_RIM_Z))
+    # Deck → shoulder as ONE straight taper. There is no vertical stretch: the whole wall is the
+    # chamfer, so the bezel is a square frustum standing in the cover rather than a box with a
+    # broken edge. A 0.8 mm foot chamfer was tried first and could not be seen against a 3.4 mm
+    # wall.
+    #
+    # BUILT, not hunted. Chamfering this after the bezel is fused into the lid is precisely what
+    # OCC cannot be relied on to do — the edge sits among the membrane's other faces (fuse margin,
+    # neighbouring windows), which is why the mound needs a lid-stub to give its foot fillet a
+    # clean local surface to roll onto. Same discipline as _encoder_ring's revolve and the
+    # shoulder→circle loft below.
+    flare = C._plinth_taper_flare
+    foot_w, foot_h = out_w + 2 * flare, out_h + 2 * flare
+    foot_r = C.ENCODER_PLINTH_CORNER_R + flare
+
+    def _rr(w, h, r, z):
+        with BuildSketch(Plane.XY.offset(z)) as _sk:
+            RectangleRounded(w, h, r)
+        return cast(Face, _sk.sketch.faces()[0])
+
+    # 1. buried skirt, MAIN_RIM_Z → deck, at the full foot section
+    body = cast(Part, extrude(
+        cast(Face, _rr(foot_w, foot_h, foot_r, 0.0).moved(
+            Location((enc_cx, enc_cy, C.MAIN_RIM_Z)))),
+        amount=C.COVER_TOP_Z - C.MAIN_RIM_Z))
+    # 2. the taper, deck → shoulder
+    taper = loft([_rr(foot_w, foot_h, foot_r, C.COVER_TOP_Z),
+                  _rr(out_w, out_h, C.ENCODER_PLINTH_CORNER_R, shoulder_z)])
+    body = cast(Part, body + cast(Part, taper.moved(Location((enc_cx, enc_cy, 0)))))
 
     # The morph. A LOFT between the square shoulder and the circular top, not a chamfer hunted on
     # the finished solid: there is no edge to chamfer between a square and a circle, and OCC's

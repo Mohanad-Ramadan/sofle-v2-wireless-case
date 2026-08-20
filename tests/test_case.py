@@ -397,10 +397,17 @@ def test_encoder_plateau_clears_the_ec11_body():
 def test_encoder_plateau_outer_corners_stay_rounded():
     """The radial filter that spared the CAVITY corners must not have spared the OUTER
     ones — the rounded-rectangle plan is the plateau's whole style, and a filter that
-    caught nothing would pass the clearance test above for the wrong reason."""
+    caught nothing would pass the clearance test above for the wrong reason.
+
+    Probes ``_encoder_shell`` itself, like the two bezel tests above, because this is a test of the
+    MOUND'S plan. Against the built TOP it was silently measuring whatever bezel happened to be
+    live: once the plinth shipped this probe sat in the plinth's wall, and it kept passing only
+    because the plinth's vertical wall was narrower than the mound's at that height. Tapering the
+    plinth moved material into the probe and the test failed — for the right reason, on the wrong
+    part."""
     from build123d import Solid
-    from sofle_case.case import _encoder_bbox
-    top = build_top_part("right")
+    from sofle_case.case import _encoder_bbox, _encoder_shell
+    top = _encoder_shell()
     ex, ey, bw, bh = _encoder_bbox()
     half_x = bw / 2 + C.ENCODER_SHELL_CAVITY_CLEAR + C.ENCODER_SHELL_WALL
     half_y = bh / 2 + C.ENCODER_SHELL_CAVITY_CLEAR + C.ENCODER_SHELL_WALL

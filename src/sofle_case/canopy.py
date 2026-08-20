@@ -34,15 +34,16 @@ fragile 3-D solid fillets. The slide finger-bowl (over on the −X wall) is hand
 and split cleanly into the TOP part by ``case``'s local seam step-down."""
 from __future__ import annotations
 import math
-from typing import cast
+from typing import Callable, Sequence, cast
 
 from build123d import (
-    Part, Face, Pos, Rot, Line, Polyline, Spline, make_face, extrude, fillet, chamfer, loft, Solid,
+    Part, Face, Pos, Line, Polyline, Spline, make_face, extrude, fillet, chamfer, loft, Solid,
     Plane, BuildPart, BuildSketch, BuildLine,
 )
 from OCP.Standard import Standard_Failure
 from . import constants as C
 from . import canopy_puzzle as PZ
+from .canopy_puzzle import Stroke
 
 # A sketch plane whose local axes map cleanly onto global (Y, Z) with the extrude normal along
 # +X: local-x = +Y, local-y = +Z. Built-in ``Plane.YZ`` negates/swaps these, so define it here.
@@ -197,13 +198,15 @@ CANOPY_USB_W        = C.USB_C_W + C.USB_PORT_W_CLEAR               # 11.0; port 
 # clamp the mouth degenerates to a stadium, which is still valid.
 CANOPY_USB_R        = 1.5
 # ---------------------------------------------------------------------------
-# Roof PUZZLE strokes — two straight lines drawn across the ASSEMBLED pair, each crossing both
-# canopies. The plan geometry (which line, at what angle, in whose frame) belongs to
-# ``canopy_puzzle``, which fitted it from the design sketch; this half of the job is cutting the
-# resulting segments into a surface that is flat for 40 mm and then tips over to 35.9°.
+# Roof PUZZLE strokes — two CURVES drawn across the ASSEMBLED pair, each crossing both canopies. The
+# plan geometry (which curve, at what angle, in whose frame) belongs to ``canopy_puzzle``, which
+# fitted the baseline from the design sketch; this half of the job is cutting the resulting
+# POLYLINES into a surface that is flat for 40 mm and then tips over to 35.9°. Polylines, not
+# segments: everything here reads a stroke as a sequence of points, so the shape of the mark and the
+# plumbing that carries it stay independent — a two-point stroke is just the degenerate case.
 #
-# A stroke CROSSES THE RAMP (left line 1; the right half's line 0 did too until it was trimmed to
-# its sketched half-chord), so depth cannot be measured vertically. The cutter is a
+# Two strokes CROSS THE RAMP (left line 1 and right line 0, the latter running its whole length),
+# so depth cannot be measured vertically. The cutter is a
 # footprint prism clipped against a NORMAL-offset copy of the roofline, which holds the depth
 # perpendicular to the surface on the flat roof and on the slope alike — the same construction that
 # built valid solids on both halves first time during the pattern trials.
@@ -212,8 +215,24 @@ CANOPY_USB_R        = 1.5
 # follows the roofline, so a groove eats that wall and nothing else. 0.5 leaves 1.0 mm, five layers
 # at 0.2. The assert is the point — it is why the depth is derived against CANOPY_ROOF_WALL rather
 # than written as a bare 0.5.
-CANOPY_PUZZLE_W        = 1.6      # groove width, as on the diagonal reveal this grew out of
-CANOPY_PUZZLE_DEPTH    = 0.5
+#
+# WIDTH is 1.0, down from the 1.6 the mark inherited from the diagonal reveal it grew out of. Two
+# reasons, one aesthetic and one measured. A curve reads as a drawn line at a narrower width than a
+# straight slot does — 1.6 mm of curve on an 18 mm strip reads as a channel — and the north exit is
+# scored against the groove's own width, so narrowing it is what buys the corner clearance: the
+# tilt-corrected NW-corner margin goes 0.36 → 0.66 mm. 1.0 is 2.5 extrusion widths at a
+# 0.4 mm nozzle, which is the floor for a groove that has to read as a line rather than a scratch.
+# ``ENCODER_GROOVE_W`` deliberately does NOT follow it — see the comment there.
+#
+# 0.5 IS THE CAP, NOT THE DEPTH. It is what the FLAT roof can spend; on the ramp the groove gets less,
+# and the reason is that the cavity is offset straight DOWN in Z (``cav_roof`` in ``build_canopy``),
+# not along the surface normal. So measured perpendicular — the direction a groove actually eats — the
+# ramp shell is only CANOPY_ROOF_WALL·cos θ: 1.23 mm at the right half's steepest 34.9°, where a
+# full-depth groove would leave 0.73 mm of a roof that is supposed to keep 1.0. Nothing caught this
+# before because the only stroke that crossed the ramp did so near the top, at 0.96 mm — under the
+# limit, and invisible. ``puzzle_depth_at`` is that arithmetic, done once.
+CANOPY_PUZZLE_W        = 1.0      # groove width — see below; the encoder's groove keeps its own 1.6
+CANOPY_PUZZLE_DEPTH    = 0.5      # the CAP — see puzzle_depth_at for what a groove gets where
 CANOPY_PUZZLE_MIN_ROOF = 1.0      # solid roof that must survive under a groove
 assert CANOPY_PUZZLE_DEPTH <= CANOPY_ROOF_WALL - CANOPY_PUZZLE_MIN_ROOF + 1e-9, (
     f"a {CANOPY_PUZZLE_DEPTH} mm groove leaves "
@@ -224,19 +243,24 @@ assert CANOPY_PUZZLE_DEPTH <= CANOPY_ROOF_WALL - CANOPY_PUZZLE_MIN_ROOF + 1e-9, 
 # WEST measures from the roof edge the shoulder facet leaves, not the raw wall, so re-proportioning
 # that facet pushes the strokes back instead of letting them cut into it. NORTH is structural: only
 # CANOPY_NORTH_ROUND_R + CANOPY_USB_OM_ROOF_MIN of solid sits above the USB overmold pocket. SOUTH
-# stops short of the ramp foot so no groove spills onto the cover surface.
+# stops short of the ramp foot so no groove spills onto the cover surface — a keep-out written for a
+# FIXED-depth groove, and the reason the curve is allowed past it: see CANOPY_PUZZLE_SOUTH_KO.
 CANOPY_PUZZLE_LAND     = 2.4
 CANOPY_PUZZLE_NORTH_KO = CANOPY_NORTH_ROUND_R + 0.5 + 1.5      # 3.0; the 0.5 is USB_OM_ROOF_MIN
-CANOPY_PUZZLE_SOUTH_KO = 1.5
-# EAST is the one exception, and it is the design's: each half's UPPER stroke runs OUT through the
+CANOPY_PUZZLE_SOUTH_KO = 1.5   # ...for the STRAIGHT layout the span is derived from. What is cut
+#                                gets down to the foot itself (``y0_ramp``), which is safe only
+#                                because ``puzzle_depth_at`` has faded the groove to zero by then.
+# EAST is the one exception, and it is the design's: a half's UPPER stroke may run OUT through the
 # east wall — the wall bordering the switch columns — so it lands against something instead of
-# stopping 2.4 mm short in open roof. The east arris IS broken there, once per half, on purpose.
+# stopping 2.4 mm short in open roof. The east arris IS broken there, on purpose. Once in the PAIR
+# today, on the right half: at PUZZLE_CURVE_A = 4.75 the bow lifts the left half's upper stroke
+# 3.2 mm short of that wall, which was a known cost of the amplitude and not a regression.
 #
-# The endpoint is put a clear margin PAST the wall rather than on it: the cutter is a square-ended
-# box prism, so an endpoint sitting exactly on x = CANOPY_EAST_X would leave the break at the mercy
-# of boolean tolerance — a groove that ends flush with the face it is supposed to open into. One
-# groove width past is unambiguous and costs nothing, since everything beyond the wall is air.
-CANOPY_PUZZLE_EAST_BREAK = CANOPY_PUZZLE_W                     # 1.6 past CANOPY_EAST_X
+# The endpoint is put a clear margin PAST the wall rather than on it: the cutter's ends are square,
+# so an endpoint sitting exactly on x = CANOPY_EAST_X would leave the break at the mercy of boolean
+# tolerance — a groove that ends flush with the face it is supposed to open into. One groove width
+# past is unambiguous and costs nothing, since everything beyond the wall is air.
+CANOPY_PUZZLE_EAST_BREAK = CANOPY_PUZZLE_W                     # 1.0 past CANOPY_EAST_X
 assert CANOPY_PUZZLE_EAST_BREAK > CANOPY_PUZZLE_W / 2, \
     "the upper stroke would not clearly clear the east wall"
 # WEST is the gap-facing side — the one the assembled pair's strokes cross between the halves — so
@@ -338,7 +362,7 @@ def canopy_puzzle_north_exit_window() -> tuple[float, float]:
             - CANOPY_PUZZLE_W / 2 - CANOPY_PUZZLE_POCKET_GAP)
 
 
-def canopy_puzzle_strokes(side: str) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+def canopy_puzzle_strokes(side: str) -> list[Stroke]:
     """This half's two stroke segments, in its own un-mirrored canopy coords.
 
     West is aimed past the wall (the groove runs off the shoulder there); north stops ON the chamfer
@@ -352,40 +376,87 @@ def canopy_puzzle_strokes(side: str) -> list[tuple[tuple[float, float], tuple[fl
 
     Checked, not assumed. The layout is a fitted input, ``PUZZLE_LINE_NUDGE`` is a hand-set number,
     and this is the one keep-out whose violation would stay invisible until a plug went in."""
+    return _puzzle_strokes(side, PZ.strokes, y0_ramp=CANOPY_RAMP_FOOT_Y)
+
+
+def straight_puzzle_strokes(side: str) -> list[Stroke]:
+    """The same clip, on the FITTED STRAIGHT layout instead of the curve.
+
+    Not cut any more. It exists because ``canopy_puzzle.PUZZLE_CURVE_SPAN`` — the parameterisation the
+    curve's whole shape hangs off — is derived from this layout, and the derivation has to include the
+    conditional north break, which lives here rather than in ``canopy_puzzle``. Deriving the span from
+    anything else (the raw region chords, say) produces a different mark: line A's span comes out
+    89.5 mm instead of 62.2 and the same amplitude then reads as a straight line."""
+    return _puzzle_strokes(side, PZ.straight_strokes)
+
+
+def _puzzle_strokes(side: str, source, **extra) -> list[Stroke]:
+    """The clip, shared by the curve and by the straight layout it is parameterised against.
+
+    ``extra`` is what the two do NOT share: the curve is allowed down to the ramp foot, the straight
+    layout is not — because ``PUZZLE_CURVE_SPAN`` is derived from the straight layout, and letting an
+    allowance made for the curve change the span the curve is built on would move the mark every time
+    the allowance was re-tuned."""
     region = canopy_puzzle_region(side)
     common = dict(x1_north=canopy_puzzle_north_x1(),
-                  x0_break=CANOPY_WEST_OUTER_X - CANOPY_PUZZLE_WEST_BREAK)
-    segs = PZ.strokes(side, *region, **common,
-                      y1_break=CANOPY_NORTH_OUTER_Y + CANOPY_PUZZLE_NORTH_BREAK)
+                  x0_break=CANOPY_WEST_OUTER_X - CANOPY_PUZZLE_WEST_BREAK, **extra)
+    segs = source(side, *region, **common,
+                  y1_break=CANOPY_NORTH_OUTER_Y + CANOPY_PUZZLE_NORTH_BREAK)
     if not _puzzle_north_exit_ok(segs):
-        segs = PZ.strokes(side, *region, **common)
+        segs = source(side, *region, **common)
         assert _puzzle_north_exit_ok(segs), \
             f"{side}: a stroke reaches the north keep-out band even without the north break"
     return segs
 
 
-def puzzle_north_crossings(segs: list[tuple[tuple[float, float], tuple[float, float]]]
-                           ) -> list[float]:
+def puzzle_north_crossings(segs: Sequence[Stroke]) -> list[float]:
     """X where each stroke crosses the north WALL — not where its segment happens to end.
 
     The endpoint sits a break's-worth past the wall, so measuring the terminal would read a position
     the groove never occupies on the part: the stroke is tilted, so the overshoot also slides it west,
     by 0.2 mm per mm here. Every judgement about where the mark leaves the part — corner clearance,
-    pocket clearance — has to be made at the wall."""
+    pocket clearance — has to be made at the wall.
+
+    Walks each stroke SEGMENT BY SEGMENT rather than end to end. For a two-point stroke that is the
+    same arithmetic; for a polyline it is the only version that is true, and it reports a stroke that
+    crosses the wall twice as two crossings instead of silently reading the chord."""
     out = []
-    for (x0, y0), (x1, y1) in segs:
-        if max(y0, y1) >= CANOPY_NORTH_OUTER_Y > min(y0, y1):
-            out.append(x0 + (x1 - x0) * (CANOPY_NORTH_OUTER_Y - y0) / (y1 - y0))
+    for seg in segs:
+        for (x0, y0), (x1, y1) in zip(seg, seg[1:]):
+            if max(y0, y1) >= CANOPY_NORTH_OUTER_Y > min(y0, y1):
+                out.append(x0 + (x1 - x0) * (CANOPY_NORTH_OUTER_Y - y0) / (y1 - y0))
     return out
 
 
-def _puzzle_north_exit_ok(segs: list[tuple[tuple[float, float], tuple[float, float]]]) -> bool:
-    """Does every stroke that leaves through the north wall do it inside the safe window?"""
+def _puzzle_north_exit_ok(segs: Sequence[Stroke]) -> bool:
+    """Does every stroke that leaves through the north wall do it inside the safe window?
+
+    The pocket-band check is on the TERMINALS, which is what it was always about: a stroke that stops
+    inside the band sits over the USB overmold pocket, while a stroke that merely passes through the
+    band on its way out through the wall is exactly the case the window exists to allow. Reading
+    every point of a polyline here would reject that legal case.
+
+    THE TILT IS APPLIED HERE, not in the window. A stroke meets the north wall at an angle, so the
+    groove's footprint measured ALONG that wall is ``(w/2)/sin θ`` per side, not ``w/2``: line A
+    crosses at 78.6°, which is 0.51 mm rather than 0.50. The window states the keep-out and cannot
+    know the angle; this function has the segment that crosses, so it is the one that can correct for
+    it. Worth only 0.01 mm per side against today's 0.66 mm corner margin — but the correction is
+    unbounded as a stroke flattens against the wall, and a curved mark's crossing angle is a
+    consequence of the amplitude rather than a fixed property of the layout."""
     x_lo, x_hi = canopy_puzzle_north_exit_window()
-    if any(y > CANOPY_NORTH_OUTER_Y - CANOPY_USB_OM_DEPTH and y < CANOPY_NORTH_OUTER_Y
-           for seg in segs for _x, y in seg):
+    if any(CANOPY_NORTH_OUTER_Y - CANOPY_USB_OM_DEPTH < y < CANOPY_NORTH_OUTER_Y
+           for seg in segs for _x, y in (seg[0], seg[-1])):
         return False              # a terminal loitering INSIDE the pocket band, not crossing it
-    return all(x_lo <= x <= x_hi for x in puzzle_north_crossings(segs))
+    for seg in segs:
+        for (x0, y0), (x1, y1) in zip(seg, seg[1:]):
+            if not (max(y0, y1) >= CANOPY_NORTH_OUTER_Y > min(y0, y1)):
+                continue
+            x = x0 + (x1 - x0) * (CANOPY_NORTH_OUTER_Y - y0) / (y1 - y0)
+            leg = math.hypot(x1 - x0, y1 - y0)
+            half = (CANOPY_PUZZLE_W / 2) / max(abs(y1 - y0) / leg, 1e-6)
+            if not (x_lo - CANOPY_PUZZLE_W / 2 + half <= x <= x_hi + CANOPY_PUZZLE_W / 2 - half):
+                return False
+    return True
 
 
 def canopy_usb_z(side: str) -> tuple[float, float]:
@@ -696,7 +767,39 @@ def _roofline_slope(y: float, z_ridge: float) -> float:
     return (z_ridge - CANOPY_FOOT_Z) * 6 * t * (1 - t) / (y1 - y0)
 
 
-def _offset_roofline(roof: list[tuple[float, float]], d: float,
+def puzzle_depth_at(y: float, z_ridge: float) -> float:
+    """How deep a roof groove may be at case-Y ``y``, measured NORMAL to the surface.
+
+    Two ceilings, both derived from what is actually under the surface there, and the smaller wins:
+
+      • the SHELL. The cavity is a straight Z offset of the roofline, so perpendicular to the surface
+        there is only ``CANOPY_ROOF_WALL·cos θ`` of it — 1.5 on the flat roof, 1.23 at the right
+        half's steepest 34.9°.
+      • the MEMBRANE, which is what binds near the ramp foot. The foot lands ON the cover surface
+        (``CANOPY_FOOT_Z == C.COVER_TOP_Z``) and the body's base is one cover thickness below it
+        (``CANOPY_FUSE_BASE_Z == C.MAIN_RIM_Z``), so approaching the foot the material under the roof
+        thins to the 1.0 mm membrane and the groove has to run out.
+
+    Both are measured against ``CANOPY_PUZZLE_MIN_ROOF``, so the depth reaches EXACTLY zero at the
+    foot rather than by a hand-set fade — the mark dies where the ramp becomes the deck because that
+    is where there is nothing left to cut, and one number cannot drift from the other.
+
+    Measured, right half: 0.000 at the foot, 0.42 at y 62, **0.230 at the steepest point**, 0.500 from
+    the ramp top northward. The left half bottoms out at 0.333, because its ridge is 2.76 mm lower —
+    the halves differ here as a consequence, not as a tuning.
+
+    The zero-gradient property matters as much as the values: ``_roofline_slope`` is zero at BOTH ramp
+    ends and the membrane term's gradient vanishes with it, so the offset profile arrives horizontal
+    at the foot and at the ramp top — which is exactly the tangent ``_yz_prism`` forces on its
+    ``Spline``. A multiplicative hand-set taper does not have that property and would ring."""
+    m = _roofline_slope(y, z_ridge)
+    k = (1.0 + m * m) ** 0.5
+    shell = CANOPY_ROOF_WALL / k                                        # ·cos θ
+    membrane = (_canopy_roof_z(y, z_ridge) - CANOPY_FUSE_BASE_Z) / k    # ·cos θ
+    return max(0.0, min(CANOPY_PUZZLE_DEPTH, min(shell, membrane) - CANOPY_PUZZLE_MIN_ROOF))
+
+
+def _offset_roofline(roof: list[tuple[float, float]], d: float | Callable[[float], float],
                      z_ridge: float) -> list[tuple[float, float]]:
     """The roofline pushed ``d`` INTO the material along its own NORMAL — ``(m, −1)/√(1+m²)``.
 
@@ -717,32 +820,89 @@ def _offset_roofline(roof: list[tuple[float, float]], d: float,
     junction deepened the groove 0.500 → 1.118 mm over the 0.31 mm before the facet, because the true
     erosion there is an arc, which runs backwards in Y and cannot be expressed in a Y-ordered
     profile.)"""
+    depth = d if callable(d) else (lambda _y: cast(float, d))
     out: list[tuple[float, float]] = []
     for y, z in roof:
+        dy = depth(y)
+        assert dy >= 0.0, f"a negative depth at y={y} would put the cutter's floor above the roof"
         m = _roofline_slope(y, z_ridge)
         k = (1 + m * m) ** 0.5
-        out.append((y + d * m / k, z - d / k))
-    assert all(b[0] > a[0] for a, b in zip(out, out[1:])), \
-        "normal-offset roofline folded over in Y — the ramp's curvature is too tight for this depth"
+        out.append((y + dy * m / k, z - dy / k))
+    assert all(b[0] > a[0] for a, b in zip(out, out[1:])), (
+        "normal-offset roofline folded over in Y — the ramp's curvature is too tight for this depth, "
+        "or the depth field's own gradient is steeper than the sample spacing"
+    )
+    # The Spline in ``_yz_prism`` is forced HORIZONTAL at both ramp ends, so an offset profile that
+    # arrives tilted there gets bent to meet that tangent and rings. A depth field is allowed to
+    # change the profile's shape but not to make its ends steeper than the roofline's own.
+    for a, b, r0, r1 in ((out[0], out[1], roof[0], roof[1]),
+                         (out[-1], out[-2], roof[-1], roof[-2])):
+        if abs(b[0] - a[0]) > 1e-9 and abs(r1[0] - r0[0]) > 1e-9:
+            assert abs((b[1] - a[1]) / (b[0] - a[0])) <= abs((r1[1] - r0[1]) / (r1[0] - r0[0])) + 1e-6, (
+                "the depth field tilts the offset profile more at a ramp end than the roofline "
+                "itself — forcing a horizontal Spline tangent on it will ring"
+            )
     return out
 
 
-def _slot_prism(seg: tuple[tuple[float, float], tuple[float, float]], w: float,
-                z0: float, z1: float) -> Part:
-    """Vertical prism over a SQUARE-ended slot along ``seg``, ``w`` wide, spanning ``z0``→``z1``.
+def _band_offsets(pts: Sequence[tuple[float, float]], w: float
+                  ) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+    """The two sides of a ``w``-wide band centred on the polyline ``pts``.
+
+    Each station is offset along the normal of its own local tangent (the chord between its
+    neighbours, so the offset turns with the mark), which makes the ends square ACROSS the band and
+    perpendicular to the run — the same terminal the box prism gave, just no longer restricted to one
+    plan angle.
+
+    The assert is the plan-space twin of ``_offset_roofline``'s: offsetting a polyline inward folds it
+    over once the turn is tight relative to the width, and a folded band is a self-intersecting face
+    that OCC will either refuse or, worse, accept as a bow tie. At the shipped curvature (R ≈ 46 mm
+    against a 0.5 mm half-width) the margin is ~90×, so this guards a future re-draw, not today."""
+    left: list[tuple[float, float]] = []
+    right: list[tuple[float, float]] = []
+    for k, (x, y) in enumerate(pts):
+        ax, ay = pts[max(0, k - 1)]
+        bx, by = pts[min(len(pts) - 1, k + 1)]
+        tx, ty = bx - ax, by - ay
+        t = math.hypot(tx, ty)
+        assert t > 1e-9, "duplicate station in a stroke — the tangent is undefined there"
+        nx, ny = -ty / t, tx / t
+        left.append((x + nx * w / 2, y + ny * w / 2))
+        right.append((x - nx * w / 2, y - ny * w / 2))
+    for side in (left, right):
+        for (ax, ay), (bx, by) in zip(side, side[1:]):
+            assert math.hypot(bx - ax, by - ay) > 1e-6, (
+                f"a {w} mm band folded over on itself — the stroke turns tighter than its own width"
+            )
+    return left, right
+
+
+def _band_prism(seg: Stroke, w: float, z0: float, z1: float) -> Part:
+    """Vertical prism over a SQUARE-ended slot along the polyline ``seg``, ``w`` wide, ``z0``→``z1``.
 
     Square, not stadium: a stroke ends as if a knife lifted off it — a straight edge square across
     the groove — which is how the strokes are drawn. A rounded cap reads as a blob at the end of a
     thin line, and it is most obvious exactly where it matters, on the terminals that stop in open
     roof rather than running out to an edge.
 
-    Built at an arbitrary plan angle, because the puzzle's lines meet each canopy at whatever angle
+    A closed ``Polyline`` face extruded in Z — the same idiom as ``tray._deep_facet_region`` — and
+    deliberately NOT a swept spline or a round-joined 2-D offset. Every face it adds is planar, so a
+    curved mark costs the tessellator almost nothing (measured: +5% triangles) and cannot introduce a
+    cylindrical face, which is what ``test_no_terminal_is_rounded`` is really guarding.
+
+    Built at arbitrary plan angles, because the puzzle's curves meet each canopy at whatever angle
     the assembled layout gives them."""
-    (x0, y0), (x1, y1) = seg
-    length = math.hypot(x1 - x0, y1 - y0)
-    ang = math.degrees(math.atan2(y1 - y0, x1 - x0))
-    box = cast(Part, Solid.make_box(length, w, z1 - z0).translate((-length / 2, -w / 2, 0)))
-    return cast(Part, Pos((x0 + x1) / 2, (y0 + y1) / 2, z0) * (Rot(0, 0, ang) * box))
+    assert len(seg) >= 2, "a stroke needs at least two stations"
+    left, right = _band_offsets(seg, w)
+    loop = left + right[::-1]
+    with BuildPart() as bp:
+        with BuildSketch(Plane.XY):
+            with BuildLine():
+                Polyline(*loop, close=True)
+            make_face()
+        extrude(amount=z1 - z0)
+    assert bp.part is not None
+    return cast(Part, Pos(0, 0, z0) * bp.part)
 
 
 def _puzzle_cutter(side: str, z_ridge: float) -> Part:
@@ -760,14 +920,14 @@ def _puzzle_cutter(side: str, z_ridge: float) -> Part:
     The offset covers the ROOF only — see ``_offset_roofline``. Every stroke that leaves the roof
     therefore terminates the same way, west and north alike: full depth to the arris, then a fade as
     the facet drops out from under the cutter."""
-    inner = _offset_roofline(_roofline(z_ridge), CANOPY_PUZZLE_DEPTH, z_ridge)
+    inner = _offset_roofline(_roofline(z_ridge), lambda y: puzzle_depth_at(y, z_ridge), z_ridge)
     under = _yz_prism(inner, z_base=CANOPY_FUSE_BASE_Z - 5.0,
                       x_lo=CANOPY_WEST_OUTER_X - 1.0,
                       x_width=(CANOPY_EAST_X + 1.0) - (CANOPY_WEST_OUTER_X - 1.0),
                       spline_range=(CANOPY_RAMP_FOOT_Y, CANOPY_RAMP_TOP_Y))
     prism: Part | None = None
     for seg in canopy_puzzle_strokes(side):
-        one = _slot_prism(seg, CANOPY_PUZZLE_W, CANOPY_FUSE_BASE_Z, z_ridge + 2.0)
+        one = _band_prism(seg, CANOPY_PUZZLE_W, CANOPY_FUSE_BASE_Z, z_ridge + 2.0)
         prism = one if prism is None else cast(Part, prism + one)
     assert prism is not None
     return cast(Part, prism - under)

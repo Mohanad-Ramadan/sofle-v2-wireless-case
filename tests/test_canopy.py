@@ -95,11 +95,10 @@ def test_canopy_west_top_facet_runs_the_whole_shoulder(side):
     the sample count to damp the ramp's ringing silently deleted the facet. ``_chamfer_west_top``
     is a swept boolean instead, so it is independent of sample count — probe the run at several
     stations, not just one, because a partial cut is the plausible failure now."""
-    # puzzle=False: the subject here is the shoulder facet and the SHARP east arris. The roof's
-    # puzzle strokes end in rounded caps, and the east-most cap's face centre lands inside this
-    # test's 2.0 mm window on the arris — so a groove terminal sitting 2.4 mm inboard would be read
-    # as a rounded east edge. That the strokes never actually touch the arris is asserted by
-    # test_canopy_puzzle.py::test_the_east_arris_is_not_broken.
+    # puzzle=False: the subject here is the shoulder facet and the SHARP east arris, and one stroke
+    # is MEANT to break that arris — its terminal would be read here as a broken east edge. The
+    # strokes' own east behaviour is asserted where it belongs, in
+    # test_canopy_puzzle.py::test_the_east_arris_is_broken_at_most_once_per_half.
     c = build_canopy(side=side, puzzle=False)
     xw, xe = CAN.CANOPY_WEST_OUTER_X, CAN.CANOPY_EAST_X
     z_ridge = CAN.canopy_ridge_top_z(side)
@@ -135,7 +134,11 @@ def test_canopy_ramp_mesh_does_not_detonate():
 
     The right half is the one that blows up (its ramp is 2.76 mm taller, so its curvature is
     worse), so probe it. The bound is deliberately loose — this guards against the order-of-
-    magnitude cliff past ~25 samples, not against normal drift."""
+    magnitude cliff past ~25 samples, not against normal drift.
+
+    The curved puzzle strokes are cut into this part and cost almost nothing here: 62.3k triangles
+    against 61.8k bare, because ``_band_prism`` is a polygon extrusion and every face it adds is
+    planar. Refining PUZZLE_CHORD_SAG adds faces linearly; it has no cliff of this kind."""
     from OCP.BRepMesh import BRepMesh_IncrementalMesh
     from OCP.BRep import BRep_Tool
     from OCP.TopLoc import TopLoc_Location
