@@ -216,17 +216,27 @@ def test_closing_force_stays_hand_assemblable():
 
 
 def test_arms_clear_the_exclusion_zones():
-    """The rubber-foot seats are what decide where arms can go — at FOOT_DIA 10 four of these
-    nine fouled one. Checked against the slot's inboard edge and the root relief's own radius.
+    """Foot seats against snap arms, checked on the slot's inboard edge and the root relief's
+    own radius.
 
-    THE GATE IS 1.2 mm, NOT 2.0, AND THAT IS MEASURED RATHER THAN CHOSEN. Sampling the whole
-    slot line (not just its root/barb/cut, which is how an earlier survey got this wrong by
-    3.5 mm) the tightest three are N3 at 1.35, E1 at 1.49 and E2 at 1.85. Nothing overlaps,
-    and what is left between them is a web at the ground face 1.35 mm wide — three perimeters
-    at a 0.4 mm nozzle — between a through-slot and a seat that is only FOOT_DEPTH (0.6 mm)
-    deep. Widening it means moving the two x=143 feet inboard, and the last time a foot moved
-    for the snaps the move did not survive. So the number is pinned here instead: if it drops
-    below 1.2 something has shifted and the arms need re-surveying, not the guard relaxing."""
+    THE GATE IS 1.2 mm, NOT 2.0, AND THAT IS MEASURED RATHER THAN CHOSEN. What it protects is
+    a web at the ground face between a through-slot and a seat only FOOT_DEPTH (0.6 mm) deep;
+    1.2 mm is three perimeters at a 0.4 mm nozzle. Sample the WHOLE slot line, not just its
+    root/barb/cut — that shortcut is how an earlier survey got this wrong by 3.5 mm.
+
+    THE SEATS NO LONGER DECIDE WHERE THE ARMS GO, WHICH IS A REVERSAL WORTH SPELLING OUT. This
+    used to read "at FOOT_DIA 10 four of these nine fouled one", and the fix taken then was to
+    shrink the seats to Ø8 — on the reasoning that moving a foot had been tried on
+    wip/snap-latches and had not survived. Both halves of that lapsed underneath this test: the
+    arms went to ELEVEN on even arc-length stations and SNAP_TAB_SLOT_W narrowed 1.2 -> 0.9, so
+    every slot the Ø10 survey had measured moved. Re-measured on the layout that ships, Ø10
+    fouls nothing; it only grazed the printability gate, and three feet moving 1.6-1.9 mm
+    INBOARD bought that back with room to spare. Tightest now: E2 at 2.15, N3 at 2.19, W2 at
+    2.40 — every one of them beyond the Ø8 layout's own tightest (1.76 at SE1).
+
+    So if this drops below 1.2 again, re-survey the arms AND re-check whether a foot can move
+    before touching FOOT_DIA. Shrinking the seat is what a user notices; it is the one number
+    here that has to match hardware they already own."""
     holes = [C.pcb_to_case(hx, hy) for hx, hy in C.MOUNTING_HOLES]
     bx, by = C.pcb_to_case(*C.BATTERY_POCKET_POS)
     bhw = C.BATTERY_W / 2 + C.BATTERY_XY_CLEARANCE

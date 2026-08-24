@@ -1394,8 +1394,8 @@ BATTERY_POCKET_DEPTH = FLOOR_THICKNESS - BATTERY_FLOOR_BASE   # = 4.3; tracks th
 BATTERY_POCKET_CORNER_R = 2.0  # mm, pocket corner fillet radius
 
 # ---------- Anti-slip rubber feet (external, underside of the bottom plate) ----------
-# Shallow Ø10 seats recessed into the OUTER bottom face (Z=0) of the inset floor plate
-# at 4 corners, so 8 mm self-adhesive rubber feet locate there and the keyboard grips
+# Shallow Ø FOOT_DIA seats recessed into the OUTER bottom face (Z=0) of the inset floor plate
+# at 4 corners, so 10 mm self-adhesive rubber feet locate there and the keyboard grips
 # the desk (doesn't slide while typing). NOT deep — a shallow locating seat; the foot
 # sits mostly proud below and lifts the case off the desk.
 #
@@ -1404,20 +1404,33 @@ BATTERY_POCKET_CORNER_R = 2.0  # mm, pocket corner fillet radius
 # the battery pocket. Subtracted BEFORE the left-mirror, so they track to the mirrored
 # outline on the left half.
 #
-# WAS 10.0, AND THE SEAT DIAMETER IS WHAT DECIDES WHERE THE SNAP ARMS CAN GO — not the
-# seam. At Ø10 the seats clip four of the nine relief slots: the north-east arm's root
-# relief collides outright (-0.24 mm), and the two east arms and the north-west arm graze
-# by 0.05-0.37 mm. At Ø8 the worst clearance across all nine is 4.94 mm, and the
-# north-east arm reaches its intended barb position (x 128.90, between SW5 and SW6)
-# instead of retreating 10 mm west. Moving a foot was tried on wip/snap-latches and did
-# not survive; shrinking the seat is the cheaper fix and 8 mm feet are as common as 10.
-FOOT_DIA   = 8.0    # mm, rubber-foot diameter → seat diameter
+# Ø10 RESTORED, AND THE FEET MOVED INSTEAD OF THE SEAT SHRINKING. This was cut to 8.0 by the
+# snap-latch pass, whose note read "the seat diameter is what decides where the snap arms can
+# go" and "moving a foot was tried on wip/snap-latches and did not survive". Both were true of
+# the NINE-arm layout they were written against, and neither survived the two passes that
+# followed: even arc-length spacing carried the arms to eleven new stations, and
+# SNAP_TAB_SLOT_W 1.2 -> 0.9 narrowed every slot. Re-measured against the layout that actually
+# ships, Ø10 no longer collides with anything — the tightest clearance is +0.76 mm at SE1, i.e.
+# a gap, not an overlap. What it does fail is the 1.2 mm printability gate (three arms sit at
+# 0.76-1.18), and that is bought back by nudging three feet 1.6-1.9 mm, all of them INBOARD,
+# where there is nothing to hit: the nearest battery-pocket edge is 27 mm away.
+#
+# Clearance to the nearest snap slot, before -> after, at Ø10:
+#   (20.0, 110.0) -> (20.5, 108.5)    1.18 -> 2.40
+#   (143.0, 104.0) -> (142.0, 102.75) 1.15 -> 2.15
+#   (143.0, 38.0) -> (142.5, 39.75)   0.76 -> 2.58
+#   (20.0, 22.0) -> (21.0, 23.0)      4.22 -> 5.72   (never bound; moved inboard so the
+#                                     1 mm larger radius keeps clear of the outline)
+#
+# Every one of those beats the Ø8 layout's own tightest (1.76 mm at SE1), so restoring the
+# 10 mm feet leaves the arms with MORE room than shrinking the seats did, not less.
+FOOT_DIA   = 10.0   # mm, rubber-foot diameter → seat diameter
 FOOT_DEPTH = 0.6    # mm, shallow locating-seat depth
 FOOT_POSITIONS: tuple[tuple[float, float], ...] = (
-    (20.0, 110.0),   # top-left
-    (143.0, 104.0),  # top-right (pulled in off the cut corner)
-    (20.0, 22.0),    # bottom-left
-    (143.0, 38.0),   # bottom-right (thumb-cluster side is cut away lower)
+    (20.5, 108.5),    # top-left
+    (142.0, 102.75),  # top-right (pulled in off the cut corner)
+    (21.0, 23.0),     # bottom-left
+    (142.5, 39.75),   # bottom-right (thumb-cluster side is cut away lower)
 )
 
 # ---------- Component positions (PCB coords, mm) ----------

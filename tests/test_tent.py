@@ -74,18 +74,28 @@ def test_contact_is_the_whole_footprint():
     #
     # Counted AND measured, because the count alone would pass a slot that had eaten half the
     # footprint. What this test is really claiming is that the case still rests on essentially
-    # its whole plan area and cannot rock, so the load-bearing number is the area: the ports
-    # take ~0.9% of it.
+    # its whole plan area and cannot rock, so the load-bearing number is the area.
+    #
+    # THE PORTS ARE MEASURED; THE SEATS ARE NOT, AND THE SPLIT IS THE POINT. A release port is
+    # an open hole — nothing bears on it. A foot seat is a hole only until the rubber foot goes
+    # in, and that foot is FOOT_DEPTH deep and mostly proud below, so it is not merely filled,
+    # it is the part that actually touches the desk. Summing the two together made this gate a
+    # function of FOOT_DIA, which is how restoring Ø10 feet — strictly MORE contact area on the
+    # desk — read here as 3.0% and "the case can start to rock". That was the measurement being
+    # wrong about its own subject, not the design regressing. The docstring above always quoted
+    # the ports' ~0.9% as the load-bearing figure; the assertion now matches it, and gets
+    # sharper in the bargain: 0.9% against a 3% bound, with no FOOT_DIA term to dilute it.
     seats = [w for w in face.inner_wires() if abs(w.length - math.pi * C.FOOT_DIA) < 0.5]
     assert len(seats) == len(C.FOOT_POSITIONS), \
         f"expected {len(C.FOOT_POSITIONS)} foot seats in the ground face, found {len(seats)}"
-    ports = len(face.inner_wires()) - len(seats)
-    assert ports <= len(C.SNAP_ARMS), \
-        f"{ports} holes in the footprint are neither foot seats nor snap release ports"
-    holes = sum(Face(w).area for w in face.inner_wires())
-    assert holes / (face.area + holes) < 0.03, \
-        f"holes take {holes / (face.area + holes) * 100:.1f}% of the footprint — that is no " \
-        f"longer 'the whole footprint' and the case can start to rock"
+    port_wires = [w for w in face.inner_wires() if w not in seats]
+    assert len(port_wires) <= len(C.SNAP_ARMS), \
+        f"{len(port_wires)} holes in the footprint are neither foot seats nor snap release ports"
+    holes = sum(Face(w).area for w in face.inner_wires())      # total, for the record
+    ports = sum(Face(w).area for w in port_wires)
+    assert ports / (face.area + holes) < 0.03, \
+        f"open release ports take {ports / (face.area + holes) * 100:.1f}% of the footprint — " \
+        f"that is no longer 'the whole footprint' and the case can start to rock"
 
 
 # ------------------------------------------------------- nothing above the wedge moved

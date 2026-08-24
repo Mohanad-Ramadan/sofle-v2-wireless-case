@@ -315,8 +315,16 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # its diameter, and a smaller disc samples that 6° slope differently. Nothing else in the
     # bottom part is a function of FOOT_DIA — the wedge, band and parting line are untouched,
     # which is the same invariant the rest of this baseline's history exists to prove.
-    # The seats shrank because they, not the seam, decide where the snap arms can go: at Ø10
-    # four of the nine relief slots foul a seat. See the FOOT_DIA note in constants.py.
+    #
+    # Rebased −67.88 mm³ AGAIN, restoring FOOT_DIA to 10.0. The shrink above was made to keep the
+    # seats off the snap arms' relief slots, and the two passes that followed it (eleven arms on
+    # even arc-length stations, SNAP_TAB_SLOT_W 1.2 -> 0.9) moved every slot it had been measured
+    # against. Ø10 clears them all now; three feet moved 1.6-1.9 mm inboard to keep the 1.2 mm
+    # printability gate, and the tightest arm-to-seat gap is 2.15 mm — better than the 1.76 mm the
+    # Ø8 layout had. The delta returns the PREVIOUS baseline to six decimals under a rebuild with
+    # only FOOT_DIA reverted, which is what proves the moved positions cost nothing: a seat's
+    # volume is π r² × FOOT_DEPTH wherever it sits, because _foot_recesses cuts perpendicular to
+    # the tent plane rather than vertically, so sliding one along the 6° slope does not change it.
     # Rebased −4578.55 mm³ (−2.38%) for the NINE SNAP LATCHES. Accounted for in full:
     #   8 straight reliefs  −3805.907  (their cutters total more; the surplus is air below the
     #                                   wedge, because every slot deliberately overruns the
@@ -401,4 +409,4 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # of the rim given E2 fixed at that ceiling, not to hit a spacing target of their own. The
     # relief slot's footprint shifts with each arm, hence the volume change; nothing else moved.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 188755.839037) < 2e-2
+    assert abs(build_bottom_part(side).volume - 188687.961411) < 2e-2
