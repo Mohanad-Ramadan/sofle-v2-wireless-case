@@ -228,11 +228,13 @@ def test_arms_clear_the_exclusion_zones():
     used to read "at FOOT_DIA 10 four of these nine fouled one", and the fix taken then was to
     shrink the seats to Ø8 — on the reasoning that moving a foot had been tried on
     wip/snap-latches and had not survived. Both halves of that lapsed underneath this test: the
-    arms went to ELEVEN on even arc-length stations and SNAP_TAB_SLOT_W narrowed 1.2 -> 0.9, so
-    every slot the Ø10 survey had measured moved. Re-measured on the layout that ships, Ø10
-    fouls nothing; it only grazed the printability gate, and three feet moving 1.6-1.9 mm
-    INBOARD bought that back with room to spare. Tightest now: E2 at 2.15, N3 at 2.19, W2 at
-    2.40 — every one of them beyond the Ø8 layout's own tightest (1.76 at SE1).
+    arms went to ELEVEN on even arc-length stations and every slot the Ø10 survey had measured
+    moved. Re-measured on the layout that ships, Ø10 fouls nothing; it only grazed the
+    printability gate, and three feet moving 1.6-1.9 mm INBOARD bought that back with room to
+    spare. Tightest now, at SNAP_TAB_SLOT_W = 1.2: E2 at 1.86, W2 at 2.04, N3 at 2.05 (that last
+    on its root relief rather than its slot line) — every one of them beyond the Ø8 layout's own
+    tightest (1.76 at SE1). Widening the slot back 0.9 -> 1.2 for printability spent up to
+    0.30 mm of each of those and the feet still did not have to move; the gate is what says so.
 
     So if this drops below 1.2 again, re-survey the arms AND re-check whether a foot can move
     before touching FOOT_DIA. Shrinking the seat is what a user notices; it is the one number

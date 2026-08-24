@@ -408,5 +408,17 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # (38.15 -> 35.81) and N3-north-east (24.61 -> 24.70) moved to do the least damage to the rest
     # of the rim given E2 fixed at that ceiling, not to hit a spacing target of their own. The
     # relief slot's footprint shifts with each arm, hence the volume change; nothing else moved.
+    # Rebased -1181.742773 mm³ (-0.626%) for SNAP_TAB_SLOT_W 0.9 -> 1.2, which UNDOES the
+    # +1176.396083 logged above: a wider relief slot removes more. The two are not equal and
+    # opposite because the arms are not where they were when 0.9 was taken — E2, E1 and N3 moved
+    # for the NE-corner reposition logged just below it, and a slot's overrun into the wedge is a
+    # function of the local wall height, so the same 0.30 mm of extra width cuts a different
+    # amount of real material at each new station. 5.35 mm³ of difference across eleven arms.
+    #
+    # The widening is a PRINTABILITY change, not a mechanical one: at 0.9 the slot was a little
+    # over two 0.4 mm extrusions and could partially bridge, and a bridged OUTBOARD leg turns the
+    # arm from a cantilever into a fixed-fixed strip at 8x the root strain — a fracture, not a
+    # soft latch. Nothing else in this part is a function of the slot width: barbs, seats, wedge,
+    # pockets and parting line are untouched, and the suite at 1.2 failed on this baseline alone.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 188687.961411) < 2e-2
+    assert abs(build_bottom_part(side).volume - 187506.218638) < 2e-2

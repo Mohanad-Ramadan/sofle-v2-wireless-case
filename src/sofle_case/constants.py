@@ -1409,11 +1409,11 @@ BATTERY_POCKET_CORNER_R = 2.0  # mm, pocket corner fillet radius
 # go" and "moving a foot was tried on wip/snap-latches and did not survive". Both were true of
 # the NINE-arm layout they were written against, and neither survived the two passes that
 # followed: even arc-length spacing carried the arms to eleven new stations, and
-# SNAP_TAB_SLOT_W 1.2 -> 0.9 narrowed every slot. Re-measured against the layout that actually
-# ships, Ø10 no longer collides with anything — the tightest clearance is +0.76 mm at SE1, i.e.
-# a gap, not an overlap. What it does fail is the 1.2 mm printability gate (three arms sit at
-# 0.76-1.18), and that is bought back by nudging three feet 1.6-1.9 mm, all of them INBOARD,
-# where there is nothing to hit: the nearest battery-pocket edge is 27 mm away.
+# SNAP_TAB_SLOT_W was re-cut twice (1.2 -> 0.9 -> 1.2). Re-measured against the layout that
+# actually ships, Ø10 no longer collides with anything — the tightest clearance is +0.76 mm at
+# SE1, i.e. a gap, not an overlap. What it does fail is the 1.2 mm printability gate (three arms
+# sit at 0.76-1.18), and that is bought back by nudging three feet 1.6-1.9 mm, all of them
+# INBOARD, where there is nothing to hit: the nearest battery-pocket edge is 27 mm away.
 #
 # Clearance to the nearest snap slot, before -> after, at Ø10:
 #   (20.0, 110.0) -> (20.5, 108.5)    1.18 -> 2.40
@@ -1424,6 +1424,14 @@ BATTERY_POCKET_CORNER_R = 2.0  # mm, pocket corner fillet radius
 #
 # Every one of those beats the Ø8 layout's own tightest (1.76 mm at SE1), so restoring the
 # 10 mm feet leaves the arms with MORE room than shrinking the seats did, not less.
+#
+# THE "after" COLUMN WAS MEASURED AT SNAP_TAB_SLOT_W = 0.9 AND THE SLOT HAS SINCE GONE BACK TO
+# 1.2, so each of those figures gives back up to 0.30 mm. The feet did NOT have to move again:
+# re-measured at 1.2 the tightest three are E2 1.86, W2 2.04 and N3 2.05 (N3's on its root
+# relief, not its slot line), all still clear of the 1.2 mm gate with margin. The reason the
+# widening was affordable is the same reason it was needed — see SNAP_TAB_SLOT_W. If a future
+# pass narrows this seat again, re-measure here first: the feet are the movable side of this
+# pair, FOOT_DIA is not (it matches rubber feet the user already owns).
 FOOT_DIA   = 10.0   # mm, rubber-foot diameter → seat diameter
 FOOT_DEPTH = 0.6    # mm, shallow locating-seat depth
 FOOT_POSITIONS: tuple[tuple[float, float], ...] = (
@@ -1643,18 +1651,40 @@ assert TENT_ANGLE_DEG <= TENT_ANGLE_MAX, (
 # leaves it built in at both ends, and fixed-fixed strain is 12*d*h/L^2 against a cantilever's
 # 3*d*h/(2L^2) — 8x worse, 2.84% at L=22, which fractures PLA. Hence the outboard leg.
 SNAP_TAB_L        = 22.0   # mm; default arm length. Per-arm; N2 is shorter, see SNAP_ARMS
-SNAP_TAB_SLOT_W   = 0.9    # mm; relief slot width. IT IS ALSO WHAT YOU SEE: the same slot is
+SNAP_TAB_SLOT_W   = 1.2    # mm; relief slot width. IT IS ALSO WHAT YOU SEE: the same slot is
 #                            the release port on the underside and, on the arms whose cut is
-#                            north of the reveal line, the slit in the shadow recess. Narrowing
-#                            1.2 -> 0.9 shrinks both by 25% (port ~26 -> ~20 mm² per arm) and
-#                            costs nothing mechanically — the arm only deflects SNAP_DEFLECT,
-#                            0.32 mm, so 0.9 is still 2.8x the gap it has to swing through, and
-#                            every run margin GAINS 0.30 mm because cut_u and the slot's far
-#                            edge both scale with this. The slot cannot be hidden altogether:
-#                            it has to reach the ground face or the arm stops being a
-#                            vertical-axis cantilever (see the print-orientation note below).
-#                            WATCH THIS ON THE FIRST PRINT — 0.9 mm is a little over two 0.4 mm
-#                            extrusions, so it may partially bridge where 1.2 would not.
+#                            north of the reveal line, the slit in the shadow recess.
+#
+#                            BACK TO 1.2 FROM 0.9, AND THE REASON IS THE PRINTER, NOT THE BEAM.
+#                            0.9 was taken to shrink the port and the slit by 25% (port ~26 ->
+#                            ~20 mm² per arm) on the argument that it "costs nothing
+#                            mechanically" — true of the beam, which only deflects SNAP_DEFLECT
+#                            (0.32 mm), and false of the process. The comment that shipped with
+#                            0.9 said so itself: a little over two 0.4 mm extrusions, it may
+#                            partially bridge where 1.2 would not. 1.2 is three perimeters, the
+#                            same floor test_arms_clear_the_exclusion_zones already holds every
+#                            web on this plate to; the slot was the one place the plate did not
+#                            meet its own gate.
+#
+#                            WHAT A BRIDGED SLOT ACTUALLY COSTS IS THE ARM, NOT THE LATCH. Weld
+#                            the OUTBOARD leg and the cantilever becomes fixed-fixed, 8x the
+#                            root strain: T1 0.369 -> 2.95%, SW1 0.291 -> 2.33%, SE1 0.228 ->
+#                            1.82%, S1 0.213 -> 1.70%, against SNAP_PLA_STRAIN_MAX of 0.5%. The
+#                            arm fractures on the first close rather than merely failing to
+#                            latch. And the four worst-placed are exactly the four hidden_cut
+#                            arms (SW1, T1, S1, SE1): their cut is under the tub's skin once
+#                            closed, so a weld there is the one defect on this part that cannot
+#                            be inspected or picked out after assembly.
+#
+#                            The slot cannot be hidden altogether: it has to reach the ground
+#                            face or the arm stops being a vertical-axis cantilever (see the
+#                            print-orientation note below). Cost of going back, stated plainly:
+#                            every run margin LOSES the 0.30 mm it gained at 0.9 (cut_u and the
+#                            slot's far edge both scale with this), and the seven arms north of
+#                            the reveal line show a 1.2 mm slit instead of 0.9. Everything else
+#                            held — foot clearances, force budget, strain caps, even spacing,
+#                            hidden-cut coverage — checked by running the suite at 1.2, where
+#                            the only failures were the pinned volume baselines.
 SNAP_BARB_PROUD   = 0.52   # mm; barb protrusion from the rim's outer face (guide: 0.5-1.2)
 # PINNED, not tuned further — printed via a print-shop service with no coupon to calibrate
 # against, so raising this to chase a firmer click is not an option: the 28 N cap in
