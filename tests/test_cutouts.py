@@ -453,5 +453,12 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # cap than any arm sits today. Shortening to chase uniformity would have made the design
     # both less printable (force, not thickness, is what the total-force test actually gates)
     # and no safer in the one dimension that motivated this change.
+    # Rebased -51.351904 mm³ (-0.027%) for the CLOSING-FORCE RE-TUNE: arm thickness went from a
+    # uniform 1.50 mm back to per-arm (S1/E1/N1/W1/N3/W2/E2 1.500->1.866, SE1 1.500->1.542, N2
+    # corner 1.50->2.30; SW1/T1 unchanged), sized to hit a 30.0 N total closing force rather than
+    # either force-evenness or a uniform print margin. Volume goes DOWN because every arm that
+    # got thicker cuts MORE at its outboard through-cut (that leg spans the full
+    # (thickness + SNAP_TAB_SLOT_W) band at the free end — see the SNAP_TAB_SLOT_W note), and
+    # more arms got thicker than thinner this time.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 187551.615437) < 2e-2
+    assert abs(build_bottom_part(side).volume - 187500.263533) < 2e-2
