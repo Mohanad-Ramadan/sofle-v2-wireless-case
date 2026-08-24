@@ -1937,32 +1937,48 @@ def snap_run_point(run: _Run, s: float) -> tuple[float, float]:
 # barb_lo_z and SNAP_BARB_H alone. (E2's floor moved with its own reposition to the run's ceiling,
 # below — it was 3.36 / margin 0.59 at its original arc-length.)
 #
-# THICKNESS IS PER ARM AND FALLS OUT OF THE FORCE BUDGET, not the geometry. Each arm is sized to
-# carry about 2.4 N so the set totals 26.4 N against the 28 N cap in
-# test_closing_force_stays_hand_assemblable. Force goes as b*h^3 while strain goes as h, and the
-# beam width b runs 8.2 mm in the gulf to 19.8 mm on the canopy north, so a single global h would
-# put half the closing force in the northern arms.
+# THICKNESS IS NOW ONE NUMBER, 1.50 mm, ON EVERY ARM INCLUDING THE N2 CORNER — a deliberate
+# reversal of the earlier per-arm force-budget scheme (which ran 1.40-2.15 straight, 2.00
+# corner, each sized to ~2.4 N so the set totalled 26.4 N against the 28 N cap). That scheme
+# optimised force evenness and left print-reliability margin above SNAP_TAB_SLOT_W's 1.2 mm
+# floor (three perimeters at a 0.4 mm nozzle) as whatever fell out — T1 landed at only +0.10 mm
+# (then bumped once, alone, to +0.20 mm), while others sat anywhere from +0.35 to +0.95 mm. A
+# single 1.50 mm value gives every arm the same +0.30 mm margin instead, which is what "prints
+# without a probable defect" actually means here: one number to inspect, not eleven.
 #
-# T1 IS THE ONE EXCEPTION, BUMPED 1.30 -> 1.40 OFF THE PURE FORCE-BUDGET VALUE. The gulf's narrow
-# beam width (8.2 mm) means T1's force-optimal thickness came out at only 0.10 mm above
-# SNAP_TAB_SLOT_W's own 1.2 mm print-reliability floor (three perimeters at a 0.4 mm nozzle) —
-# every other arm clears that floor by >= 0.35 mm. Unlike the slot, thickness is not a free
-# widen: force goes as h^3, so 1.40 costs +0.63 N (2.52 -> 3.15 N) against the remaining budget,
-# landing the set at 27.31 N — still under the 28 N cap, strain at 0.398% (cap 0.5%), L/t 9.29
-# (floor 8.0). A bigger margin than 0.20 mm (e.g. matching SW1's 0.35) would blow the cap and
-# needs another arm thinned to pay for it; this stays a single-arm change.
+# THE TRADE IS FORCE EVENNESS, TAKEN KNOWINGLY. Force goes as b*h^3 while strain goes as h, and
+# the beam width b runs 8.2 mm in the gulf to 19.8 mm on the canopy north, so one global h makes
+# the northern arms carry far less than the southern ones (S1 0.84 N vs T1 3.88 N) rather than
+# the ~2.4 N each the old scheme aimed for. The total is what the hand-assembly test actually
+# gates, and it drops from 27.31 N to 17.99 N against the 28 N cap — 10 N of headroom, the most
+# margin this design has had on that number.
+#
+# UNIFORM LENGTH WAS TRIED FIRST AND REJECTED — measured, not assumed. GULF_A (T1's run, the
+# shortest on the rim at 18.42 mm) caps a shared length at 12.46 mm, below T1's own current
+# 13 mm, so every other arm would have to shrink from as much as 22-26 mm down to match it.
+# Doing that at h=1.40 pushed the total closing force to 61.56 N (force goes as 1/L^3) and
+# every arm's strain to 0.467%, both worse than anything in the current design — shortening
+# bought print uniformity nowhere it wasn't already had and cost the two budgets (force, strain)
+# that were never the problem. Length stays per-arm.
+#
+# T1 ALSO MOVED ALONG ITS OWN RUN, s 2.96 -> 2.61 — not a size change, a position one. Widening
+# SNAP_TAB_SLOT_W to 1.2 mm (see the note there) had quietly taken T1's free-end clearance from
+# its run's own boundary from 1.56 mm down to 1.26 mm, because GULF_A only has 4.22 mm to split
+# between the root and the cut once T1's 13 mm arm and the 1.2 mm slot are subtracted, and the
+# old root position spent that unevenly (1.96 mm root / 1.26 mm cut). 2.61 splits it evenly,
+# 1.61 mm each side — the best either margin can do on this run, not an arbitrary number.
 SNAP_ARMS: tuple[SnapArm, ...] = (
     #        name              root                                      out                                 sense  L     h     barb  hidden
-    SnapArm("SW1-sw-diag",   snap_run_point(SNAP_RUN_SW_DIAG, 3.19),   snap_run_outward(SNAP_RUN_SW_DIAG),  +1.0, 16.0, 1.55, 3.95, True),
-    SnapArm("T1-thumb-gulf", snap_run_point(SNAP_RUN_GULF_A, 2.96),    snap_run_outward(SNAP_RUN_GULF_A),   +1.0, 13.0, 1.40, 3.95, True),
-    SnapArm("S1-south-C",    snap_run_point(SNAP_RUN_SOUTH, 6.06),     snap_run_outward(SNAP_RUN_SOUTH),    +1.0, 22.0, 2.15, 3.95, True),
-    SnapArm("SE1-se-diag",   snap_run_point(SNAP_RUN_SE_DIAG, 4.14),   snap_run_outward(SNAP_RUN_SE_DIAG),  +1.0, 20.0, 1.90, 3.95, True),
-    SnapArm("E1-east-S",     snap_run_point(SNAP_RUN_EAST, 35.81),     snap_run_outward(SNAP_RUN_EAST),     +1.0, 22.0, 1.90, 3.95, False),
-    SnapArm("N1-canopy-N",   snap_run_point(SNAP_RUN_CANOPY_N, 8.82),  snap_run_outward(SNAP_RUN_CANOPY_N), +1.0, 22.0, 1.65, 3.95, False),
-    SnapArm("W1-west-S",     snap_run_point(SNAP_RUN_WEST, 36.33),     snap_run_outward(SNAP_RUN_WEST),     -1.0, 22.0, 1.90, 3.95, False),
-    SnapArm("N3-north-east", snap_run_point(SNAP_RUN_NE, 24.70),       snap_run_outward(SNAP_RUN_NE),       -1.0, 22.0, 1.70, 3.95, False),
-    SnapArm("W2-west-N",     snap_run_point(SNAP_RUN_WEST, 46.90),     snap_run_outward(SNAP_RUN_WEST),     +1.0, 22.0, 1.70, 3.95, False),
-    SnapArm("E2-east-N",     snap_run_point(SNAP_RUN_EAST, 24.75),     snap_run_outward(SNAP_RUN_EAST),     -1.0, 22.0, 1.75, 3.95, False),
+    SnapArm("SW1-sw-diag",   snap_run_point(SNAP_RUN_SW_DIAG, 3.19),   snap_run_outward(SNAP_RUN_SW_DIAG),  +1.0, 16.0, 1.50, 3.95, True),
+    SnapArm("T1-thumb-gulf", snap_run_point(SNAP_RUN_GULF_A, 2.61),    snap_run_outward(SNAP_RUN_GULF_A),   +1.0, 13.0, 1.50, 3.95, True),
+    SnapArm("S1-south-C",    snap_run_point(SNAP_RUN_SOUTH, 6.06),     snap_run_outward(SNAP_RUN_SOUTH),    +1.0, 22.0, 1.50, 3.95, True),
+    SnapArm("SE1-se-diag",   snap_run_point(SNAP_RUN_SE_DIAG, 4.14),   snap_run_outward(SNAP_RUN_SE_DIAG),  +1.0, 20.0, 1.50, 3.95, True),
+    SnapArm("E1-east-S",     snap_run_point(SNAP_RUN_EAST, 35.81),     snap_run_outward(SNAP_RUN_EAST),     +1.0, 22.0, 1.50, 3.95, False),
+    SnapArm("N1-canopy-N",   snap_run_point(SNAP_RUN_CANOPY_N, 8.82),  snap_run_outward(SNAP_RUN_CANOPY_N), +1.0, 22.0, 1.50, 3.95, False),
+    SnapArm("W1-west-S",     snap_run_point(SNAP_RUN_WEST, 36.33),     snap_run_outward(SNAP_RUN_WEST),     -1.0, 22.0, 1.50, 3.95, False),
+    SnapArm("N3-north-east", snap_run_point(SNAP_RUN_NE, 24.70),       snap_run_outward(SNAP_RUN_NE),       -1.0, 22.0, 1.50, 3.95, False),
+    SnapArm("W2-west-N",     snap_run_point(SNAP_RUN_WEST, 46.90),     snap_run_outward(SNAP_RUN_WEST),     +1.0, 22.0, 1.50, 3.95, False),
+    SnapArm("E2-east-N",     snap_run_point(SNAP_RUN_EAST, 24.75),     snap_run_outward(SNAP_RUN_EAST),     -1.0, 22.0, 1.50, 3.95, False),
 )
 # T1 IS THE ONE SHORT ARM, and it is short because even spacing pins its barb at arc-length
 # 73.0, which falls on gulf-A — an 18.42 mm run. Rooting it 2.96 mm in and cutting at 17.16
@@ -2036,10 +2052,12 @@ SNAP_ARMS: tuple[SnapArm, ...] = (
 SNAP_CORNER_LOBE = ((91.75, 123.80), (73.75, 123.80))   # measured rim run, east -> west
 SNAP_CORNER_ARC = 4.24                                  # the blend to the next run
 SNAP_CORNER_WEST = ((70.75, 121.30), (54.75, 121.30))   # measured rim run past the arc
-SNAP_CORNER_L = 26.0     # of the 38.24 available. Full length would be 0.545 N — too soft to
-#                          matter; 26 at h=2.0 lands on 2.59 N and 0.142%, in line with the rest
+SNAP_CORNER_L = 26.0     # of the 38.24 available. Full length would be barely 0.5 N -- too soft
+#                          to matter as a latch.
 SNAP_CORNER_CUT_S = 2.0  # arc-length from the lobe's east end to the cut's outboard face
-SNAP_CORNER_THK = 2.0
+SNAP_CORNER_THK = 1.5    # mm; matches the uniform straight-arm thickness now (was 2.0, force-
+#                          budget-tuned alone) -- see the note above SNAP_ARMS. At 26 mm this
+#                          gives 1.09 N and 0.107% strain, same margins as every straight arm.
 SNAP_CORNER_BARB_LO_Z = 3.95   # the same shared height as every straight arm; see the note
 #                                above SNAP_ARMS for why there is no longer a ladder
 

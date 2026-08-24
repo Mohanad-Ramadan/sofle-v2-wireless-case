@@ -428,5 +428,30 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # inboard edge further in, so it removes MORE material there, not less. Nothing else moved —
     # T1's barb, catch pocket and root relief are unaffected by thickness, and no other arm's
     # force or geometry changed (total closing force absorbs the +0.63 N with 0.69 N to spare).
+    # Rebased +46.639414 mm³ (+0.025%) for UNIFORM ARM THICKNESS: every straight arm and the N2
+    # corner set to 1.50 mm, replacing the per-arm force-budget values (1.40-2.15 straight,
+    # 2.00 corner). Print-reliability margin above SNAP_TAB_SLOT_W's 1.2 mm floor was uneven
+    # across the set — T1 at only +0.20 mm (just fixed above), the rest anywhere from +0.35 to
+    # +0.95 mm — and a single value gives every arm the same, deliberately generous +0.30 mm.
+    # Volume goes UP overall because most arms got THINNER (S1 2.15->1.50 is the biggest single
+    # move), and a thinner arm's outboard through-cut spans less of the local wall (it cuts
+    # (thickness + SNAP_TAB_SLOT_W) at the free end), so it removes LESS material — T1 and SW1
+    # move the other way (1.40->1.50, 1.55->1.50) but are outweighed by the rest.
+    #
+    # T1 ALSO MOVED 0.35 mm ALONG ITS OWN RUN (s 2.96 -> 2.61), which does not touch this volume
+    # at all (root position, not size) but is folded into the same commit: widening the slot to
+    # 1.2 mm had quietly taken T1's free-end cut from 1.56 mm clear of its run's own end down to
+    # 1.26 mm, because GULF_A (18.42 mm) is the shortest run on the rim and T1's 13 mm arm plus
+    # a 1.2 mm slot leaves only 4.22 mm to split between the root and the cut. The old split
+    # (1.96 root / 1.26 cut) is now balanced (1.61 / 1.61) — the best either side can do on this
+    # run, not an arbitrary choice.
+    #
+    # UNIFORM LENGTH WAS TRIED AND REJECTED, measured rather than assumed: GULF_A caps a shared
+    # length at 12.46 mm (below T1's own current 13 mm), and forcing every arm down to that
+    # length quadruples-plus the total closing force (61.56 N against the 28 N cap, because
+    # force goes as 1/L^3) while pushing every arm's strain to 0.467% — closer to the 0.5% PLA
+    # cap than any arm sits today. Shortening to chase uniformity would have made the design
+    # both less printable (force, not thickness, is what the total-force test actually gates)
+    # and no safer in the one dimension that motivated this change.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 187504.976023) < 2e-2
+    assert abs(build_bottom_part(side).volume - 187551.615437) < 2e-2
