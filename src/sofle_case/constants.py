@@ -1942,10 +1942,19 @@ def snap_run_point(run: _Run, s: float) -> tuple[float, float]:
 # test_closing_force_stays_hand_assemblable. Force goes as b*h^3 while strain goes as h, and the
 # beam width b runs 8.2 mm in the gulf to 19.8 mm on the canopy north, so a single global h would
 # put half the closing force in the northern arms.
+#
+# T1 IS THE ONE EXCEPTION, BUMPED 1.30 -> 1.40 OFF THE PURE FORCE-BUDGET VALUE. The gulf's narrow
+# beam width (8.2 mm) means T1's force-optimal thickness came out at only 0.10 mm above
+# SNAP_TAB_SLOT_W's own 1.2 mm print-reliability floor (three perimeters at a 0.4 mm nozzle) —
+# every other arm clears that floor by >= 0.35 mm. Unlike the slot, thickness is not a free
+# widen: force goes as h^3, so 1.40 costs +0.63 N (2.52 -> 3.15 N) against the remaining budget,
+# landing the set at 27.31 N — still under the 28 N cap, strain at 0.398% (cap 0.5%), L/t 9.29
+# (floor 8.0). A bigger margin than 0.20 mm (e.g. matching SW1's 0.35) would blow the cap and
+# needs another arm thinned to pay for it; this stays a single-arm change.
 SNAP_ARMS: tuple[SnapArm, ...] = (
     #        name              root                                      out                                 sense  L     h     barb  hidden
     SnapArm("SW1-sw-diag",   snap_run_point(SNAP_RUN_SW_DIAG, 3.19),   snap_run_outward(SNAP_RUN_SW_DIAG),  +1.0, 16.0, 1.55, 3.95, True),
-    SnapArm("T1-thumb-gulf", snap_run_point(SNAP_RUN_GULF_A, 2.96),    snap_run_outward(SNAP_RUN_GULF_A),   +1.0, 13.0, 1.30, 3.95, True),
+    SnapArm("T1-thumb-gulf", snap_run_point(SNAP_RUN_GULF_A, 2.96),    snap_run_outward(SNAP_RUN_GULF_A),   +1.0, 13.0, 1.40, 3.95, True),
     SnapArm("S1-south-C",    snap_run_point(SNAP_RUN_SOUTH, 6.06),     snap_run_outward(SNAP_RUN_SOUTH),    +1.0, 22.0, 2.15, 3.95, True),
     SnapArm("SE1-se-diag",   snap_run_point(SNAP_RUN_SE_DIAG, 4.14),   snap_run_outward(SNAP_RUN_SE_DIAG),  +1.0, 20.0, 1.90, 3.95, True),
     SnapArm("E1-east-S",     snap_run_point(SNAP_RUN_EAST, 35.81),     snap_run_outward(SNAP_RUN_EAST),     +1.0, 22.0, 1.90, 3.95, False),

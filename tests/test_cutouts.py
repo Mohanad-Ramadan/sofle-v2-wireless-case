@@ -420,5 +420,13 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # arm from a cantilever into a fixed-fixed strip at 8x the root strain — a fracture, not a
     # soft latch. Nothing else in this part is a function of the slot width: barbs, seats, wedge,
     # pockets and parting line are untouched, and the suite at 1.2 failed on this baseline alone.
+    # Rebased -1.242615 mm³ (-0.001%) for T1-thumb-gulf's thickness 1.30 -> 1.40, taken to clear
+    # SNAP_TAB_SLOT_W's own 1.2 mm print-reliability floor by a real margin (T1 had come out of
+    # the force budget at only 0.10 mm above it, thinnest of any arm — see the note above
+    # SNAP_ARMS). The volume goes DOWN, not up, because T1's outboard leg is a through-cut across
+    # the full (thickness + SNAP_TAB_SLOT_W) band at the free end: a thicker arm pushes that cut's
+    # inboard edge further in, so it removes MORE material there, not less. Nothing else moved —
+    # T1's barb, catch pocket and root relief are unaffected by thickness, and no other arm's
+    # force or geometry changed (total closing force absorbs the +0.63 N with 0.69 N to spare).
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 187506.218638) < 2e-2
+    assert abs(build_bottom_part(side).volume - 187504.976023) < 2e-2
