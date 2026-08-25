@@ -1394,8 +1394,8 @@ BATTERY_POCKET_DEPTH = FLOOR_THICKNESS - BATTERY_FLOOR_BASE   # = 4.3; tracks th
 BATTERY_POCKET_CORNER_R = 2.0  # mm, pocket corner fillet radius
 
 # ---------- Anti-slip rubber feet (external, underside of the bottom plate) ----------
-# Shallow Ø10 seats recessed into the OUTER bottom face (Z=0) of the inset floor plate
-# at 4 corners, so 8 mm self-adhesive rubber feet locate there and the keyboard grips
+# Shallow Ø FOOT_DIA seats recessed into the OUTER bottom face (Z=0) of the inset floor plate
+# at 4 corners, so 10 mm self-adhesive rubber feet locate there and the keyboard grips
 # the desk (doesn't slide while typing). NOT deep — a shallow locating seat; the foot
 # sits mostly proud below and lifts the case off the desk.
 #
@@ -1404,20 +1404,41 @@ BATTERY_POCKET_CORNER_R = 2.0  # mm, pocket corner fillet radius
 # the battery pocket. Subtracted BEFORE the left-mirror, so they track to the mirrored
 # outline on the left half.
 #
-# WAS 10.0, AND THE SEAT DIAMETER IS WHAT DECIDES WHERE THE SNAP ARMS CAN GO — not the
-# seam. At Ø10 the seats clip four of the nine relief slots: the north-east arm's root
-# relief collides outright (-0.24 mm), and the two east arms and the north-west arm graze
-# by 0.05-0.37 mm. At Ø8 the worst clearance across all nine is 4.94 mm, and the
-# north-east arm reaches its intended barb position (x 128.90, between SW5 and SW6)
-# instead of retreating 10 mm west. Moving a foot was tried on wip/snap-latches and did
-# not survive; shrinking the seat is the cheaper fix and 8 mm feet are as common as 10.
-FOOT_DIA   = 8.0    # mm, rubber-foot diameter → seat diameter
+# Ø10 RESTORED, AND THE FEET MOVED INSTEAD OF THE SEAT SHRINKING. This was cut to 8.0 by the
+# snap-latch pass, whose note read "the seat diameter is what decides where the snap arms can
+# go" and "moving a foot was tried on wip/snap-latches and did not survive". Both were true of
+# the NINE-arm layout they were written against, and neither survived the two passes that
+# followed: even arc-length spacing carried the arms to eleven new stations, and
+# SNAP_TAB_SLOT_W was re-cut twice (1.2 -> 0.9 -> 1.2). Re-measured against the layout that
+# actually ships, Ø10 no longer collides with anything — the tightest clearance is +0.76 mm at
+# SE1, i.e. a gap, not an overlap. What it does fail is the 1.2 mm printability gate (three arms
+# sit at 0.76-1.18), and that is bought back by nudging three feet 1.6-1.9 mm, all of them
+# INBOARD, where there is nothing to hit: the nearest battery-pocket edge is 27 mm away.
+#
+# Clearance to the nearest snap slot, before -> after, at Ø10:
+#   (20.0, 110.0) -> (20.5, 108.5)    1.18 -> 2.40
+#   (143.0, 104.0) -> (142.0, 102.75) 1.15 -> 2.15
+#   (143.0, 38.0) -> (142.5, 39.75)   0.76 -> 2.58
+#   (20.0, 22.0) -> (21.0, 23.0)      4.22 -> 5.72   (never bound; moved inboard so the
+#                                     1 mm larger radius keeps clear of the outline)
+#
+# Every one of those beats the Ø8 layout's own tightest (1.76 mm at SE1), so restoring the
+# 10 mm feet leaves the arms with MORE room than shrinking the seats did, not less.
+#
+# THE "after" COLUMN WAS MEASURED AT SNAP_TAB_SLOT_W = 0.9 AND THE SLOT HAS SINCE GONE BACK TO
+# 1.2, so each of those figures gives back up to 0.30 mm. The feet did NOT have to move again:
+# re-measured at 1.2 the tightest three are E2 1.86, W2 2.04 and N3 2.05 (N3's on its root
+# relief, not its slot line), all still clear of the 1.2 mm gate with margin. The reason the
+# widening was affordable is the same reason it was needed — see SNAP_TAB_SLOT_W. If a future
+# pass narrows this seat again, re-measure here first: the feet are the movable side of this
+# pair, FOOT_DIA is not (it matches rubber feet the user already owns).
+FOOT_DIA   = 10.0   # mm, rubber-foot diameter → seat diameter
 FOOT_DEPTH = 0.6    # mm, shallow locating-seat depth
 FOOT_POSITIONS: tuple[tuple[float, float], ...] = (
-    (20.0, 110.0),   # top-left
-    (143.0, 104.0),  # top-right (pulled in off the cut corner)
-    (20.0, 22.0),    # bottom-left
-    (143.0, 38.0),   # bottom-right (thumb-cluster side is cut away lower)
+    (20.5, 108.5),    # top-left
+    (142.0, 102.75),  # top-right (pulled in off the cut corner)
+    (21.0, 23.0),     # bottom-left
+    (142.5, 39.75),   # bottom-right (thumb-cluster side is cut away lower)
 )
 
 # ---------- Component positions (PCB coords, mm) ----------
@@ -1630,23 +1651,47 @@ assert TENT_ANGLE_DEG <= TENT_ANGLE_MAX, (
 # leaves it built in at both ends, and fixed-fixed strain is 12*d*h/L^2 against a cantilever's
 # 3*d*h/(2L^2) — 8x worse, 2.84% at L=22, which fractures PLA. Hence the outboard leg.
 SNAP_TAB_L        = 22.0   # mm; default arm length. Per-arm; N2 is shorter, see SNAP_ARMS
-SNAP_TAB_SLOT_W   = 0.9    # mm; relief slot width. IT IS ALSO WHAT YOU SEE: the same slot is
+SNAP_TAB_SLOT_W   = 1.2    # mm; relief slot width. IT IS ALSO WHAT YOU SEE: the same slot is
 #                            the release port on the underside and, on the arms whose cut is
-#                            north of the reveal line, the slit in the shadow recess. Narrowing
-#                            1.2 -> 0.9 shrinks both by 25% (port ~26 -> ~20 mm² per arm) and
-#                            costs nothing mechanically — the arm only deflects SNAP_DEFLECT,
-#                            0.32 mm, so 0.9 is still 2.8x the gap it has to swing through, and
-#                            every run margin GAINS 0.30 mm because cut_u and the slot's far
-#                            edge both scale with this. The slot cannot be hidden altogether:
-#                            it has to reach the ground face or the arm stops being a
-#                            vertical-axis cantilever (see the print-orientation note below).
-#                            WATCH THIS ON THE FIRST PRINT — 0.9 mm is a little over two 0.4 mm
-#                            extrusions, so it may partially bridge where 1.2 would not.
+#                            north of the reveal line, the slit in the shadow recess.
+#
+#                            BACK TO 1.2 FROM 0.9, AND THE REASON IS THE PRINTER, NOT THE BEAM.
+#                            0.9 was taken to shrink the port and the slit by 25% (port ~26 ->
+#                            ~20 mm² per arm) on the argument that it "costs nothing
+#                            mechanically" — true of the beam, which only deflects SNAP_DEFLECT
+#                            (0.32 mm), and false of the process. The comment that shipped with
+#                            0.9 said so itself: a little over two 0.4 mm extrusions, it may
+#                            partially bridge where 1.2 would not. 1.2 is three perimeters, the
+#                            same floor test_arms_clear_the_exclusion_zones already holds every
+#                            web on this plate to; the slot was the one place the plate did not
+#                            meet its own gate.
+#
+#                            WHAT A BRIDGED SLOT ACTUALLY COSTS IS THE ARM, NOT THE LATCH. Weld
+#                            the OUTBOARD leg and the cantilever becomes fixed-fixed, 8x the
+#                            root strain: T1 0.369 -> 2.95%, SW1 0.291 -> 2.33%, SE1 0.228 ->
+#                            1.82%, S1 0.213 -> 1.70%, against SNAP_PLA_STRAIN_MAX of 0.5%. The
+#                            arm fractures on the first close rather than merely failing to
+#                            latch. And the four worst-placed are exactly the four hidden_cut
+#                            arms (SW1, T1, S1, SE1): their cut is under the tub's skin once
+#                            closed, so a weld there is the one defect on this part that cannot
+#                            be inspected or picked out after assembly.
+#
+#                            The slot cannot be hidden altogether: it has to reach the ground
+#                            face or the arm stops being a vertical-axis cantilever (see the
+#                            print-orientation note below). Cost of going back, stated plainly:
+#                            every run margin LOSES the 0.30 mm it gained at 0.9 (cut_u and the
+#                            slot's far edge both scale with this), and the seven arms north of
+#                            the reveal line show a 1.2 mm slit instead of 0.9. Everything else
+#                            held — foot clearances, force budget, strain caps, even spacing,
+#                            hidden-cut coverage — checked by running the suite at 1.2, where
+#                            the only failures were the pinned volume baselines.
 SNAP_BARB_PROUD   = 0.52   # mm; barb protrusion from the rim's outer face (guide: 0.5-1.2)
 # PINNED, not tuned further — printed via a print-shop service with no coupon to calibrate
-# against, so raising this to chase a firmer click is not an option: the 28 N cap in
-# test_closing_force_stays_hand_assemblable already allows proud up to only ~0.552 before the
-# test itself fails, i.e. 0.52 already sits at ~94% of the force/strain budget. The 90 deg
+# against, so raising this to chase a firmer click is not an option: at the 30 N closing-force
+# target (arm thicknesses re-tuned for it — see the note above SNAP_ARMS), the 32 N cap in
+# test_closing_force_stays_hand_assemblable already allows proud up to only ~0.5413 before the
+# test itself fails, i.e. 0.52 already sits at ~96% of the budget — tighter than before, because
+# that budget is now mostly spent on arm thickness rather than barb depth. The 90 deg
 # SNAP_RETURN_DEG is what actually guarantees "not loose" — a pure undercut cannot pull straight
 # out regardless of barb depth — so there is no tightness upside to a deeper barb, only strain
 # risk. See "Open questions and risks" -> SNAP_BARB_PROUD in the deep-dive doc.
@@ -1894,23 +1939,56 @@ def snap_run_point(run: _Run, s: float) -> tuple[float, float]:
 # barb_lo_z and SNAP_BARB_H alone. (E2's floor moved with its own reposition to the run's ceiling,
 # below — it was 3.36 / margin 0.59 at its original arc-length.)
 #
-# THICKNESS IS PER ARM AND FALLS OUT OF THE FORCE BUDGET, not the geometry. Each arm is sized to
-# carry about 2.4 N so the set totals 26.4 N against the 28 N cap in
-# test_closing_force_stays_hand_assemblable. Force goes as b*h^3 while strain goes as h, and the
-# beam width b runs 8.2 mm in the gulf to 19.8 mm on the canopy north, so a single global h would
-# put half the closing force in the northern arms.
+# THICKNESS IS PER ARM AGAIN, targeting a TOTAL CLOSING FORCE rather than either per-arm force
+# evenness (the original scheme) or a single uniform thickness (the intermediate one). Every
+# arm still clears the SNAP_TAB_SLOT_W print-reliability floor (1.2 mm, three perimeters at a
+# 0.4 mm nozzle) by at least +0.30 mm — that fix is kept — but thickness above the floor is now
+# spent where it buys force cheaply (long arms, high local wall height b) rather than spread
+# evenly or held at one number.
+#
+# T1-THUMB-GULF IS THE HARD BOTTLENECK, NOT A FREE DIAL. Its run (GULF_A, 18.42 mm — the
+# shortest on the rim) forces L=13 mm, and at that length the L/t >= 8 floor alone caps its
+# thickness at 1.625 mm — where strain is ALREADY 0.462%, 92% of the 0.5% PLA budget. T1 stays
+# at 1.50 mm (strain 0.426%, L/t 8.67): it already contributes more force (3.88 N) than nearly
+# every other arm at that thickness, purely because a short arm's force and strain both blow up
+# per unit thickness (force ~ 1/L^3, strain ~ 1/L^2). SW1 (L=16) and SE1 (L=20) land at or near
+# the same 1.50 mm print floor for the same reason, just less severely — their length gives them
+# some room, but not much, before strain rises faster than the force is worth. All the rest of
+# the extra force is bought from the seven L=22 arms and the N2 corner, which have length and
+# beam-width headroom to spare.
+#
+# TARGET TOTAL: 30.0 N (test_closing_force_stays_hand_assemblable's cap raised to 32.0 N to
+# match — see that test). Solved by giving the seven L=22 arms a shared thickness (1.866 mm)
+# and SE1 its own (1.542 mm) that together hit 30.0 N exactly, with T1/SW1 held at the 1.50 mm
+# floor and N2 held at 2.300 mm (0.25 mm clear of SEAM_RIM_THK, its own governing ceiling here).
+# Worst-case strain is still T1 at 0.426% — unchanged, since T1 never moved.
+#
+# UNIFORM LENGTH WAS TRIED FIRST AND REJECTED — measured, not assumed. GULF_A (T1's run, the
+# shortest on the rim at 18.42 mm) caps a shared length at 12.46 mm, below T1's own current
+# 13 mm, so every other arm would have to shrink from as much as 22-26 mm down to match it.
+# Doing that at h=1.40 pushed the total closing force to 61.56 N (force goes as 1/L^3) and
+# every arm's strain to 0.467%, both worse than anything in the current design — shortening
+# bought print uniformity nowhere it wasn't already had and cost the two budgets (force, strain)
+# that were never the problem. Length stays per-arm.
+#
+# T1 ALSO MOVED ALONG ITS OWN RUN, s 2.96 -> 2.61 — not a size change, a position one. Widening
+# SNAP_TAB_SLOT_W to 1.2 mm (see the note there) had quietly taken T1's free-end clearance from
+# its run's own boundary from 1.56 mm down to 1.26 mm, because GULF_A only has 4.22 mm to split
+# between the root and the cut once T1's 13 mm arm and the 1.2 mm slot are subtracted, and the
+# old root position spent that unevenly (1.96 mm root / 1.26 mm cut). 2.61 splits it evenly,
+# 1.61 mm each side — the best either margin can do on this run, not an arbitrary number.
 SNAP_ARMS: tuple[SnapArm, ...] = (
     #        name              root                                      out                                 sense  L     h     barb  hidden
-    SnapArm("SW1-sw-diag",   snap_run_point(SNAP_RUN_SW_DIAG, 3.19),   snap_run_outward(SNAP_RUN_SW_DIAG),  +1.0, 16.0, 1.55, 3.95, True),
-    SnapArm("T1-thumb-gulf", snap_run_point(SNAP_RUN_GULF_A, 2.96),    snap_run_outward(SNAP_RUN_GULF_A),   +1.0, 13.0, 1.30, 3.95, True),
-    SnapArm("S1-south-C",    snap_run_point(SNAP_RUN_SOUTH, 6.06),     snap_run_outward(SNAP_RUN_SOUTH),    +1.0, 22.0, 2.15, 3.95, True),
-    SnapArm("SE1-se-diag",   snap_run_point(SNAP_RUN_SE_DIAG, 4.14),   snap_run_outward(SNAP_RUN_SE_DIAG),  +1.0, 20.0, 1.90, 3.95, True),
-    SnapArm("E1-east-S",     snap_run_point(SNAP_RUN_EAST, 35.81),     snap_run_outward(SNAP_RUN_EAST),     +1.0, 22.0, 1.90, 3.95, False),
-    SnapArm("N1-canopy-N",   snap_run_point(SNAP_RUN_CANOPY_N, 8.82),  snap_run_outward(SNAP_RUN_CANOPY_N), +1.0, 22.0, 1.65, 3.95, False),
-    SnapArm("W1-west-S",     snap_run_point(SNAP_RUN_WEST, 36.33),     snap_run_outward(SNAP_RUN_WEST),     -1.0, 22.0, 1.90, 3.95, False),
-    SnapArm("N3-north-east", snap_run_point(SNAP_RUN_NE, 24.70),       snap_run_outward(SNAP_RUN_NE),       -1.0, 22.0, 1.70, 3.95, False),
-    SnapArm("W2-west-N",     snap_run_point(SNAP_RUN_WEST, 46.90),     snap_run_outward(SNAP_RUN_WEST),     +1.0, 22.0, 1.70, 3.95, False),
-    SnapArm("E2-east-N",     snap_run_point(SNAP_RUN_EAST, 24.75),     snap_run_outward(SNAP_RUN_EAST),     -1.0, 22.0, 1.75, 3.95, False),
+    SnapArm("SW1-sw-diag",   snap_run_point(SNAP_RUN_SW_DIAG, 3.19),   snap_run_outward(SNAP_RUN_SW_DIAG),  +1.0, 16.0, 1.500, 3.95, True),
+    SnapArm("T1-thumb-gulf", snap_run_point(SNAP_RUN_GULF_A, 2.61),    snap_run_outward(SNAP_RUN_GULF_A),   +1.0, 13.0, 1.500, 3.95, True),
+    SnapArm("S1-south-C",    snap_run_point(SNAP_RUN_SOUTH, 6.06),     snap_run_outward(SNAP_RUN_SOUTH),    +1.0, 22.0, 1.866, 3.95, True),
+    SnapArm("SE1-se-diag",   snap_run_point(SNAP_RUN_SE_DIAG, 4.14),   snap_run_outward(SNAP_RUN_SE_DIAG),  +1.0, 20.0, 1.542, 3.95, True),
+    SnapArm("E1-east-S",     snap_run_point(SNAP_RUN_EAST, 35.81),     snap_run_outward(SNAP_RUN_EAST),     +1.0, 22.0, 1.866, 3.95, False),
+    SnapArm("N1-canopy-N",   snap_run_point(SNAP_RUN_CANOPY_N, 8.82),  snap_run_outward(SNAP_RUN_CANOPY_N), +1.0, 22.0, 1.866, 3.95, False),
+    SnapArm("W1-west-S",     snap_run_point(SNAP_RUN_WEST, 36.33),     snap_run_outward(SNAP_RUN_WEST),     -1.0, 22.0, 1.866, 3.95, False),
+    SnapArm("N3-north-east", snap_run_point(SNAP_RUN_NE, 24.70),       snap_run_outward(SNAP_RUN_NE),       -1.0, 22.0, 1.866, 3.95, False),
+    SnapArm("W2-west-N",     snap_run_point(SNAP_RUN_WEST, 46.90),     snap_run_outward(SNAP_RUN_WEST),     +1.0, 22.0, 1.866, 3.95, False),
+    SnapArm("E2-east-N",     snap_run_point(SNAP_RUN_EAST, 24.75),     snap_run_outward(SNAP_RUN_EAST),     -1.0, 22.0, 1.866, 3.95, False),
 )
 # T1 IS THE ONE SHORT ARM, and it is short because even spacing pins its barb at arc-length
 # 73.0, which falls on gulf-A — an 18.42 mm run. Rooting it 2.96 mm in and cutting at 17.16
@@ -1984,10 +2062,11 @@ SNAP_ARMS: tuple[SnapArm, ...] = (
 SNAP_CORNER_LOBE = ((91.75, 123.80), (73.75, 123.80))   # measured rim run, east -> west
 SNAP_CORNER_ARC = 4.24                                  # the blend to the next run
 SNAP_CORNER_WEST = ((70.75, 121.30), (54.75, 121.30))   # measured rim run past the arc
-SNAP_CORNER_L = 26.0     # of the 38.24 available. Full length would be 0.545 N — too soft to
-#                          matter; 26 at h=2.0 lands on 2.59 N and 0.142%, in line with the rest
+SNAP_CORNER_L = 26.0     # of the 38.24 available. Full length would be barely 0.5 N -- too soft
+#                          to matter as a latch.
 SNAP_CORNER_CUT_S = 2.0  # arc-length from the lobe's east end to the cut's outboard face
-SNAP_CORNER_THK = 2.0
+SNAP_CORNER_THK = 2.300  # mm; 0.25 mm clear of SEAM_RIM_THK (2.55) -- see the force-budget
+#                          note above SNAP_ARMS. At 26 mm this gives 3.91 N and 0.163% strain.
 SNAP_CORNER_BARB_LO_Z = 3.95   # the same shared height as every straight arm; see the note
 #                                above SNAP_ARMS for why there is no longer a ladder
 

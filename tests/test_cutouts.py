@@ -315,8 +315,16 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # its diameter, and a smaller disc samples that 6° slope differently. Nothing else in the
     # bottom part is a function of FOOT_DIA — the wedge, band and parting line are untouched,
     # which is the same invariant the rest of this baseline's history exists to prove.
-    # The seats shrank because they, not the seam, decide where the snap arms can go: at Ø10
-    # four of the nine relief slots foul a seat. See the FOOT_DIA note in constants.py.
+    #
+    # Rebased −67.88 mm³ AGAIN, restoring FOOT_DIA to 10.0. The shrink above was made to keep the
+    # seats off the snap arms' relief slots, and the two passes that followed it (eleven arms on
+    # even arc-length stations, SNAP_TAB_SLOT_W 1.2 -> 0.9) moved every slot it had been measured
+    # against. Ø10 clears them all now; three feet moved 1.6-1.9 mm inboard to keep the 1.2 mm
+    # printability gate, and the tightest arm-to-seat gap is 2.15 mm — better than the 1.76 mm the
+    # Ø8 layout had. The delta returns the PREVIOUS baseline to six decimals under a rebuild with
+    # only FOOT_DIA reverted, which is what proves the moved positions cost nothing: a seat's
+    # volume is π r² × FOOT_DEPTH wherever it sits, because _foot_recesses cuts perpendicular to
+    # the tent plane rather than vertically, so sliding one along the 6° slope does not change it.
     # Rebased −4578.55 mm³ (−2.38%) for the NINE SNAP LATCHES. Accounted for in full:
     #   8 straight reliefs  −3805.907  (their cutters total more; the surplus is air below the
     #                                   wedge, because every slot deliberately overruns the
@@ -400,5 +408,57 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # (38.15 -> 35.81) and N3-north-east (24.61 -> 24.70) moved to do the least damage to the rest
     # of the rim given E2 fixed at that ceiling, not to hit a spacing target of their own. The
     # relief slot's footprint shifts with each arm, hence the volume change; nothing else moved.
+    # Rebased -1181.742773 mm³ (-0.626%) for SNAP_TAB_SLOT_W 0.9 -> 1.2, which UNDOES the
+    # +1176.396083 logged above: a wider relief slot removes more. The two are not equal and
+    # opposite because the arms are not where they were when 0.9 was taken — E2, E1 and N3 moved
+    # for the NE-corner reposition logged just below it, and a slot's overrun into the wedge is a
+    # function of the local wall height, so the same 0.30 mm of extra width cuts a different
+    # amount of real material at each new station. 5.35 mm³ of difference across eleven arms.
+    #
+    # The widening is a PRINTABILITY change, not a mechanical one: at 0.9 the slot was a little
+    # over two 0.4 mm extrusions and could partially bridge, and a bridged OUTBOARD leg turns the
+    # arm from a cantilever into a fixed-fixed strip at 8x the root strain — a fracture, not a
+    # soft latch. Nothing else in this part is a function of the slot width: barbs, seats, wedge,
+    # pockets and parting line are untouched, and the suite at 1.2 failed on this baseline alone.
+    # Rebased -1.242615 mm³ (-0.001%) for T1-thumb-gulf's thickness 1.30 -> 1.40, taken to clear
+    # SNAP_TAB_SLOT_W's own 1.2 mm print-reliability floor by a real margin (T1 had come out of
+    # the force budget at only 0.10 mm above it, thinnest of any arm — see the note above
+    # SNAP_ARMS). The volume goes DOWN, not up, because T1's outboard leg is a through-cut across
+    # the full (thickness + SNAP_TAB_SLOT_W) band at the free end: a thicker arm pushes that cut's
+    # inboard edge further in, so it removes MORE material there, not less. Nothing else moved —
+    # T1's barb, catch pocket and root relief are unaffected by thickness, and no other arm's
+    # force or geometry changed (total closing force absorbs the +0.63 N with 0.69 N to spare).
+    # Rebased +46.639414 mm³ (+0.025%) for UNIFORM ARM THICKNESS: every straight arm and the N2
+    # corner set to 1.50 mm, replacing the per-arm force-budget values (1.40-2.15 straight,
+    # 2.00 corner). Print-reliability margin above SNAP_TAB_SLOT_W's 1.2 mm floor was uneven
+    # across the set — T1 at only +0.20 mm (just fixed above), the rest anywhere from +0.35 to
+    # +0.95 mm — and a single value gives every arm the same, deliberately generous +0.30 mm.
+    # Volume goes UP overall because most arms got THINNER (S1 2.15->1.50 is the biggest single
+    # move), and a thinner arm's outboard through-cut spans less of the local wall (it cuts
+    # (thickness + SNAP_TAB_SLOT_W) at the free end), so it removes LESS material — T1 and SW1
+    # move the other way (1.40->1.50, 1.55->1.50) but are outweighed by the rest.
+    #
+    # T1 ALSO MOVED 0.35 mm ALONG ITS OWN RUN (s 2.96 -> 2.61), which does not touch this volume
+    # at all (root position, not size) but is folded into the same commit: widening the slot to
+    # 1.2 mm had quietly taken T1's free-end cut from 1.56 mm clear of its run's own end down to
+    # 1.26 mm, because GULF_A (18.42 mm) is the shortest run on the rim and T1's 13 mm arm plus
+    # a 1.2 mm slot leaves only 4.22 mm to split between the root and the cut. The old split
+    # (1.96 root / 1.26 cut) is now balanced (1.61 / 1.61) — the best either side can do on this
+    # run, not an arbitrary choice.
+    #
+    # UNIFORM LENGTH WAS TRIED AND REJECTED, measured rather than assumed: GULF_A caps a shared
+    # length at 12.46 mm (below T1's own current 13 mm), and forcing every arm down to that
+    # length quadruples-plus the total closing force (61.56 N against the 28 N cap, because
+    # force goes as 1/L^3) while pushing every arm's strain to 0.467% — closer to the 0.5% PLA
+    # cap than any arm sits today. Shortening to chase uniformity would have made the design
+    # both less printable (force, not thickness, is what the total-force test actually gates)
+    # and no safer in the one dimension that motivated this change.
+    # Rebased -51.351904 mm³ (-0.027%) for the CLOSING-FORCE RE-TUNE: arm thickness went from a
+    # uniform 1.50 mm back to per-arm (S1/E1/N1/W1/N3/W2/E2 1.500->1.866, SE1 1.500->1.542, N2
+    # corner 1.50->2.30; SW1/T1 unchanged), sized to hit a 30.0 N total closing force rather than
+    # either force-evenness or a uniform print margin. Volume goes DOWN because every arm that
+    # got thicker cuts MORE at its outboard through-cut (that leg spans the full
+    # (thickness + SNAP_TAB_SLOT_W) band at the free end — see the SNAP_TAB_SLOT_W note), and
+    # more arms got thicker than thinner this time.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 188755.839037) < 2e-2
+    assert abs(build_bottom_part(side).volume - 187500.263533) < 2e-2
