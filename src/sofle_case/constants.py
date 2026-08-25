@@ -1685,16 +1685,16 @@ SNAP_TAB_SLOT_W   = 1.2    # mm; relief slot width. IT IS ALSO WHAT YOU SEE: the
 #                            held — foot clearances, force budget, strain caps, even spacing,
 #                            hidden-cut coverage — checked by running the suite at 1.2, where
 #                            the only failures were the pinned volume baselines.
-SNAP_BARB_PROUD   = 0.52   # mm; barb protrusion from the rim's outer face (guide: 0.5-1.2)
-# PINNED, not tuned further — printed via a print-shop service with no coupon to calibrate
-# against, so raising this to chase a firmer click is not an option: at the 30 N closing-force
-# target (arm thicknesses re-tuned for it — see the note above SNAP_ARMS), the 32 N cap in
-# test_closing_force_stays_hand_assemblable already allows proud up to only ~0.5413 before the
-# test itself fails, i.e. 0.52 already sits at ~96% of the budget — tighter than before, because
-# that budget is now mostly spent on arm thickness rather than barb depth. The 90 deg
-# SNAP_RETURN_DEG is what actually guarantees "not loose" — a pure undercut cannot pull straight
-# out regardless of barb depth — so there is no tightness upside to a deeper barb, only strain
-# risk. See "Open questions and risks" -> SNAP_BARB_PROUD in the deep-dive doc.
+SNAP_BARB_PROUD   = 0.45   # mm; barb protrusion from the rim's outer face (guide: 0.5-1.2)
+# LOWERED 0.52 -> 0.45 for the SCREWLESS redesign (deflect 0.32 -> 0.25). With the snaps now the
+# SOLE closure (no screws), the binding constraint is CYCLIC FATIGUE of the one strain-limited arm
+# (T1, L=13, pinned at the 1.5 mm print floor), whose root strain is set by deflect alone:
+# proud 0.45 -> T1 strain 0.333 %, i.e. 67 % of the 0.5 % PLA cap, down from 0.426 % (85 %) at
+# 0.52 — real margin for a case opened a few times a year. The 90 deg SNAP_RETURN_DEG guarantees
+# "not loose" — a pure undercut cannot pull straight out regardless of barb depth — and retention
+# is FRACTURE-limited (~420 N/barb) not overlap-limited, so the 0.25 mm undercut overlap left at
+# proud 0.45 loses no meaningful hold. See .omc/specs/deep-dive-screwless-snap-closure.md and
+# .omc/plans/2026-08-25-screwless-snap-implementation.md.
 SNAP_LEAD_IN_DEG  = 30.0   # deg from the insertion axis, barb's TOP face (guide: 25-35)
 SNAP_RETURN_DEG   = 90.0   # deg from the insertion axis, barb's BOTTOM face. SELF-LOCKING —
 #                            see the force note below; a flat face costs no Z at all.
@@ -1710,8 +1710,10 @@ SNAP_ROOT_FILLET  = 1.0    # mm; drilled root relief, >= 0.5 * SEAM_RIM_THK
 SNAP_Z_PLAY       = 0.25   # mm; catch pocket taller than the barb, ALL of it below the barb
 SNAP_SKIRT_BELOW  = 0.3    # mm; skirt kept below the catch pocket
 SNAP_SKIRT_ABOVE_MIN = 1.0 # mm; skirt that must survive above the catch pocket
-# PLA is rated POOR for snaps (low strain tolerance, creep-prone). Staying on PLA is deliberate
-# and survivable ONLY because the screws are the load path. Budget set accordingly.
+# PLA is rated POOR for snaps (low strain tolerance, creep-prone). Staying on PLA is deliberate.
+# The snaps are now the SOLE load path (screwless), so the fatigue margin is bought by STRAIN, not
+# by leaning on screws: the worst arm (T1) is held to 0.333 % = 67 % of this cap, and every other
+# arm sits below 0.25 %. Budget set accordingly.
 SNAP_PLA_STRAIN_MAX = 0.005
 
 SNAP_DEFLECT = SNAP_BARB_PROUD - SEAM_FIT_CLEAR   # 0.32; the arm's working deflection
@@ -1939,37 +1941,27 @@ def snap_run_point(run: _Run, s: float) -> tuple[float, float]:
 # barb_lo_z and SNAP_BARB_H alone. (E2's floor moved with its own reposition to the run's ceiling,
 # below — it was 3.36 / margin 0.59 at its original arc-length.)
 #
-# THICKNESS IS PER ARM AGAIN, targeting a TOTAL CLOSING FORCE rather than either per-arm force
-# evenness (the original scheme) or a single uniform thickness (the intermediate one). Every
-# arm still clears the SNAP_TAB_SLOT_W print-reliability floor (1.2 mm, three perimeters at a
-# 0.4 mm nozzle) by at least +0.30 mm — that fix is kept — but thickness above the floor is now
-# spent where it buys force cheaply (long arms, high local wall height b) rather than spread
-# evenly or held at one number.
+# THICKNESS IS SET FOR PRY-SPREAD STIFFNESS (screwless redesign, portable/drop use). The snaps are
+# the SOLE closure — no screws — and the case has to survive being carried in a bag and dropped
+# desk-height. Two separate things keep it shut: PULL-OFF (the case pulled straight apart) is the
+# 90 deg self-locking undercut's job — fracture-limited, ~14x the drop-shock load, independent of
+# thickness; PRY/SPREAD (a drop or bag load that spreads the seam and flexes the arms) is resisted
+# by ARM STIFFNESS, which goes as thickness^3. So the arms are run THICK for pry resistance:
+# 2.20 mm on the long arms and the corner, 2.00 mm on SW1 (its L/t>=8 floor at L=16). Total
+# closing force ~36.6 N, insertion ~55/78 N at mu 0.5/0.7 — firm, two-handed; if a print comes out
+# too grippy to hand-seat, ease it with a SHALLOWER SNAP_LEAD_IN_DEG (that lowers insertion without
+# touching pull-off, which is the flat 90 deg return, or arm stiffness).
 #
-# T1-THUMB-GULF IS THE HARD BOTTLENECK, NOT A FREE DIAL. Its run (GULF_A, 18.42 mm — the
-# shortest on the rim) forces L=13 mm, and at that length the L/t >= 8 floor alone caps its
-# thickness at 1.625 mm — where strain is ALREADY 0.462%, 92% of the 0.5% PLA budget. T1 stays
-# at 1.50 mm (strain 0.426%, L/t 8.67): it already contributes more force (3.88 N) than nearly
-# every other arm at that thickness, purely because a short arm's force and strain both blow up
-# per unit thickness (force ~ 1/L^3, strain ~ 1/L^2). SW1 (L=16) and SE1 (L=20) land at or near
-# the same 1.50 mm print floor for the same reason, just less severely — their length gives them
-# some room, but not much, before strain rises faster than the force is worth. All the rest of
-# the extra force is bought from the seven L=22 arms and the N2 corner, which have length and
-# beam-width headroom to spare.
+# THICKNESS COSTS NO FATIGUE MARGIN HERE, which is why it is free to spend on stiffness: the ONLY
+# strain-binding arm is T1-thumb-gulf (GULF_A, 18.42 mm — the shortest rim run — forces L=13 mm),
+# and strain goes as h/L^2, so the long arms sit at 0.12-0.21% even at 2.20 mm, nowhere near the
+# 0.5% PLA cap. T1 stays at the 1.50 mm floor: at L=13 its strain is 0.333% (67% of cap), set by
+# SNAP_DEFLECT alone (SNAP_BARB_PROUD 0.52 -> 0.45 is what bought that margin over the 0.426%/85%
+# of the screwed era — NOT thickness). See .omc/plans/2026-08-25-screwless-snap-implementation.md.
 #
-# TARGET TOTAL: 30.0 N (test_closing_force_stays_hand_assemblable's cap raised to 32.0 N to
-# match — see that test). Solved by giving the seven L=22 arms a shared thickness (1.866 mm)
-# and SE1 its own (1.542 mm) that together hit 30.0 N exactly, with T1/SW1 held at the 1.50 mm
-# floor and N2 held at 2.300 mm (0.25 mm clear of SEAM_RIM_THK, its own governing ceiling here).
-# Worst-case strain is still T1 at 0.426% — unchanged, since T1 never moved.
-#
-# UNIFORM LENGTH WAS TRIED FIRST AND REJECTED — measured, not assumed. GULF_A (T1's run, the
-# shortest on the rim at 18.42 mm) caps a shared length at 12.46 mm, below T1's own current
-# 13 mm, so every other arm would have to shrink from as much as 22-26 mm down to match it.
-# Doing that at h=1.40 pushed the total closing force to 61.56 N (force goes as 1/L^3) and
-# every arm's strain to 0.467%, both worse than anything in the current design — shortening
-# bought print uniformity nowhere it wasn't already had and cost the two budgets (force, strain)
-# that were never the problem. Length stays per-arm.
+# UNIFORM LENGTH IS STILL REJECTED (measured earlier, unchanged). GULF_A caps a shared length at
+# 12.46 mm, below T1's 13 mm, forcing every other arm to shrink to match; at h=1.40 that spiked
+# total force to 61.56 N and every strain to 0.467%. Length stays per-arm.
 #
 # T1 ALSO MOVED ALONG ITS OWN RUN, s 2.96 -> 2.61 — not a size change, a position one. Widening
 # SNAP_TAB_SLOT_W to 1.2 mm (see the note there) had quietly taken T1's free-end clearance from
@@ -1979,16 +1971,16 @@ def snap_run_point(run: _Run, s: float) -> tuple[float, float]:
 # 1.61 mm each side — the best either margin can do on this run, not an arbitrary number.
 SNAP_ARMS: tuple[SnapArm, ...] = (
     #        name              root                                      out                                 sense  L     h     barb  hidden
-    SnapArm("SW1-sw-diag",   snap_run_point(SNAP_RUN_SW_DIAG, 3.19),   snap_run_outward(SNAP_RUN_SW_DIAG),  +1.0, 16.0, 1.500, 3.95, True),
+    SnapArm("SW1-sw-diag",   snap_run_point(SNAP_RUN_SW_DIAG, 3.19),   snap_run_outward(SNAP_RUN_SW_DIAG),  +1.0, 16.0, 2.000, 3.95, True),
     SnapArm("T1-thumb-gulf", snap_run_point(SNAP_RUN_GULF_A, 2.61),    snap_run_outward(SNAP_RUN_GULF_A),   +1.0, 13.0, 1.500, 3.95, True),
-    SnapArm("S1-south-C",    snap_run_point(SNAP_RUN_SOUTH, 6.06),     snap_run_outward(SNAP_RUN_SOUTH),    +1.0, 22.0, 1.866, 3.95, True),
-    SnapArm("SE1-se-diag",   snap_run_point(SNAP_RUN_SE_DIAG, 4.14),   snap_run_outward(SNAP_RUN_SE_DIAG),  +1.0, 20.0, 1.542, 3.95, True),
-    SnapArm("E1-east-S",     snap_run_point(SNAP_RUN_EAST, 35.81),     snap_run_outward(SNAP_RUN_EAST),     +1.0, 22.0, 1.866, 3.95, False),
-    SnapArm("N1-canopy-N",   snap_run_point(SNAP_RUN_CANOPY_N, 8.82),  snap_run_outward(SNAP_RUN_CANOPY_N), +1.0, 22.0, 1.866, 3.95, False),
-    SnapArm("W1-west-S",     snap_run_point(SNAP_RUN_WEST, 36.33),     snap_run_outward(SNAP_RUN_WEST),     -1.0, 22.0, 1.866, 3.95, False),
-    SnapArm("N3-north-east", snap_run_point(SNAP_RUN_NE, 24.70),       snap_run_outward(SNAP_RUN_NE),       -1.0, 22.0, 1.866, 3.95, False),
-    SnapArm("W2-west-N",     snap_run_point(SNAP_RUN_WEST, 46.90),     snap_run_outward(SNAP_RUN_WEST),     +1.0, 22.0, 1.866, 3.95, False),
-    SnapArm("E2-east-N",     snap_run_point(SNAP_RUN_EAST, 24.75),     snap_run_outward(SNAP_RUN_EAST),     -1.0, 22.0, 1.866, 3.95, False),
+    SnapArm("S1-south-C",    snap_run_point(SNAP_RUN_SOUTH, 6.06),     snap_run_outward(SNAP_RUN_SOUTH),    +1.0, 22.0, 2.200, 3.95, True),
+    SnapArm("SE1-se-diag",   snap_run_point(SNAP_RUN_SE_DIAG, 4.14),   snap_run_outward(SNAP_RUN_SE_DIAG),  +1.0, 20.0, 2.200, 3.95, True),
+    SnapArm("E1-east-S",     snap_run_point(SNAP_RUN_EAST, 35.81),     snap_run_outward(SNAP_RUN_EAST),     +1.0, 22.0, 2.200, 3.95, False),
+    SnapArm("N1-canopy-N",   snap_run_point(SNAP_RUN_CANOPY_N, 8.82),  snap_run_outward(SNAP_RUN_CANOPY_N), +1.0, 22.0, 2.200, 3.95, False),
+    SnapArm("W1-west-S",     snap_run_point(SNAP_RUN_WEST, 36.33),     snap_run_outward(SNAP_RUN_WEST),     -1.0, 22.0, 2.200, 3.95, False),
+    SnapArm("N3-north-east", snap_run_point(SNAP_RUN_NE, 24.70),       snap_run_outward(SNAP_RUN_NE),       -1.0, 22.0, 2.200, 3.95, False),
+    SnapArm("W2-west-N",     snap_run_point(SNAP_RUN_WEST, 46.90),     snap_run_outward(SNAP_RUN_WEST),     +1.0, 22.0, 2.200, 3.95, False),
+    SnapArm("E2-east-N",     snap_run_point(SNAP_RUN_EAST, 24.75),     snap_run_outward(SNAP_RUN_EAST),     -1.0, 22.0, 2.200, 3.95, False),
 )
 # T1 IS THE ONE SHORT ARM, and it is short because even spacing pins its barb at arc-length
 # 73.0, which falls on gulf-A — an 18.42 mm run. Rooting it 2.96 mm in and cutting at 17.16
@@ -2065,8 +2057,9 @@ SNAP_CORNER_WEST = ((70.75, 121.30), (54.75, 121.30))   # measured rim run past 
 SNAP_CORNER_L = 26.0     # of the 38.24 available. Full length would be barely 0.5 N -- too soft
 #                          to matter as a latch.
 SNAP_CORNER_CUT_S = 2.0  # arc-length from the lobe's east end to the cut's outboard face
-SNAP_CORNER_THK = 2.300  # mm; 0.25 mm clear of SEAM_RIM_THK (2.55) -- see the force-budget
-#                          note above SNAP_ARMS. At 26 mm this gives 3.91 N and 0.163% strain.
+SNAP_CORNER_THK = 2.200  # mm; thick for PRY-SPREAD stiffness (screwless, portable/drop use). At
+#                          L=26 mm this is 0.122% strain and ~2.67 N, L/t 11.8, clear of the 2.55
+#                          rim ceiling -- see the screwless note above SNAP_ARMS.
 SNAP_CORNER_BARB_LO_Z = 3.95   # the same shared height as every straight arm; see the note
 #                                above SNAP_ARMS for why there is no longer a ladder
 

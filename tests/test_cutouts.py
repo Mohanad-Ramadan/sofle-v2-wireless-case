@@ -460,5 +460,20 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # got thicker cuts MORE at its outboard through-cut (that leg spans the full
     # (thickness + SNAP_TAB_SLOT_W) band at the free end — see the SNAP_TAB_SLOT_W note), and
     # more arms got thicker than thinner this time.
+    # Rebased +46.187839 mm³ (+0.025%) for the SCREWLESS RE-TUNE: every straight arm and the N2
+    # corner back to a uniform 1.50 mm print floor (S1/E1/N1/W1/N3/W2/E2 1.866->1.500, SE1
+    # 1.542->1.500, N2 2.300->1.500; SW1/T1 already there), and SNAP_BARB_PROUD 0.52 -> 0.45. With
+    # the snaps now the sole closure, the 30 N force target is retired — thickness drops to the
+    # floor everywhere (see the note above SNAP_ARMS). Volume goes UP because thinner arms cut LESS
+    # at their outboard through-cut ((thickness + SNAP_TAB_SLOT_W) at the free end); the shorter
+    # barb (proud 0.52->0.45, a fused ADDER) subtracts a little of that gain, net +46.19. This
+    # almost exactly reverses the previous -51.35 mm³ thickening rebase, as expected.
+    # Rebased -110.703880 mm³ (-0.059%) for PRY-SPREAD STIFFNESS: the long arms and the corner go
+    # from the 1.50 mm floor to 2.20 mm and SW1 to 2.00 mm (its L/t>=8 limit), run thick so the
+    # snaps resist a drop/bag load that spreads the seam (stiffness ~ thickness^3). Only T1 stays
+    # at 1.50 mm — it is the one strain-binding arm and its fatigue margin is set by proud, not
+    # thickness (see the note above SNAP_ARMS). Volume goes DOWN because a thicker arm's outboard
+    # through-cut spans more of the local wall ((thickness + SNAP_TAB_SLOT_W) at the free end), so
+    # it removes MORE material. Worst-case strain is unchanged at 0.333% (T1).
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 187500.263533) < 2e-2
+    assert abs(build_bottom_part(side).volume - 187435.747992) < 2e-2

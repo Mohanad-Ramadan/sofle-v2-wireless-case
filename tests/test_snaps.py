@@ -208,25 +208,38 @@ def test_seated_interference_is_zero(bottom, top):
 
 
 def test_closing_force_stays_hand_assemblable():
-    """45 N is the ergonomic guideline for repeated assembly work, not a physical limit, and
-    this case is closed occasionally by hand, with two hands, and by the user's own call two
-    hands to fully close is fine — so the guard doesn't need to sit near the guideline either,
-    just short of it with real margin. 32 N (30 N target + 2 N) is chosen the same way every
-    other cap in this file was: a small margin over the intended value, not the guideline
-    itself.
+    """SCREWLESS design: the snaps are the sole closure. The OLD 30 N total-force TARGET is retired
+    — closing force is no longer tuned to a number; the arms are run THICK for pry-spread stiffness
+    (portable/drop use), which incidentally raises closing force to ~36.6 N. The HOLD itself comes
+    from the 90 deg self-locking undercut, not deflection force. This gate only guards against a
+    runaway insertion that could not be hand-seated with no screw to finish (~78 N at mu=0.7 is the
+    accepted firm-press ceiling), so it caps the deflection total at 40 N with a little margin.
 
-    THIS SUM USED TO OMIT THE N2 CORNER ENTIRELY — a real gap, not a rounding choice. It only
-    ever summed C.SNAP_ARMS (the ten straight arms), so every closing-force number this test
-    ever passed against was short by whatever the corner contributed (2.57-3.91 N across this
-    design's history). At the original force-budget thicknesses that would have put the REAL
-    total at ~28.97 N against the old 28.0 N cap — already over it, undetected, because the
-    thing being measured wasn't the thing being gated. Fixed by adding corner_force(), which is
-    what snap_report() and every force calculation elsewhere in this file already treat as part
-    of the total."""
+    The sum includes corner_force() — it once omitted the N2 corner entirely, a real gap that
+    hid 2.57-3.91 N of the true total from every historical closing-force check."""
     total = (sum(C.snap_force(a.thickness, arm_wall_height(a), a.length) for a in C.SNAP_ARMS)
              + corner_force())
-    assert total <= 32.0, f"total deflection force {total:.1f} N; worst-case insertion would be "\
+    assert total <= 40.0, f"total deflection force {total:.1f} N; worst-case insertion would be "\
                           f"{C.snap_insertion_force(total, 0.7):.1f} N at mu=0.7"
+
+
+def test_fatigue_strain_has_margin_for_a_screwless_shell():
+    """SCREWLESS binds on CYCLIC FATIGUE, not force: the snaps flex every time the (rare-open)
+    shell is opened, and PLA fatigues near its strain limit. So the worst arm must sit with real
+    margin under the 0.5 % PLA cap, not ride it. T1-thumb-gulf is the bottleneck (L=13 pinned by
+    GULF_A, h pinned at the 1.5 mm print floor); its strain is set by SNAP_DEFLECT alone. Gate at
+    0.40 % (80 % of cap) — T1 currently 0.333 % (67 %), every other arm below 0.25 %."""
+    strains = [C.snap_strain(a.thickness, a.length) for a in C.SNAP_ARMS] + [corner_strain()]
+    worst = max(strains)
+    assert worst <= 0.0040, f"worst root strain {worst*100:.3f}% exceeds the 0.40% fatigue-margin gate"
+
+
+def test_undercut_overlap_retains():
+    """Retention is the 90 deg undercut's job. The barb-into-catch overlap is SNAP_DEFLECT
+    (proud minus the seam fit clearance); it must stay positive with sane margin so the barb
+    actually hooks. Fracture-limited, not overlap-limited, so a small overlap still holds — but
+    it must not go to zero when proud is tuned down for strain."""
+    assert C.SNAP_DEFLECT >= 0.20, f"undercut overlap {C.SNAP_DEFLECT:.3f} mm too small to retain"
 
 
 def test_arms_clear_the_exclusion_zones():
@@ -381,20 +394,20 @@ def test_every_barb_sits_at_one_height():
         f"only {skirt:.3f} mm of skirt survives above every pocket, under "
         f"SNAP_SKIRT_ABOVE_MIN={C.SNAP_SKIRT_ABOVE_MIN}")
 
-    # THERE IS NO GLOBAL DEAD-ZONE-FREE GUARANTEE ANY MORE, and asserting one here was always
-    # asserting the WEAKER of two exclusions. The dead zone is where seam_z(y) + SNAP_SKIRT_BELOW
-    # exceeds barb_lo_z (z >= SEAM_WAVE_CREST_Z + SNAP_SKIRT_BELOW used to check exactly that,
-    # worst-case-anywhere) -- but test_every_barb_fits_its_hidden_band's own per-arm band check
-    # (SNAP_BAND_CEIL - SNAP_Z_BUDGET) is strictly tighter, and always has been: the assertion
-    # below is what makes that a proven fact instead of a coincidence nobody checked. So a real,
-    # narrower dead zone under the raised crest is fine, and IS live again (see
-    # test_every_barb_fits_its_hidden_band's docstring for where) -- it is just never wider than
-    # the one the band check already excludes, so no barb can be quietly sitting inside it.
-    assert C.SNAP_BAND_CEIL - C.SNAP_Z_BUDGET <= z - C.SNAP_SKIRT_BELOW, (
-        f"the band exclusion ({C.SNAP_BAND_CEIL - C.SNAP_Z_BUDGET:.4f}) is no longer tighter than "
-        f"the barb-height exclusion ({z - C.SNAP_SKIRT_BELOW:.4f}) — test_every_barb_fits_its_"
-        f"hidden_band is no longer the check that actually bounds where an arm may sit, and this "
-        f"file's per-arm dead-zone reasoning needs re-deriving")
+    # No barb may sit in a dead zone — where the wave-lifted seam floor plus the skirt kept below
+    # the pocket rises past barb_lo_z and eats that skirt. This used to be asserted INDIRECTLY, by
+    # claiming the per-arm BAND check (SNAP_BAND_CEIL - SNAP_Z_BUDGET) is always the tighter of two
+    # exclusions so it alone suffices. That was a coincidence of the barb height: the screwless
+    # re-tune shortened the barb (proud 0.52 -> 0.45 => SNAP_BARB_H 0.90 -> 0.78, SNAP_Z_BUDGET
+    # 2.15 -> 2.03), and the two exclusions crossed (band 3.671 vs barb-height 3.650). So assert
+    # the PHYSICAL fact directly, per arm at its own barb y — robust to the barb height either way.
+    all_barbs = ([(a.name, barb_center(a)[1], a.barb_lo_z) for a in C.SNAP_ARMS]
+                 + [("N2-sw3-lobe", corner_barb_center()[1], C.SNAP_CORNER_BARB_LO_Z)])
+    for name, by, blo in all_barbs:
+        skirt_below = blo - (_seam_z_at(by) + C.SNAP_SKIRT_BELOW)
+        assert skirt_below >= 0.0, (
+            f"{name}: barb at z {blo:.2f} sits in a dead zone — seam floor {_seam_z_at(by):.2f} + "
+            f"SNAP_SKIRT_BELOW {C.SNAP_SKIRT_BELOW} leaves {skirt_below:.3f} mm of skirt below it")
     assert z + C.SNAP_BARB_H <= C.SNAP_BAND_CEIL, "the barb now runs into the rim's lead-in"
 
 
