@@ -36,14 +36,19 @@ def test_pin_stops_short_of_the_plate():
     assert abs(gap - C.STANDOFF_PIN_RECESS) < 0.01
 
 
-def test_tap_bore_stays_inside_the_pin():
-    """Recessing the pin drags the tap bore down with it (STANDOFF_TAP_DEPTH is measured from
-    the pin top). The bore must still bottom out ABOVE the PCB seat, or it opens into the PCB
-    clearance and the screw has nothing to bite in its last turns."""
+def test_pin_is_solid_no_tap_bore():
+    """SCREWLESS: the pin is a solid PCB-registration boss — the M2 self-tap bore is gone.
+    Probe the pin axis just below the top; a Ø1.2 probe (narrower than the old Ø1.8 bore) must
+    land in SOLID material. If a tap bore or any axial void creeps back, the probe falls into it
+    and this fails."""
+    from build123d import Solid
+    s = stepped_standoff(at=(50.0, 50.0))
     pin_top = C.PLATE_SEAT_Z - C.STANDOFF_PIN_RECESS
-    bore_bottom = pin_top - C.STANDOFF_TAP_DEPTH
-    assert bore_bottom > C.PCB_SEAT_Z, (
-        f"tap bore bottoms at {bore_bottom:.2f}, at or below the PCB seat {C.PCB_SEAT_Z}"
+    probe = Solid.make_cylinder(0.6, 1.0).translate((50.0, 50.0, pin_top - 1.0))
+    inside = (s & probe).volume
+    assert inside > 0.99 * probe.volume, (
+        f"pin axis is not solid near the top ({inside:.3f} of {probe.volume:.3f} mm^3) — a tap "
+        f"bore or void has crept back in"
     )
 
 

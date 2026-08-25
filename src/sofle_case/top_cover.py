@@ -20,7 +20,7 @@ from typing import cast
 
 from build123d import (
     Part, Wire, Pos, Polyline, make_face, extrude, offset, Kind,
-    Plane, BuildPart, BuildSketch, BuildLine, Locations, Location, Box, Cylinder,
+    Plane, BuildPart, BuildSketch, BuildLine, Locations, Location, Box,
 )
 from . import constants as C
 
@@ -140,20 +140,9 @@ def _puller_notches() -> Part:
     return cast(Part, bp.part)
 
 
-def _screw_holes() -> Part:
-    """M2 clearance holes through the cover at each standoff."""
-    with BuildPart() as bp:
-        for hx, hy in C.MOUNTING_HOLES:
-            cx, cy = C.pcb_to_case(hx, hy)
-            with Locations((cx, cy, C.MAIN_RIM_Z + C.COVER_THICKNESS / 2)):
-                Cylinder(radius=C.COVER_SCREW_CLEARANCE_DIA / 2,
-                         height=C.COVER_THICKNESS + 0.2)
-    assert bp.part is not None
-    return cast(Part, bp.part)
-
-
 def build_top_cover(fuse_margin: float = 0.0) -> Part:
-    """Plate-shaped lid with switch windows and standoff screw holes removed.
+    """Plate-shaped lid with switch windows removed. SCREWLESS: no M2 clearance holes —
+    the membrane is solid at every standoff.
 
     ``fuse_margin`` (default 0.0) grows the outline outward so the membrane fuses
     to the upper walls when reused as the sandwich TOP part's ceiling. Left at 0.0
@@ -170,8 +159,6 @@ def build_top_cover(fuse_margin: float = 0.0) -> Part:
 
     if C.COVER_PULLER_NOTCH:
         cover = cast(Part, cover - _puller_notches())
-
-    cover = cast(Part, cover - _screw_holes())
 
     if not isinstance(cover, Part):
         solids = cover.solids()

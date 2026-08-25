@@ -254,16 +254,16 @@ def test_split_conserves_volume(side):
     assert lost / ref.volume < 0.012, f"seam gap {lost:.1f} exceeds the rabbet clearance"
 
 
-def test_top_screw_holes_open():
-    """M2 clearance holes pass through the membrane at all 5 standoff locations."""
+def test_top_has_no_screw_holes():
+    """SCREWLESS: the membrane is SOLID at all 5 standoff locations — no M2 clearance holes.
+    A probe at each standoff must be mostly blocked by membrane material."""
     from build123d import Solid
     top = build_top_part("right")
     for hx, hy in C.MOUNTING_HOLES:
         cx, cy = C.pcb_to_case(hx, hy)
-        pin = Solid.make_cylinder(
-            C.COVER_SCREW_CLEARANCE_DIA / 2 - 0.1, C.COVER_THICKNESS + 0.2
-        ).translate((cx, cy, C.MAIN_RIM_Z - 0.1))
-        assert (top & pin).volume < 1e-3, f"screw hole blocked at PCB ({hx}, {hy})"
+        probe = Solid.make_cylinder(1.0, C.COVER_THICKNESS).translate((cx, cy, C.MAIN_RIM_Z))
+        assert (top & probe).volume > 0.5 * probe.volume, (
+            f"membrane not solid at standoff PCB ({hx}, {hy}) — a screw hole has crept back")
 
 
 def test_encoder_bezel_is_hollow_shell():

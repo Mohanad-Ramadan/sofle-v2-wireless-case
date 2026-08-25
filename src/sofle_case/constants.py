@@ -128,7 +128,7 @@ KEYCAP_SKIRT_CLEAR_AT_FULL_PRESS = 1.5  # mm; skirt bottom above plate top at fu
 MX_TOP_HOUSING_W        = 15.6   # mm; widest part of a Cherry MX switch (rests on plate) — drives the window size
 COVER_THICKNESS         = 1.0    # mm; lid thickness, top at MAIN_RIM_Z + COVER_THICKNESS (= 16.4 at current MAIN_RIM_Z)
 COVER_WINDOW_OFFSET     = 1.05   # mm; 14 mm cutout -> 16.1 mm window, 0.25 mm/side off the 15.6 housing (was 0.85 = 0.05/side, which would not assemble — see above)
-COVER_SCREW_CLEARANCE_DIA = 2.4  # mm; M2 screw shaft clearance through the cover
+# (SCREWLESS: COVER_SCREW_CLEARANCE_DIA removed — the membrane no longer has M2 clearance holes.)
 
 # ---------- Switch-puller access notches ----------
 # The flush window hides the plate but also hugs the switch's 15.6 mm collar at the
@@ -1022,29 +1022,31 @@ ENCODER_PAD_SOUTH = 14.0         # mm; how far south of the encoder centre the c
 
 # ---------- Standoff geometry ----------
 STANDOFF_OD_LOWER  = 5.5   # PCB-seat shoulder OD
-STANDOFF_OD_UPPER  = 3.9   # passes through PCB Ø4.1 hole (~0.2 mm clearance); widened from 3.5 to thicken the M2 self-tap boss wall
-STANDOFF_TAP_DIA   = 1.8   # M2 self-tap bore (sized for FDM tolerance)
-STANDOFF_TAP_DEPTH = 4.0
-STANDOFF_TAP_CHAMFER = 0.3  # 45° entry chamfer at bore top
+STANDOFF_OD_UPPER  = 3.9   # passes through PCB Ø4.1 hole (~0.2 mm clearance); the solid pin also
+#                            carries the snap-closure compression reaction up from the floor
+# SCREWLESS: no M2 tap. The standoff pins were self-tapping screw bosses; the case now closes on
+# the snap latches alone, so the tap bore, its depth and entry chamfer are gone and the pin is
+# solid. See standoffs.stepped_standoff and the screwless spec/plan under .omc/.
 
-# ---------- The pins are screw bosses, NOT a plate seat ----------
+# ---------- The pins are solid PCB-registration bosses, NOT a plate seat ----------
 # The switch plate's height is set by the SWITCHES (PCB top + MX_BODY_CLEAR) — a hardware datum
 # the case cannot argue with. The standoff pins used to top out at exactly PLATE_SEAT_Z, making
 # them a SECOND datum for the same surface. Two datums for one face is an over-constraint, and
 # it only resolves if MX_BODY_CLEAR is exact; it was out by 0.4-1.0 mm, so the pins and the
-# switches fought and the case would not shut.
+# switches fought and the case would not shut. (Screwless makes this WORSE to attempt, not better:
+# a pin reaching the plate would push its centre up and dome the membrane into the keycaps, which
+# have only 0.5 mm of skirt clearance — see the STANDOFF_PIN_RECESS reversal that was tried and
+# reverted, 2026-08-26.)
 #
-# The pins are now RECESSED below the plate. They carry the M2 thread and nothing else: the
-# screw pulls the cover down onto the plate and the plate onto the switch shoulders, which is
-# the load path that already existed in the hardware. Keypress force never runs through the
-# plate (the switch body bottoms on the PCB), so the pins support nothing structural.
+# The pins are RECESSED below the plate and, screwless, do nothing at the top at all — they locate
+# the PCB in XY (Ø3.9 pin in the Ø4.1 board hole) and carry the snap-closure compression down from
+# the floor through the lower shoulder. Keypress force never runs through the plate (the switch
+# body bottoms on the PCB), so the pins support nothing structural above the PCB.
 #
 # Sized for the WORST case, which is MX_BODY_CLEAR being too HIGH: if the true gap is 3.4 the
 # plate sits 0.3 below nominal and a flush pin would spear it. 0.6 covers that 0.3, plus ~0.3
 # of FDM Z error on a printed pin — i.e. the case still assembles for any true gap from 3.1 up.
 # There is no penalty at the other end: at a true gap of 4.0 the pin simply sits 0.9 clear.
-# The tap bore follows the pin down, so thread engagement (STANDOFF_TAP_DEPTH) is unchanged;
-# the screw crosses 0.6 mm more air, which is inside M2 head-to-thread slack.
 STANDOFF_PIN_RECESS = 0.6  # mm; pin top below PLATE_SEAT_Z — the plate must never touch it
 
 # ---------- Clearances ----------

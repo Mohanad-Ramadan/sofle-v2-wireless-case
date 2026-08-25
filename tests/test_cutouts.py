@@ -478,5 +478,8 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # Rebased +6.613565 mm³ (+0.004%) for a TALLER BARB: SNAP_LEAD_IN_DEG 30 -> 22 makes the barb
     # 0.78 -> 1.11 mm tall (~11 print layers at 0.1 mm instead of ~4) for print fidelity, at the
     # same proud/deflect/strain. The barb is a fused ADDER, so a taller one adds a little volume.
+    # Rebased +52.419600 mm³ (+0.028%) for SCREWLESS: the M2 self-tap bore + entry chamfer are
+    # removed from all 5 standoff pins (the pins are now solid PCB-registration bosses), so the
+    # bottom part no longer subtracts those voids.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 187442.361556) < 2e-2
+    assert abs(build_bottom_part(side).volume - 187494.781156) < 2e-2
