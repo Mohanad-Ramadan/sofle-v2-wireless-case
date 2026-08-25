@@ -475,5 +475,8 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # thickness (see the note above SNAP_ARMS). Volume goes DOWN because a thicker arm's outboard
     # through-cut spans more of the local wall ((thickness + SNAP_TAB_SLOT_W) at the free end), so
     # it removes MORE material. Worst-case strain is unchanged at 0.333% (T1).
+    # Rebased +6.613565 mm³ (+0.004%) for a TALLER BARB: SNAP_LEAD_IN_DEG 30 -> 22 makes the barb
+    # 0.78 -> 1.11 mm tall (~11 print layers at 0.1 mm instead of ~4) for print fidelity, at the
+    # same proud/deflect/strain. The barb is a fused ADDER, so a taller one adds a little volume.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 187435.747992) < 2e-2
+    assert abs(build_bottom_part(side).volume - 187442.361556) < 2e-2

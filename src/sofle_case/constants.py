@@ -1695,10 +1695,23 @@ SNAP_BARB_PROUD   = 0.45   # mm; barb protrusion from the rim's outer face (guid
 # is FRACTURE-limited (~420 N/barb) not overlap-limited, so the 0.25 mm undercut overlap left at
 # proud 0.45 loses no meaningful hold. See .omc/specs/deep-dive-screwless-snap-closure.md and
 # .omc/plans/2026-08-25-screwless-snap-implementation.md.
-SNAP_LEAD_IN_DEG  = 30.0   # deg from the insertion axis, barb's TOP face (guide: 25-35)
+SNAP_LEAD_IN_DEG  = 22.0   # deg from the insertion axis, barb's TOP face (guide: 25-35, run a
+#                            touch below it deliberately). LOWERED 30 -> 22 for PRINT ROBUSTNESS:
+#                            barb height H = proud/tan(lead), so a shallower ramp makes the barb
+#                            TALLER (0.78 -> 1.11 mm, ~11 layers at 0.1 mm instead of ~4) WITHOUT
+#                            touching proud, deflect or strain — the FDM printer reproduces a
+#                            taller ridge far more faithfully. It also eases insertion (the ramp
+#                            is gentler): worst-case push drops from ~78 N to ~56 N at mu 0.7,
+#                            which matters with no screw to finish the close. Costs Z budget but
+#                            fits: barb top 5.06 < SNAP_BAND_CEIL 5.70, skirt above 1.54 > 1.0.
 SNAP_RETURN_DEG   = 90.0   # deg from the insertion axis, barb's BOTTOM face. SELF-LOCKING —
 #                            see the force note below; a flat face costs no Z at all.
-SNAP_BARB_X_LEN   = 8.0    # mm; barb length along the wall, near the arm's free end
+SNAP_BARB_X_LEN   = 8.0    # mm; barb length along the wall, near the arm's free end. Already 20
+#                            nozzle widths at 0.4 mm — the printer never "misses" a ridge this
+#                            long, so length is NOT the print-fidelity lever (that is the barb's
+#                            radial proud, addressed by height via SNAP_LEAD_IN_DEG). Kept at 8:
+#                            lengthening it backs the barb centre off the free end (see barb_u's
+#                            clamp) and disturbs the even barb spacing for no fidelity gain.
 SNAP_BARB_EMBED   = 0.15   # mm; how far the barb's backing slab sinks INTO the rim. Not a
 #                            shape dimension — it lies inside material that is already there,
 #                            so it moves no face and adds no volume. It exists because a fuse
