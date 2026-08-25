@@ -1043,11 +1043,25 @@ STANDOFF_OD_UPPER  = 3.9   # passes through PCB Ø4.1 hole (~0.2 mm clearance); 
 # the floor through the lower shoulder. Keypress force never runs through the plate (the switch
 # body bottoms on the PCB), so the pins support nothing structural above the PCB.
 #
-# Sized for the WORST case, which is MX_BODY_CLEAR being too HIGH: if the true gap is 3.4 the
-# plate sits 0.3 below nominal and a flush pin would spear it. 0.6 covers that 0.3, plus ~0.3
-# of FDM Z error on a printed pin — i.e. the case still assembles for any true gap from 3.1 up.
-# There is no penalty at the other end: at a true gap of 4.0 the pin simply sits 0.9 clear.
-STANDOFF_PIN_RECESS = 0.6  # mm; pin top below PLATE_SEAT_Z — the plate must never touch it
+# NARROWED 0.6 -> 0.15 mm ON PHYSICAL EVIDENCE (2026-08-26). The 0.6 mm figure was two margins
+# stacked: ~0.3 mm for FDM Z error on the printed pin, and ~0.3 mm for MX_BODY_CLEAR hardware
+# uncertainty. Two independent print shops built the case at 0.6 mm and both showed the SAME
+# defect: enough air gap under each standoff that the switch plate could slip/sag toward the PCB
+# during assembly and misalign the switches at the seam — i.e. 0.6 mm is real, empty, unhelpful
+# slack, not safety margin. That evidence retires the FDM-error component outright (two shops
+# reproduced the design gap faithfully; printer accuracy was never the risk). The MX_BODY_CLEAR
+# component is also weaker than when 0.6 was chosen: MX_BODY_CLEAR is now derived from the
+# ai03/MX datasheet standard (MX_PLATE_TOP_ABOVE_PCB = 5.0, CONFIRMED — see the note above), not
+# a measured value that was once out by 0.4-1.0 mm.
+#
+# 0.15 mm keeps a sliver of that hardware margin (switch-to-switch / batch variance is still real,
+# just smaller than it was) while acting as a firm assembly pilot that kills the sag/slip gap. Not
+# 0.0: on a SCREWED case (main) the M2 pulls the plate onto the switches regardless of pin height,
+# but this case is SCREWLESS — nothing overpowers a pin that prints a hair tall — so a flush pin
+# with zero margin risks the dome-into-keycaps failure the STANDOFF_PIN_RECESS=0 experiment hit
+# (0.5 mm skirt clearance, tried and reverted 2026-08-26). 0.15 mm is deliberately short of that
+# edge case while being close enough to flush to fix the assembly-sag defect that motivated this.
+STANDOFF_PIN_RECESS = 0.15  # mm; pin top below PLATE_SEAT_Z — a firm pilot, not open air
 
 # ---------- Clearances ----------
 PCB_XY_CLEARANCE = 0.5

@@ -481,5 +481,9 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # Rebased +52.419600 mm³ (+0.028%) for SCREWLESS: the M2 self-tap bore + entry chamfer are
     # removed from all 5 standoff pins (the pins are now solid PCB-registration bosses), so the
     # bottom part no longer subtracts those voids.
+    # Rebased +26.874874 mm³ (+0.014%) for STANDOFF_PIN_RECESS 0.6 -> 0.15: real print evidence
+    # (two shops) showed the old 0.6 mm gap let the switch plate sag/slip toward the PCB during
+    # assembly, not FDM inaccuracy — see the note above STANDOFF_PIN_RECESS in constants.py. Each
+    # of the 5 solid pins grew 0.45 mm taller (Ø3.9 cross-section), adding standoff material.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 187494.781156) < 2e-2
+    assert abs(build_bottom_part(side).volume - 187521.656030) < 2e-2
