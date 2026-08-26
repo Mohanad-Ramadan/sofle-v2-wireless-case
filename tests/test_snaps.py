@@ -208,30 +208,38 @@ def test_seated_interference_is_zero(bottom, top):
 
 
 def test_closing_force_stays_hand_assemblable():
-    """SCREWLESS design: the snaps are the sole closure. The OLD 30 N total-force TARGET is retired
-    — closing force is no longer tuned to a number; the arms are run THICK for pry-spread stiffness
-    (portable/drop use), which incidentally raises closing force to ~36.6 N. The HOLD itself comes
-    from the 90 deg self-locking undercut, not deflection force. This gate only guards against a
-    runaway insertion that could not be hand-seated with no screw to finish (~78 N at mu=0.7 is the
-    accepted firm-press ceiling), so it caps the deflection total at 40 N with a little margin.
+    """SCREWLESS design: the snaps are the sole closure. AGGRESSIVE-HOLD retune (2026-08-26)
+    deliberately raised closing force for a firmer seat and louder click: thicker arms (2.35 mm long
+    arms) x deeper deflect (0.40) put the deflection total at ~69 N, insertion ~78 N at mu=0.5 and
+    ~106 N at mu=0.7. That is a firm, two-handed close by design — NOT a light one-hand snap.
+
+    The HOLD still comes from the 90 deg self-locking undercut, not deflection force, so this gate
+    is NOT a hold check — it is the runaway-insertion guard: it stops a future edit from pushing
+    closing force past what two hands can seat (the 2.55 mm / deflect 0.42 experiment hit ~160 N and
+    was rejected as un-closeable for zero retention gain). Ceiling set at 72 N deflection (~110 N at
+    mu=0.7) — just above the intended ~69 N, so any further creep trips it and forces a re-decision.
 
     The sum includes corner_force() — it once omitted the N2 corner entirely, a real gap that
     hid 2.57-3.91 N of the true total from every historical closing-force check."""
     total = (sum(C.snap_force(a.thickness, arm_wall_height(a), a.length) for a in C.SNAP_ARMS)
              + corner_force())
-    assert total <= 40.0, f"total deflection force {total:.1f} N; worst-case insertion would be "\
+    assert total <= 72.0, f"total deflection force {total:.1f} N; worst-case insertion would be "\
                           f"{C.snap_insertion_force(total, 0.7):.1f} N at mu=0.7"
 
 
 def test_fatigue_strain_has_margin_for_a_screwless_shell():
     """SCREWLESS binds on CYCLIC FATIGUE, not force: the snaps flex every time the (rare-open)
-    shell is opened, and PLA fatigues near its strain limit. So the worst arm must sit with real
-    margin under the 0.5 % PLA cap, not ride it. T1-thumb-gulf is the bottleneck (L=13 pinned by
-    GULF_A, h pinned at the 1.5 mm print floor); its strain is set by SNAP_DEFLECT alone. Gate at
-    0.40 % (80 % of cap) — T1 currently 0.333 % (67 %), every other arm below 0.25 %."""
+    shell is opened, and PLA fatigues near its strain limit. The AGGRESSIVE-HOLD retune (2026-08-26)
+    deliberately spent some of the old fatigue margin — deflect 0.25 -> 0.40 — for a firmer seat and
+    louder click, and raised the PLA cap 0.005 -> 0.006 to match. T1-thumb-gulf is the bottleneck
+    (L=13 pinned by GULF_A, h at the 1.5 mm print floor); its strain is SNAP_DEFLECT alone and now
+    sits 0.533 % (89 % of the 0.6 % cap). SW1 is the next bottleneck at 0.469 %, every other arm
+    <= 0.35 %. Gate at 0.55 % — it holds
+    the worst arm just under the cap with a thin, intentional margin; going higher needs a real
+    re-decision (a frequently-opened shell should walk deflect back toward the old 0.005 margin)."""
     strains = [C.snap_strain(a.thickness, a.length) for a in C.SNAP_ARMS] + [corner_strain()]
     worst = max(strains)
-    assert worst <= 0.0040, f"worst root strain {worst*100:.3f}% exceeds the 0.40% fatigue-margin gate"
+    assert worst <= 0.0055, f"worst root strain {worst*100:.3f}% exceeds the 0.55% fatigue-margin gate"
 
 
 def test_undercut_overlap_retains():

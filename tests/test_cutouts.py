@@ -485,5 +485,14 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # (two shops) showed the old 0.6 mm gap let the switch plate sag/slip toward the PCB during
     # assembly, not FDM inaccuracy — see the note above STANDOFF_PIN_RECESS in constants.py. Each
     # of the 5 solid pins grew 0.45 mm taller (Ø3.9 cross-section), adding standoff material.
+    # Rebased +204.846 mm³ (+0.109%) for the AGGRESSIVE-HOLD RE-TUNE (2026-08-26): SEAM_FIT_CLEAR
+    # 0.20 -> 0.15, the long arms + SE1 + N2 corner 2.20 -> 2.35 mm (SW1 held at 2.00 by its L/t>=8
+    # limit, T1 at the 1.50 mm floor), and SNAP_BARB_PROUD 0.45 -> 0.55. Net volume goes UP because
+    # the tighter SEAM_FIT_CLEAR narrows the full-perimeter skirt pocket in the tub (SEAM_RIM_THK
+    # 2.55 -> 2.60), removing LESS material around the whole seam — a perimeter-scale effect that
+    # outweighs the two local subtractive ones: the thicker arms' wider outboard through-cuts and
+    # the deeper catch pockets under the taller barb (proud 0.45 -> 0.55) both remove a little more.
+    # This retune raised closing force ~1.9x and click energy ~3x for a firmer seat; see the note
+    # above SNAP_ARMS in constants.py and the two guardrail tests in test_snaps.py.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 187521.656030) < 2e-2
+    assert abs(build_bottom_part(side).volume - 187726.502027) < 2e-2
