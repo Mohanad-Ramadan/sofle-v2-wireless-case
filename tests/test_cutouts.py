@@ -523,4 +523,10 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # and the visible band gains/loses only that sliver. Everything else about the bottom is
     # untouched — wedge, snaps, skin, standoffs — which is why the move is five thousandths of a
     # percent rather than the tenths the earlier reveal/ramp rebases cost.
-    assert abs(build_bottom_part(side).volume - 206818.476) < 2e-2
+    # Rebased -979.383 mm3 (-0.47%) for a deliberate WAVE RETUNE, the first real use of the
+    # parametric dials: TENT_SEAM_SOUTH_FRAC 0.3295 -> 0.285 (a longer ramp, y1 41.5 -> 35.9) and
+    # SEAM_NORTH_RISE_FRAC -0.48 -> -1.0 (the rear parting line dropped 3.02 -> 6.30 mm below Z=0,
+    # a much deeper rear skirt). The bottom loses the material the top's skirt now covers over the
+    # rear, which is where essentially all of the change sits. The wedge, snaps, skin and
+    # standoffs are untouched; the crest is unmoved at SEAM_WAVE_CREST_Z.
+    assert abs(build_bottom_part(side).volume - 205839.093) < 2e-2

@@ -119,8 +119,12 @@ def test_the_south_is_untouched():
     """The dial acts north of the sweep and nowhere else. Over the southern run the skin still
     descends to TENT_SKIRT_LIFT above the desk, and the bottom still hides INSET behind it — it
     has to, because the skin comes down outside it there with only SEAM_FIT_CLEAR to spare."""
+    # STATIONS DERIVE FROM Y1. The literals (20, 40) assumed the southern run reached past y=40,
+    # which was true at TENT_SEAM_SOUTH_FRAC 0.36 and false once it was tuned down — at 0.285 the
+    # run ends at 35.9, so a y=40 probe lands on the RAMP and is compared against the run's own
+    # formula. Sample the run wherever the dial actually puts it.
     top, bot = _top(), _bottom()
-    for y in (20.0, 40.0):
+    for y in (0.25 * C.TENT_SEAM_Y1, 0.85 * C.TENT_SEAM_Y1):
         got = _lowest_at(top, y)
         want = skin_ground_z(y) + C.TENT_SKIRT_LIFT
         assert got is not None, f"no material at y={y}"

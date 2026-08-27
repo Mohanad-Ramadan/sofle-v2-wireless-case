@@ -334,7 +334,7 @@ BSKIN_GAP   = 0.5   # mm; air gap between each arm's bottom edge and the skin to
 # Practical range is about 0.25-0.40. The floor is not arithmetic — it is that Y1 must stay north
 # of where the east wall's own geometry starts, around y=40 (see tests/test_seam.py's
 # east_wall_south_y); 0.3295 puts Y1 at 41.52, clearing it by ~1.5 mm.
-TENT_SEAM_SOUTH_FRAC = 0.3295   # THE dial: fraction of depth where the top case rides the desk
+TENT_SEAM_SOUTH_FRAC = 0.285   # THE dial: fraction of depth where the top case rides the desk
 TENT_SEAM_RAMP_FRAC  = 1.0 - TENT_SEAM_SOUTH_FRAC   # DERIVED — the wave gets the whole remainder
 # Retuned from 0.36 (Y1 45.36 -> 41.52): the blind-port skin redatums the ramp's south knot to
 # skin_ground_z (a _skin_drop() lower) while the wave's own knots stay put, so the spline suddenly
@@ -609,7 +609,7 @@ assert TENT_SKIRT_CLEAR_MIN <= TENT_SKIRT_LIFT <= TENT_SKIRT_LIFT_MAX, (
 #    0.00    0.00 mm            14.24 mm            the old flat line; band widest at the back
 #   -0.29   -1.83 mm            12.41 mm            lens nearly closed
 #   -0.37   -2.30 mm            11.94 mm            lens closed: back is narrower than the crest
-SEAM_NORTH_RISE_FRAC = -0.48   # <0 = line drops below Z=0 (rear skirt), 1.0 = up to the ledge
+SEAM_NORTH_RISE_FRAC = -1   # <0 = line drops below Z=0 (rear skirt), 1.0 = up to the ledge
 SEAM_NORTH_RISE_Z    = SEAM_NORTH_RISE_FRAC * SEAM_LEDGE_Z   # derived; the actual height
 
 # The ceiling is stated here; the FLOOR is a function of the tent (it is the desk, with the same
