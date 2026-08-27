@@ -9,10 +9,14 @@ skirt too.
 
 Seen from the side with the case standing, the bottom case is a LENS: pinched to almost
 nothing at the front, swelling to a crest around two-thirds back, closing again toward the
-rear. That is the shape the ramp exists to produce, and it is why the ramp is a through-fit
-spline over ``SEAM_WAVE_KNOTS`` rather than the two-point hump it began as — a two-point
+rear. That is the shape the ramp exists to produce, and it is why the ramp is a smoothed spline
+over a whole table of wave stations rather than the two-point hump it began as — a two-point
 spline between the runs is monotonic by construction, so the band could only ever widen going
 north, and it ended at the full wedge height.
+
+The wave's shape is GENERATED from named dials (``SEAM_WAVE_CREST_Z`` and friends), not traced
+off a reference photograph as it was until 2026-08-27, and ``case.py`` evaluates it against the
+live tent plane via ``C.seam_wave_z`` rather than re-expanding a frozen band table.
 
 The skirt is therefore TWO bands, not one: the parting line crosses Z=0 twice, and between
 those crossings the top case has nothing below Z=0 at all.
@@ -590,19 +594,21 @@ def test_the_lead_in_tracks_the_sweep_not_a_flat_plane():
 def test_the_south_fraction_is_the_dial():
     """TENT_SEAM_SOUTH_FRAC alone drives where the handover sits — everything else derives.
 
-    Its range is 0.0-1.0, but the usable ceiling is lower: the sweep has to finish before the
-    +Y relief bump, so TENT_SEAM_FRAC_MAX depends on the ramp length. The constants guard
-    computes that ceiling and names it in its failure, rather than just refusing."""
-    assert 0.0 <= C.TENT_SEAM_SOUTH_FRAC <= 1.0
+    AND IT IS NOW LITERALLY ALONE. The ramp fraction used to be a second hand-set literal that had
+    to be kept summing to 1.0 by hand — raise one without lowering the other and the ramp ran off
+    the back of the case. It is derived now (1 - the south fraction), because the ramp has to
+    finish at the back edge and therefore its length was never a free choice. This test is what
+    pins that: the dial, the derived remainder, and the two Ys they produce."""
+    assert 0.0 < C.TENT_SEAM_SOUTH_FRAC < 1.0
     assert abs(C.TENT_SEAM_Y1 - C.TENT_SEAM_SOUTH_FRAC * C.OUTER_DEPTH) < 1e-9
-    assert abs(C.TENT_SEAM_Y2 - (C.TENT_SEAM_Y1 + C.TENT_SEAM_RAMP_FRAC * C.OUTER_DEPTH)) < 1e-9
-    assert C.TENT_SEAM_SOUTH_FRAC <= C.TENT_SEAM_FRAC_MAX, "the dial is past its own ceiling"
-    # The ceiling is exactly the fraction whose ramp ends at the BACK OF THE CASE. It used to be
-    # the fraction whose ramp ended at the +Y bump limit, 20 mm short of that — a fence around a
-    # skirt built from a polygon offset. skirt_extension sections the tub now, so the bump is no
-    # longer a special case and the only limit left is the part's own depth.
-    assert abs((C.TENT_SEAM_FRAC_MAX + C.TENT_SEAM_RAMP_FRAC) * C.OUTER_DEPTH
-               - C.OUTER_DEPTH) < 1e-9
+    # DERIVED, not set: the wave gets the whole remainder of the depth.
+    assert abs(C.TENT_SEAM_RAMP_FRAC - (1.0 - C.TENT_SEAM_SOUTH_FRAC)) < 1e-12, (
+        "TENT_SEAM_RAMP_FRAC is no longer 1 - TENT_SEAM_SOUTH_FRAC — it has been made an "
+        "independent dial again, which re-opens the sum-to-1.0 trap it was derived to close")
+    # The ramp ends AT the back edge, exactly — not within a tolerance of it. Stated, not summed.
+    assert C.TENT_SEAM_Y2 == C.OUTER_DEPTH
+    # ...and the two stretches still tile the depth between them.
+    assert abs(C.TENT_SEAM_Y1 + C.TENT_SEAM_RAMP_FRAC * C.OUTER_DEPTH - C.OUTER_DEPTH) < 1e-9
 
 
 def test_the_handover_actually_sits_where_the_dial_says():
@@ -622,7 +628,7 @@ def test_the_handover_actually_sits_where_the_dial_says():
         "the ramp does not finish on the dial"
 
 
-@pytest.mark.parametrize("angle", [1.0, 3.0, 6.0])
+@pytest.mark.parametrize("angle", [1.0, 3.0, 6.0, 8.0, 10.0])
 def test_the_seam_cutter_never_reaches_above_the_rabbet_ledge(monkeypatch, angle):
     """The cutter's ceiling — restated for the wave, because its old form was Z=0 and the wave
     deliberately crests above that.
@@ -638,10 +644,13 @@ def test_the_seam_cutter_never_reaches_above_the_rabbet_ledge(monkeypatch, angle
     ``got < C.SEAM_LEDGE_Z`` is the same physical fact ``SEAM_WAVE_LAP_LEFT >= SEAM_WAVE_LAP_MIN``
     guards at import time, but 2.0 mm weaker — it only complains once the cutter has climbed all
     the way to the ledge, not once it has eaten the rabbet lap down to nothing. Swept to 10 deg the
-    old bar passed with 0.20 mm of lap left, silently inside TENT_ANGLE_MAX's territory. Angles
-    above TENT_ANGLE_MAX are no longer swept here because they are no longer a legal
-    configuration — see TENT_ANGLE_MAX itself for that guard, enforced at import time on the
-    constant everyone actually sets.
+    old bar passed with 0.20 mm of lap left.
+
+    THE ANGLE SWEEP IS THE POINT NOW. There used to be a TENT_ANGLE_MAX guarding this: the crest
+    was a band FRACTION of the wedge height, so tilting the desk lifted it into the lap. The crest
+    is absolute millimetres since the wave went parametric (SEAM_WAVE_CREST_Z), so it does not
+    move with the angle and that ceiling is retired — which makes sweeping the angle here the
+    live check that the claim is true, rather than a formality backed by a second guard.
 
     Also pinned to seam_profile_max_z(), so the built solid and the measured curve agree — the
     two are consumed by different callers (_lead_in_relief gates on the measurement) and a drift
@@ -734,3 +743,139 @@ def test_the_sweep_dips_below_the_run_and_costs_no_clearance(monkeypatch, angle)
     assert eaten < 0.05, (
         f"{angle} deg: the dip pulled the skin {eaten:.4f} mm closer to the desk than the run "
         f"does — it must not, the desk falls faster than the spline")
+
+
+# ---------------------------------------------------------------------------
+# The wave is PARAMETRIC (2026-08-27). These pin the properties that replaced
+# "the knots are traced off a reference photo, do not hand-edit them".
+# ---------------------------------------------------------------------------
+
+def test_the_wave_is_generated_not_traced():
+    """No digitised coordinate table survives, and the dials that replaced it are all live.
+
+    The old shape was five hand-entered (u, band) pairs plus a band multiplier, carrying a
+    "regenerate, do not hand-edit" warning because a paste cannot re-derive itself. Nothing should
+    be able to reintroduce that quietly."""
+    assert not hasattr(C, "SEAM_WAVE_CLIMB_KNOTS"), (
+        "SEAM_WAVE_CLIMB_KNOTS is back — the traced climb table was retired when the wave went "
+        "parametric; a shape literal here cannot follow the dials that are supposed to drive it")
+    assert not hasattr(C, "SEAM_WAVE_BAND_SCALE"), (
+        "SEAM_WAVE_BAND_SCALE is back — the crest is SEAM_WAVE_CREST_Z in millimetres now, and "
+        "two ways to set one height is exactly the drift this replaced")
+    for dial in ("SEAM_WAVE_CREST_U", "SEAM_WAVE_CREST_Z", "SEAM_WAVE_CLIMB_A",
+                 "SEAM_WAVE_CLIMB_B", "SEAM_WAVE_CLIMB_N", "SEAM_WAVE_SHOULDER"):
+        assert hasattr(C, dial), f"{dial} is missing — the wave has lost one of its dials"
+    # The climb shape is flat at BOTH ends: that is what keeps the join corner-free and makes the
+    # crest a true maximum rather than a peak. Both need the exponents strictly above 1.
+    assert C.SEAM_WAVE_CLIMB_A > 1.0 and C.SEAM_WAVE_CLIMB_B > 1.0, (
+        "the climb exponents must both exceed 1.0 or the S-curve stops being flat at its ends — "
+        "a < 1 puts a corner where the wave leaves the south run, b < 1 puts a peak at the crest")
+
+
+def test_the_wave_still_matches_the_silhouette_it_replaced():
+    """The parametric defaults were FITTED to the retired traced curve, and this is the fit.
+
+    Dropping the reference was a decision about where the shape comes from, not licence for the
+    case to visibly change: the day the knots were retired the silhouette had to stay put, so the
+    freedom to retune arrives separately from the mechanism. 0.30 mm is the bar (about a printed
+    layer and a half); the fitted defaults sit at 0.176 mm.
+
+    THE REFERENCE IS COMMITTED HERE, as a coarse sample of the curve as it stood at 6b217ca, and
+    not regenerated. A regenerated baseline would track whatever the dials currently say and this
+    test would assert nothing at all."""
+    ref = {  # case Y -> parting-line Z, sampled off the traced-knot curve as it stood at 6b217ca
+        45.0: -6.2489, 55.0: -4.6229, 65.0: -1.6647, 75.0: 2.1601, 85.0: 3.8809,
+        95.0: 3.3568, 105.0: 1.9724, 115.0: -0.3413, 125.0: -2.7786,
+    }
+    worst_y, worst = None, 0.0
+    for y, want in ref.items():
+        got = abs(_seam_z_at(y) - want)
+        if got > worst:
+            worst_y, worst = y, got
+    assert worst < 0.30, (
+        f"the wave has drifted {worst:.3f} mm from the silhouette it replaced (worst at "
+        f"y={worst_y}), past the 0.30 mm the parametric defaults were fitted to hold. If that is "
+        f"deliberate — a real retune of SEAM_WAVE_CREST_Z / _CLIMB_A / _CLIMB_B / _SHOULDER — "
+        f"re-sample this table and say so in the commit; if it is not, a dial moved by accident")
+
+
+def test_the_climb_never_doubles_back():
+    """The wave rises once. No flat spot, no reversal, anywhere in the climb.
+
+    This is the property won when the seam spline stopped interpolating its knots exactly
+    (SEAM_WAVE_SMOOTH_LAMBDA, 2026-08-27) — the old through-fit rang, and the ring read as faint
+    creases at the knot transitions. A parametric climb should make it structural rather than
+    tuned, so it is worth asserting directly on the built curve rather than trusting the family.
+
+    Measured on a lightly smoothed slope: the raw finite difference of an OCC tessellation carries
+    enough noise near the near-flat crest to invent sign changes that are not in the geometry."""
+    import math as _math
+    edge = _seam_ramp_edge()
+    n = 2500
+    pts = [edge @ (i / n) for i in range(n + 1)]
+    ys = [p.X for p in pts]
+    zs = [p.Y for p in pts]
+    slope = [(zs[i + 1] - zs[i]) / (ys[i + 1] - ys[i]) for i in range(len(ys) - 1)]
+    k = 15
+    sm = [sum(slope[max(0, i - k):i + k + 1]) / len(slope[max(0, i - k):i + k + 1])
+          for i in range(len(slope))]
+    crest_y = C.SEAM_WAVE_CREST_U * C.OUTER_DEPTH
+    climb = [sm[i] for i in range(len(sm)) if ys[i] > C.TENT_SEAM_Y1 + 1.0 and ys[i] < crest_y]
+    reversals = sum(1 for i in range(len(climb) - 2)
+                    if (climb[i + 1] - climb[i]) * (climb[i + 2] - climb[i + 1]) < 0)
+    assert reversals <= 2, (
+        f"the climb's slope changes direction {reversals} times — it should rise, steepen once "
+        f"and ease once. More than that is the through-fit ring coming back, which reads as "
+        f"creases across the face")
+
+
+def test_the_crest_is_absolute_millimetres_at_every_angle():
+    """SEAM_WAVE_CREST_Z means the same thing whatever TENT_ANGLE_DEG says, and the guards depend
+    on that being true.
+
+    The crest used to be a band FRACTION of the wedge's height, so tilting the desk lifted it —
+    which is why the tent angle needed its own ceiling to stop a rising crest eating the rabbet
+    lap. Pinned in millimetres, it must not move, and if it ever does then SEAM_WAVE_LAP_LEFT and
+    the ledge guard are both measuring a number the geometry no longer honours.
+
+    THE BAR IS 0.05 mm, NOT ZERO, and the residue is honest: the smoothed spline bows a little
+    past its highest sample (that is what SEAM_WAVE_SPLINE_SLOP describes) and how much depends
+    slightly on how steeply the climb arrives, which the angle does change. Measured across
+    1-10 deg the crest moves 0.015 mm. The band fraction this replaced moved it about 2.6 mm over
+    the same sweep, so 0.05 is still nowhere near loose enough to let that regression back in, and
+    it is an eighth of the 0.41 mm of lap headroom the crest actually has to play with."""
+    for angle in (1.0, 3.0, 6.0, 8.0, 10.0):
+        mp = pytest.MonkeyPatch()
+        try:
+            mp.setattr(C, "TENT_ANGLE_DEG", angle)
+            edge = _seam_ramp_edge()
+            built = max((edge @ (i / 1500.0)).Y for i in range(1501))
+        finally:
+            mp.undo()
+        assert abs(built - C.SEAM_WAVE_CREST_Z) <= 0.05, (
+            f"at {angle} deg the wave crests at {built:.4f}, {built - C.SEAM_WAVE_CREST_Z:+.4f} "
+            f"off its dial {C.SEAM_WAVE_CREST_Z} — the crest is following the tent angle again, "
+            f"so SEAM_WAVE_LAP_LEFT and the ledge guard are measuring a number the geometry no "
+            f"longer honours")
+
+
+def test_the_south_fraction_needs_no_second_edit():
+    """Moving the one seam dial must not require a matching edit somewhere else to stay legal.
+
+    The ramp fraction used to be a second literal that had to be kept summing to 1.0 by hand, so
+    a single-number change threw an assertion and a pair that summed to 1.0 on paper could still
+    trip the ceiling on float rounding.
+
+    ARITHMETIC ONLY, DELIBERATELY: reloading constants.py to prove it would rebind the module
+    every other test in the session already holds, and this is a property of the derivation rather
+    than of the import. What it pins is that the pair still tiles the depth for any single-number
+    setting, which is precisely what the hand-maintained second literal could not promise."""
+    for frac in (0.28, 0.3295, 0.35, 0.40):
+        ramp = 1.0 - frac                       # exactly how TENT_SEAM_RAMP_FRAC is derived
+        y1 = frac * C.OUTER_DEPTH
+        assert abs(y1 + ramp * C.OUTER_DEPTH - C.OUTER_DEPTH) < 1e-9, (
+            f"south fraction {frac} no longer tiles the depth — the ramp would miss the back "
+            f"edge, which is the coupling deriving TENT_SEAM_RAMP_FRAC was meant to remove")
+    # ...and the shipped setting is inside the range its own guard advertises.
+    assert 0.0 < C.TENT_SEAM_SOUTH_FRAC < 1.0
+    assert abs(C.TENT_SEAM_RAMP_FRAC - (1.0 - C.TENT_SEAM_SOUTH_FRAC)) < 1e-12

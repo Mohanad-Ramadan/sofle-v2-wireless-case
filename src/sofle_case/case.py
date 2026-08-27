@@ -265,10 +265,18 @@ def _seam_sweep_params():
     the tent plane's own slope at the south so the ramp leaves the run without a kink, and
     horizontal at the north so it arrives on the flat run the same way.
 
-    THE KNOTS ARE CONVERTED HERE, not read off ``SEAM_WAVE_Y``. That constant holds the same
-    arithmetic, but frozen at the angle the module was imported at; this reads the tent plane
-    live, so monkeypatching ``TENT_ANGLE_DEG`` moves the wave with the desk instead of leaving
-    it behind. The constant exists for the import-time guards, which have no plane to ask."""
+    THE WAVE IS EVALUATED HERE, not read off ``SEAM_WAVE_Y`` or ``SEAM_WAVE_KNOTS``. Those hold
+    the same shape, but frozen at the angle constants.py was imported at; this asks
+    ``C.seam_wave_z`` for local Z against the tent plane as it is RIGHT NOW, so monkeypatching
+    ``TENT_ANGLE_DEG`` moves the wave with the desk instead of leaving it behind. The frozen
+    constants exist for the import-time guards, which have no plane to ask.
+
+    IT MATTERS MORE THAN IT USED TO. The wave's crest is absolute millimetres
+    (``SEAM_WAVE_CREST_Z``) since it went parametric, and a band fraction baked at one angle does
+    not re-expand to the same crest at another — measured, the crest drifts and the wave dips
+    0.46 mm below the south run at 10 deg if the frozen table is re-expanded instead of the shape
+    re-evaluated. Every guard keyed on the crest would then be measuring a number the geometry no
+    longer honours."""
     y1, y2 = C.TENT_SEAM_Y1, C.TENT_SEAM_Y2
     # ONLY the southern run drops with the desk. Over the south the parting line floats
     # TENT_SKIRT_LIFT above the DESK, and the desk is the blind-port skin now (skin_ground_z, a
@@ -282,12 +290,12 @@ def _seam_sweep_params():
     # unchanged wave. See .omc/specs/deep-dive-bottom-cover-inlay.md.
     z1 = skin_ground_z(y1) + C.TENT_SKIRT_LIFT
     slope = -math.tan(math.radians(C.TENT_ANGLE_DEG))
-    # The bottom case's full height at the back — the yardstick the band fractions are in.
-    # tent_ground_z(OUTER_DEPTH) IS -TENT_WEDGE_MAX_H, asked of the live plane.
-    wedge_max_h = -tent_ground_z(C.OUTER_DEPTH)
-    wave = tuple((u * C.OUTER_DEPTH,
-                  band * wedge_max_h + tent_ground_z(u * C.OUTER_DEPTH))
-                 for u, band in C.SEAM_WAVE_KNOTS)
+    # The live tent geometry, handed to the wave so it is shaped against the desk as it is now.
+    # tent_ground_z(OUTER_DEPTH) IS -TENT_WEDGE_MAX_H, asked of the live plane, so the rise is
+    # that less the wedge's thin end.
+    tent_rise = -tent_ground_z(C.OUTER_DEPTH) - C.TENT_WEDGE_MIN_H
+    wave = tuple((u * C.OUTER_DEPTH, C.seam_wave_z(u, C.TENT_WEDGE_MIN_H, tent_rise))
+                 for u in C.SEAM_WAVE_U)
     knots = ((y1, z1), *wave, (y2, C.SEAM_NORTH_RISE_Z))
     # THE END TANGENT IS NOT HORIZONTAL, and that is the whole reason the ramp reaches the back
     # edge now. A horizontal arrival flattens the line while the desk keeps dropping away beneath
@@ -579,8 +587,9 @@ def skirt_extension(tub: Part) -> Part:
     rear, and it is the difference between this and the version that could only work south of
     the +Y relief bump. The bump stands proud of the nominal offset and carries a corner
     fillet, so a polygon-offset band reaching it would sit INSIDE the wall above and leave a
-    step at Z=0 all along the bump's face; ``TENT_SEAM_FRAC_MAX`` existed to keep the skirt
-    away from that region rather than solve it. Sectioning the tub solves it for every wall
+    step at Z=0 all along the bump's face; a ceiling on the seam's south fraction existed to
+    keep the skirt away from that region rather than solve it (it has since been retired
+    entirely — the ramp runs to the back edge). Sectioning the tub solves it for every wall
     feature at once, present and future, because the band is by construction whatever the wall
     directly above it is.
 

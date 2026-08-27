@@ -516,4 +516,11 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # the curve now passes near the digitised knots rather than through them and the parting line
     # rises a hair sooner off the join, so the flush outer band gains a sliver of material along
     # the ramp. All below the ledge, still just the band — the wedge and snaps are untouched.
-    assert abs(build_bottom_part(side).volume - 206827.966) < 2e-2
+    # Rebased -9.494 mm³ (-0.005%) when the wave went PARAMETRIC: the five traced climb knots and
+    # their band multiplier are gone, replaced by a Kumaraswamy S-curve from the south run's end to
+    # SEAM_WAVE_CREST_Z, sampled at SEAM_WAVE_CLIMB_N stations. The defaults were fitted to the
+    # retired traced curve, so the parting line moves by at most 0.176 mm anywhere along the ramp
+    # and the visible band gains/loses only that sliver. Everything else about the bottom is
+    # untouched — wedge, snaps, skin, standoffs — which is why the move is five thousandths of a
+    # percent rather than the tenths the earlier reveal/ramp rebases cost.
+    assert abs(build_bottom_part(side).volume - 206818.476) < 2e-2
