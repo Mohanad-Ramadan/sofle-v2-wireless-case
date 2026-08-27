@@ -215,23 +215,63 @@ SEAM_RIM_THK    = WALL_THICKNESS - SEAM_SKIN - SEAM_FIT_CLEAR   # = 2.60; derive
 # chamfer() on this arc-offset edge set (see the OUTER_TOP_CHAMFER note above).
 RIM_FACET_DROP     = 4.0   # perimeter facet vertical extent (Z = rim → rim−4)
 RIM_FACET_RUN      = 2.0   # perimeter inset at the rim (~27° from vertical); rim wall left = 2.75
-FRONT_FACET_DROP   = 8.0   # south facet vertical extent (Z = rim → rim−8): a tall, dominant bevel
-FRONT_FACET_RUN    = 3.0   # south inset at the rim (~21° from vertical); rim wall left = 1.75
+FRONT_FACET_DROP   = 8.8   # south facet vertical extent (Z = rim → rim−8.8): a tall, dominant
+#                            bevel, raked as deep as the rabbet skin zone allows — the guard below
+#                            caps it at COVER_TOP_Z − SEAM_LEDGE_Z − 1.0 = 9.1; 8.8 leaves 0.3 mm.
+FRONT_FACET_RUN    = 6.0   # south inset at the rim (~37° from vertical); rim wall left = 1.75
+# ---- SOUTH_WALL_EXTRA: the material the deep facet is raked out of ----
+# The south facet used to be capped at ~21° from vertical and there was nowhere left to go: the
+# wall is WALL_THICKNESS (4.75) and the facet already ate 3.0 of it, leaving 1.75 mm of rim wall.
+# Raking it further just thinned that rim into the cavity.
+#
+# So the SOUTH WALL IS GROWN OUTWARD FIRST and the facet raked into the new material. The three
+# southern outline runs -- SW thumb ramp, flat front, SE ramp E4 -- have their supporting LINES
+# pushed out along their own normals by this amount and every corner re-solved as the
+# intersection of its two neighbours (tray._grow_segments). The runs' untouched neighbours (the
+# west thumb edge, the east wall) are what the moved corners slide along, so the grown stretch
+# meets them at a clean corner -- no step, no taper, no new vertices.
+#
+# ONLY THE OUTER PROFILE GROWS. tray._outer_poly_pts feeds the outer wall and the rim facets;
+# the cavity, the rabbet plate, its pocket, the tent wedge, the blind-port skin and the snaps
+# all ride the SHARP polygon (tray._polygon_wire) and are concentric offsets of it, so PCB
+# clearance and every seam fit are bit-for-bit unchanged. What follows the growth automatically
+# is exactly what should: the tub's skirt and the visible bottom band both section the top's own
+# outline (case.tub_outline_face), so the two shells stay one lateral surface.
+#
+# Cost, stated plainly: the case gets this much DEEPER at the south. The thumb tip is the
+# southmost point and it sat on y=0 (OUTER_DEPTH is the outer skin's own bbox), so the outline
+# now reaches y = -SOUTH_WALL_EXTRA. That is left alone deliberately -- OUTER_DEPTH and
+# PCB_OFFSET_Y are the datum the seam wave's fractions and the tent plane are stated in, and
+# moving either to keep y>=0 would drag every wave landmark north with it. The seam cutter
+# already runs its southern stretch from y=-20, so negative y is inside its domain.
+SOUTH_WALL_EXTRA   = 3.0   # mm; south outline runs pushed outward before the facet is raked
 # ---- Deep south facet: East '\' on ramp E4 + a DERIVED exact-twin West '/' under the thumb ----
 # The deep facet covers the low front (thumb ramp → flat front → SE ramp E4). Its deep→shallow
 # boundary shows as two creases that are exact mirror twins:
 #   • EAST '\' — the flat cap y=FRONT_FACET_Y_MASK crossing the rising SE ramp E4 (pts[5]→pts[6]);
 #     a long diagonal near the SE corner, kept exactly where it was. Its X-run/angle define the twin.
-#   • WEST '/' — DERIVED, not tuned: the East crease's X-run mirrored (rim east of toe) and centred at
-#     the midpoint of the two thumb switches (pcb_geometry.thumb_switch_midpoint_x), dropped onto the
-#     straightened SW thumb ramp (pts[2]→pts[4]). Same run/angle as the East by construction, so the
-#     two read as exact twins in front elevation. See tray._front_slash_crossings / _front_facet_mask.
+#   • WEST '/' — DERIVED, not tuned: the East crease's X-run mirrored (rim east of toe) and dropped
+#     onto the straightened SW thumb ramp (pts[2]→pts[4]). Same run/angle as the East by
+#     construction, so the two read as exact twins in front elevation.
+#     It PREFERS the midpoint of the two thumb switches (pcb_geometry.thumb_switch_midpoint_x) and
+#     sits there whenever it fits. Past ~3.25 mm of FRONT_FACET_RUN it cannot: E4 lies 75° off +Y,
+#     so a mm of run is ~3.8 mm of slash, and a midpoint-centred twin hangs off the west end of the
+#     thumb ramp. The twin is then CLAMPED — never reshaped — sliding east by the minimum that keeps
+#     FRONT_CREASE_END_MARGIN clear of the ramp's ends. Run and angle are the East's regardless.
+#     See tray._front_slash_crossings / _front_facet_mask.
 # The OUTER wall + facet drop the barely-1 mm reflex kink pts[3] (tray._outer_poly_pts) so the SW ramp
 # is one straight edge and the '/' is clean; the cavity/plate keep the sharp outline, so PCB fit is
 # unchanged. (The West rides a lower/steeper wall, so its depth (Y) differs from the East — but the
 # front-elevation profile you see is an exact mirror. No West tunables: it follows the East crease and
 # the switch positions automatically.)
-FRONT_FACET_Y_MASK = 24.0  # TOP cap; its crossing of ramp E4 IS the East '\' slash (E4 y 23.25→33.25)
+FRONT_FACET_Y_MASK = 22.0  # TOP cap; its crossing of ramp E4 IS the East '\' slash. Pulled south from
+#                            24.0 -> 22.0 to shrink the whole deep-facet region and drag both crease
+#                            TOES inward toward the flat-front centre (RUN moves the rim; only this cap
+#                            moves the toe — see the crease block above). FLOOR: below ~21.0 the East
+#                            crossing extrapolates WEST of the flat-front/E4 corner (grown x=111.14),
+#                            i.e. past the segment it is supposed to be riding; tray._front_slash_crossings
+#                            asserts FRONT_CREASE_END_MARGIN of clearance from that corner.
+FRONT_CREASE_END_MARGIN = 2.0  # mm; clearance the clamped West twin keeps at each ramp end
 
 # Reflex outline corners (the outline turning the "wrong way": front idx3/idx4, the west jog,
 # the east/back notches) leave sharp V-notches in a Kind.ARC offset — each one used to throw a
@@ -240,11 +280,23 @@ FRONT_FACET_Y_MASK = 24.0  # TOP cap; its crossing of ramp E4 IS the East '\' sl
 # chamfer flows continuously around them. The CAVITY keeps the sharp polygon (PCB fit unchanged).
 REFLEX_ROUND_R = 2.0   # mm; plan rounding of reflex outline corners (outer wall + facet only)
 
+# The flat-front/E4 corner is CONVEX, and a convex corner's offset arc has exactly the offset's
+# own radius — 5.25 mm at the outer face. Draft the deep facet inward by more than that and the
+# cone runs past its own apex before it reaches the rim: the arc vanishes and the two wall planes
+# meet in a hard crease instead (11.8° at RUN 6.0 — test_facet_ring_is_tangent_continuous caught
+# it). Pre-rounding the corner in plan by this radius makes the offset arc RADIUS + 5.25 instead,
+# so the cone survives the inset with room to spare. The corner only turns 14.7°, so even a
+# generous radius cuts a fraction of a mm off the silhouette — the tangent length is 0.39 mm at
+# 3.0. Costs nothing, and it softens the front-right corner slightly.
+FRONT_CORNER_ROUND_R = 3.0   # mm; plan rounding of the CONVEX flat-front/E4 corner
+
 # Facet guards — the sandwich TOP is the binding case (rim = COVER_TOP_Z; the outer skin below
 # SEAM_LEDGE_Z is only SEAM_SKIN thick; the membrane fuses into the inner COVER_FUSE_MARGIN of wall):
-assert FRONT_FACET_RUN <= WALL_THICKNESS - 1.5, "front facet thins the rim wall below 1.5 mm"
+assert FRONT_FACET_RUN <= WALL_THICKNESS + SOUTH_WALL_EXTRA - 1.5, \
+    "front facet thins the rim wall below 1.5 mm"
 assert RIM_FACET_RUN <= WALL_THICKNESS - 1.5, "perimeter facet thins the rim wall below 1.5 mm"
-assert FRONT_FACET_RUN < WALL_THICKNESS - COVER_FUSE_MARGIN, "front facet reaches the membrane fuse band"
+assert FRONT_FACET_RUN < WALL_THICKNESS + SOUTH_WALL_EXTRA - COVER_FUSE_MARGIN, \
+    "front facet reaches the membrane fuse band"
 assert COVER_TOP_Z - FRONT_FACET_DROP >= SEAM_LEDGE_Z + 1.0, "front facet toe intrudes on the rabbet skin zone"
 
 # ---------- Integrated tent wedge (BOTTOM case) ----------
@@ -1092,6 +1144,11 @@ STANDOFF_PIN_RECESS = 0.15  # mm; pin top below PLATE_SEAT_Z — a firm pilot, n
 
 # ---------- Clearances ----------
 PCB_XY_CLEARANCE = 0.5
+# Deferred to here because it needs PCB_XY_CLEARANCE: the arc the deep facet drafts through at
+# the convex flat-front/E4 corner is FRONT_CORNER_ROUND_R + the outer offset, and it has to still
+# have radius left when the facet has shed FRONT_FACET_RUN. See the constant's own block above.
+assert FRONT_CORNER_ROUND_R + WALL_THICKNESS + PCB_XY_CLEARANCE - FRONT_FACET_RUN >= 1.0, \
+    "deep facet inset collapses the flat-front/E4 corner arc — raise FRONT_CORNER_ROUND_R"
 PCB_HOLE_DIA     = 4.1
 
 # ---------- Optional perimeter PCB ledge (default off; see spec §3.4) ----------

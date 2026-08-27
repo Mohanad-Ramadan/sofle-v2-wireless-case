@@ -1,6 +1,7 @@
 import pytest
 from build123d import Part
 from sofle_case import constants as C
+from sofle_case.tray import outer_south_overhang
 from tests.shared_builds import build_bottom_part, build_case_half, build_top_part
 
 
@@ -13,7 +14,14 @@ def test_left_outer_bbox():
     p = build_case_half("left")
     bb = p.bounding_box()
     assert abs((bb.max.X - bb.min.X) - C.OUTER_WIDTH) < 0.01
-    assert abs((bb.max.Y - bb.min.Y) - C.OUTER_DEPTH) < 0.01
+    # DEEPER than OUTER_DEPTH now: the three southern runs are grown outward by SOUTH_WALL_EXTRA
+    # to give the deep facet something to rake into, and OUTER_DEPTH was left as the datum the
+    # seam wave and tent plane are stated in rather than moved to absorb it.
+    over = outer_south_overhang()
+    assert 0.0 < over <= C.SOUTH_WALL_EXTRA + 0.01, \
+        "south skin cannot reach further south than the growth that pushed it"
+    assert abs((bb.max.Y - bb.min.Y) - (C.OUTER_DEPTH + over)) < 0.01
+    assert abs(bb.max.Y - C.OUTER_DEPTH) < 0.01, "the NORTH edge must not have moved"
     assert abs(bb.min.Z - 0.0) < 0.01
     assert abs(bb.max.Z - C.MAIN_RIM_Z) < 0.01  # flat walls, no hill
 
