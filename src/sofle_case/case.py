@@ -27,7 +27,7 @@ from .top_cover import build_top_cover, _load_plate_cutouts
 from .canopy import build_canopy, usb_port_cutter, CANOPY_RIDGE_TOP_Z
 # snaps imports wedge_deep_z/tent_ground_z from here, but only inside its functions, so this
 # top-level import does not close a cycle.
-from .snaps import snap_reliefs, snap_barbs, snap_catches
+from .snaps import snap_reliefs, snap_barbs, snap_catches, snap_gap_footprints
 from . import canopy_puzzle as PZ
 
 
@@ -240,8 +240,14 @@ def bottom_deep_z() -> float:
     band is extruded from, so this cannot drift from what the band actually reaches.
 
     It was 0.158 mm deeper while the band flared 1.5 mm proud: the footprint ran out to y≈127.5
-    then, and that overhang was the only height the flare cost."""
-    return tent_ground_z(tub_outline_face().bounding_box().max.Y)
+    then, and that overhang was the only height the flare cost.
+
+    THE WHOLE UNDERSIDE DROPPED ``_skin_drop()`` for the blind-port skin: the skin rides the
+    wedge's rim profile and the visible band is re-trimmed to the same skin desk, so BOTH fall by
+    the drop. The band still reaches furthest north (the tub outline, past the wedge), so it is
+    still the deepest point — just a drop lower than before."""
+    band_deep = tent_ground_z(tub_outline_face().bounding_box().max.Y)
+    return min(band_deep, wedge_deep_z()) - _skin_drop()
 
 
 def _seam_sweep_params():
@@ -263,7 +269,17 @@ def _seam_sweep_params():
     live, so monkeypatching ``TENT_ANGLE_DEG`` moves the wave with the desk instead of leaving
     it behind. The constant exists for the import-time guards, which have no plane to ask."""
     y1, y2 = C.TENT_SEAM_Y1, C.TENT_SEAM_Y2
-    z1 = tent_ground_z(y1) + C.TENT_SKIRT_LIFT
+    # ONLY the southern run drops with the desk. Over the south the parting line floats
+    # TENT_SKIRT_LIFT above the DESK, and the desk is the blind-port skin now (skin_ground_z, a
+    # _skin_drop() below the wedge), so z1 rides that — which is what keeps the top skin covering
+    # to the new desk and the front reveal at TENT_SKIRT_LIFT instead of opening by the skin drop.
+    # The WAVE keeps its designed shape on the wedge ground: its reveal is measured DOWN from the
+    # parting line (SEAM_REVEAL_H), not up from the desk, so it need not move — and moving it would
+    # reshape the lens (the tail blends between a dropped south and the fixed SEAM_NORTH_RISE_Z
+    # north, so it goes shallower). The band's own bottom reaches the new desk via the skin-ground
+    # trim in _bottom_outer_shell. So the ramp simply climbs from a _skin_drop()-lower z1 to the
+    # unchanged wave. See .omc/specs/deep-dive-bottom-cover-inlay.md.
+    z1 = skin_ground_z(y1) + C.TENT_SKIRT_LIFT
     slope = -math.tan(math.radians(C.TENT_ANGLE_DEG))
     # The bottom case's full height at the back — the yardstick the band fractions are in.
     # tent_ground_z(OUTER_DEPTH) IS -TENT_WEDGE_MAX_H, asked of the live plane.
@@ -343,8 +359,10 @@ def seam_profile_max_z() -> float:
     edge = _seam_ramp_edge()
     hi = max((edge @ (i / 400.0)).Y for i in range(401))
     # The southern run is parallel to the tent plane, which rises going south, so its high point
-    # inside the case is at y=0. North of the ramp the run is flat at SEAM_NORTH_RISE_Z.
-    return max(hi, C.SEAM_NORTH_RISE_Z, tent_ground_z(0.0) + C.TENT_SKIRT_LIFT)
+    # inside the case is at y=0. North of the ramp the run is flat at SEAM_NORTH_RISE_Z. The south
+    # run rides the SKIN ground now (see _seam_sweep_params), so its y=0 high point is measured
+    # there too.
+    return max(hi, C.SEAM_NORTH_RISE_Z, skin_ground_z(0.0) + C.TENT_SKIRT_LIFT)
 
 
 def _below_seam_cutter() -> Part:
@@ -386,7 +404,7 @@ def _below_seam_cutter() -> Part:
     lift = C.TENT_SKIRT_LIFT
     slope = -math.tan(math.radians(C.TENT_ANGLE_DEG))
     y_s, y_n = -20.0, C.OUTER_DEPTH + 60.0
-    z_s = tent_ground_z(y_s) + lift
+    z_s = skin_ground_z(y_s) + lift   # south run rides the skin desk, parallel to the plane
     bot = wedge_deep_z() - 20.0
     with BuildSketch(Plane.YZ) as sk:            # sketch u -> case Y, sketch v -> case Z
         with BuildLine():
@@ -573,6 +591,53 @@ def tent_wedge() -> Part:
     return cast(Part, stock - _below_plane_cutter(*tent_plane()))
 
 
+def _skin_drop() -> float:
+    """How far the blind-port skin's outer face sits below the wedge ground: gap + skin."""
+    return C.BSKIN_GAP + C.BSKIN_THICK
+
+
+def _skin_ground_plane() -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    """The tent plane shifted straight down by ``_skin_drop()`` — the skin's outer (desk) face."""
+    origin, up = tent_plane()
+    return (origin[0], origin[1], origin[2] - _skin_drop()), up
+
+
+def skin_ground_z(y: float) -> float:
+    """Z of the blind-port skin's outer (desk) face at a given case-Y — the underside now.
+
+    The wedge ground (``tent_ground_z``) dropped a ``_skin_drop()`` when the skin closed the
+    ports; this is where the desk, the feet, and the ground chamfer now live."""
+    return tent_ground_z(y) - _skin_drop()
+
+
+def bottom_skin() -> Part:
+    """Solid skin closing the underside, grown a ``_skin_drop()`` below the wedge ground.
+
+    Same rim profile as the wedge (``rim_outer``), so it stays inset behind the tub's skin and
+    the reveal is untouched. It is the slab between the OLD wedge ground (top) and the new skin
+    ground (bottom); ``snap_bottom_gap`` then carves the air pocket under each arm so the skin
+    never touches a flexing latch. Added AFTER the reliefs/barbs so it caps the ports from below.
+    See .omc/specs/deep-dive-bottom-cover-inlay.md."""
+    rim_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK
+    stock = offset_extruded(rim_outer, -(C.TENT_WEDGE_MAX_H + _skin_drop() + 1.0), 0.0)
+    above_skin = cast(Part, stock - _below_plane_cutter(*_skin_ground_plane()))
+    return cast(Part, above_skin & _below_plane_cutter(*tent_plane()))
+
+
+def snap_bottom_gap() -> Part:
+    """Cutter: the air gap under every arm, between the wedge ground and the skin top.
+
+    Each arm's tall freed-strip footprint (``snap_gap_footprints``), trimmed to the slab between
+    the wedge ground (P0) and the skin top (P0 − BSKIN_GAP). Subtracting it from the skin leaves
+    BSKIN_GAP of air under each arm and BSKIN_THICK of skin below that — floor-to-rim, never
+    arm-to-rim. Entirely below P0, so it removes only skin: the arms and wedge are untouched."""
+    origin, up = tent_plane()
+    skin_top = (origin[0], origin[1], origin[2] - C.BSKIN_GAP), up
+    prisms = snap_gap_footprints()
+    above_skin_top = cast(Part, prisms - _below_plane_cutter(*skin_top))
+    return cast(Part, above_skin_top & _below_plane_cutter(origin, up))
+
+
 def _bottom_outer_shell() -> Part:
     """The band of bottom case that SHOWS: the TOP's own outline, carried down to the desk.
 
@@ -621,10 +686,11 @@ def _bottom_outer_shell() -> Part:
     # Open the reveal: drop the parting-line cutter by SEAM_REVEAL_H and keep only what is under
     # it. Intersecting (not subtracting) because this cutter IS "everything below the line".
     band = cast(Part, band & _below_seam_cutter().translate((0.0, 0.0, -C.SEAM_REVEAL_H)))
-    # Trimmed to the desk LAST, and once, so the underside comes out as a single planar face —
-    # ground_face() picks the largest one and test_contact_is_the_whole_footprint wants the
-    # whole footprint, not the largest of two dozen coplanar slivers.
-    return cast(Part, band - _below_plane_cutter(*tent_plane()))
+    # Trimmed to the desk LAST, and once, so the underside comes out as a single planar face.
+    # The desk is the blind-port SKIN ground now, a _skin_drop() below the wedge, so the visible
+    # band reaches down to it instead of stopping short at the old wedge line — otherwise the band
+    # would float _skin_drop() proud of the desk with the inset skin poking out beneath it.
+    return cast(Part, band - _below_plane_cutter(*_skin_ground_plane()))
 
 
 @cache
@@ -657,7 +723,7 @@ def _seam_ramp_table(_angle: float, _rise: float, _y1: float, _y2: float,
 def _seam_z_at(y: float) -> float:
     """The parting line's Z at a given case-Y — the three stretches, as the cutter draws them."""
     if y <= C.TENT_SEAM_Y1:
-        return tent_ground_z(y) + C.TENT_SKIRT_LIFT
+        return skin_ground_z(y) + C.TENT_SKIRT_LIFT   # south run floats above the skin desk
     if y >= C.TENT_SEAM_Y2:
         return C.SEAM_NORTH_RISE_Z
     tbl = _seam_ramp_table(C.TENT_ANGLE_DEG, C.SEAM_NORTH_RISE_Z,
@@ -672,31 +738,39 @@ def _shell_y_range() -> tuple[float, float]:
     to the back edge. The southern end is the lens's own point — nothing is drawn to make it."""
     ys = [i * C.OUTER_DEPTH / 2000.0 for i in range(2001)]
     for y in ys:
-        if _seam_z_at(y) - C.SEAM_REVEAL_H > tent_ground_z(y):
+        if _seam_z_at(y) - C.SEAM_REVEAL_H > skin_ground_z(y):   # desk is the skin ground now
             return y, C.OUTER_DEPTH
     raise ValueError("the reveal never opens — SEAM_REVEAL_H is deeper than the band ever gets")
 
 
 def ground_face(part: Part):
-    """The wedge's underside — the face that meets the desk — or None.
+    """The underside face that meets the desk — the wedge's, or the blind-port skin's — or None.
 
-    Selected by "parallel to the tent plane AND lying ON it", not by lowest centre. On a
-    tilted plane, lowest-centre is simply wrong: a foot seat's floor near the north sits at
-    Z ≈ -4.2 while the main ground face's CENTRE is at Z ≈ -3.2, so the seat wins and you
-    end up chamfering a foot recess instead of the case's rim."""
+    Selected by "faces DOWN, parallel to the tent plane, and lies on the LOWEST such plane", not
+    by lowest centre. On a tilted plane, lowest-centre is simply wrong: a foot seat's floor near
+    the north sits at Z ≈ -4.2 while the main ground face's CENTRE is at Z ≈ -3.2, so the seat
+    wins and you end up chamfering a foot recess instead of the case's rim.
+
+    "Lowest plane" (most-negative perpendicular gap from the tent origin) is what lets this
+    follow the skin: with BSKIN the true ground drops to the skin bottom, and the old wedge line
+    survives only as tiny down-faces on the arm bottoms inside the gap pockets — those sit a
+    whole BSKIN_GAP + BSKIN_THICK higher, so the skin plane wins. Foot-seat floors are cut UP
+    into the material, so they too sit higher than the ground and never win."""
     origin, up = tent_plane()
-    on_plane = []
+    parallel = []
     for f in part.faces().filter_by(GeomType.PLANE):
         n = f.normal_at(f.center())
         if abs(n.Z + up[2]) > 0.02 or abs(n.Y + up[1]) > 0.02:
-            continue                                  # not parallel to the tent plane
+            continue                                  # not a down-face parallel to the tent plane
         c = f.center()
         gap = ((c.X - origin[0]) * up[0] + (c.Y - origin[1]) * up[1]
                + (c.Z - origin[2]) * up[2])
-        if abs(gap) > 1e-3:
-            continue                                  # parallel, but offset from it
-        on_plane.append(f)
-    return max(on_plane, key=lambda f: f.area) if on_plane else None
+        parallel.append((gap, f))
+    if not parallel:
+        return None
+    lo = min(gap for gap, _ in parallel)
+    on_lowest = [f for gap, f in parallel if abs(gap - lo) < 1e-3]
+    return max(on_lowest, key=lambda f: f.area)
 
 
 def _chamfer_wedge_ground_edge(part: Part) -> Part:
@@ -717,20 +791,25 @@ def _chamfer_wedge_ground_edge(part: Part) -> Part:
 
 
 def _foot_recesses() -> Part:
-    """Cutter: shallow Ø FOOT_DIA seats in the OUTER bottom face (Z=0) at FOOT_POSITIONS.
+    """Cutter: shallow Ø FOOT_DIA seats in the OUTER bottom face at FOOT_POSITIONS.
 
     Stick-on rubber feet locate in these seats at the 4 corners so the keyboard grips
     the desk. Each cylinder starts 0.5 mm outside the face (so it opens cleanly, no
     coincident face) and recesses FOOT_DEPTH into the material.
 
-    Cut PERPENDICULAR to the tent plane, not plumb. The ground face is tilted now, so a
-    vertical cylinder would meet it obliquely — the seat depth would vary by ±0.17 mm across
-    a Ø10 seat and the pad would sit on a slight ramp instead of flat against the desk.
+    The outer face is now the blind-port SKIN, a ``_skin_drop()`` below the wedge ground, so the
+    seats are cut there. At the corners the skin is backed by solid case (the BSKIN_GAP pockets
+    are local to the arms, mid-edge), so a FOOT_DEPTH seat keeps full backing — see the feet gate
+    in .omc/specs/deep-dive-bottom-cover-inlay.md.
+
+    Cut PERPENDICULAR to the tent plane, not plumb. The ground face is tilted, so a vertical
+    cylinder would meet it obliquely — the seat depth would vary by ±0.17 mm across a Ø10 seat
+    and the pad would sit on a slight ramp instead of flat against the desk.
     """
     _origin, up = tent_plane()
     seats = None
     for x, y in C.FOOT_POSITIONS:
-        z = tent_ground_z(y)
+        z = skin_ground_z(y)
         start = (x - up[0] * 0.5, y - up[1] * 0.5, z - up[2] * 0.5)
         cyl = Solid.make_cylinder(C.FOOT_DIA / 2, C.FOOT_DEPTH + 0.5,
                                   Plane(origin=start, z_dir=up))
@@ -767,24 +846,28 @@ def build_bottom_part(side: Side) -> Part:
     bottom = cast(Part, bottom - battery_pocket())
     bottom = cast(Part, bottom - jst_pocket())
     bottom = cast(Part, bottom - jst_wire_channel())
-    bottom = cast(Part, bottom - _foot_recesses())
-    bottom = _chamfer_wedge_ground_edge(_as_part(bottom))
-    # Snap latches, AFTER the ground-edge chamfer and last of everything.
+    # Snap latches, cut into a whole bottom part BEFORE the skin caps it.
     #
-    # The order is load-bearing in both directions. They come after the wedge and outer band
-    # are fused because each arm's slot runs from the ground face up to the ledge, so it has to
-    # cut a bottom part that is already whole — cut earlier it would only free the plate's
-    # share of the wall and leave the arm rooted along its whole bottom edge, which is the
-    # horizontal-axis bending this design exists to avoid.
-    #
-    # And they come after _chamfer_wedge_ground_edge because that op selects
-    # ``ground_face(part).outer_wire().edges()``. Nine through-slots break that wire into nine
-    # more edges and hand the chamfer the slot mouths as well as the footprint — it cost
-    # 27.4 mm³ of extra cut and, worse, put a 0.5 mm chamfer on the inside of a release port.
-    # This helper already has a silent no-op fallback and a history of taking it (see
-    # docs/z-stack.md); handing it a rim it cannot chamfer would fail quietly.
+    # They come after the wedge and outer band are fused because each arm's slot runs from the
+    # ground face up to the ledge, so it has to cut a bottom part that is already whole — cut
+    # earlier it would only free the plate's share of the wall and leave the arm rooted along its
+    # whole bottom edge, which is the horizontal-axis bending this design exists to avoid.
     bottom = cast(Part, bottom - snap_reliefs())
     bottom = cast(Part, bottom + snap_barbs())
+    # Blind-port skin: close the underside from below, then carve the air gap that keeps it off
+    # every flexing arm. The skin caps the release ports (they vent into the gap, invisible from
+    # outside) while the arms keep their full height, so no latch force moves. See
+    # .omc/specs/deep-dive-bottom-cover-inlay.md.
+    bottom = cast(Part, bottom + bottom_skin())
+    bottom = cast(Part, bottom - snap_bottom_gap())
+    # Feet and the ground-edge chamfer LAST, on the skin's outer face — the new ground.
+    #
+    # This is also why the chamfer moved after the snaps: it selects
+    # ``ground_face(part).outer_wire().edges()``, and the ports used to break that wire into extra
+    # edges (a 0.5 mm chamfer on the inside of a release port, 27.4 mm³ of stray cut). The skin's
+    # face is unbroken — the ports no longer reach it — so the chamfer gets a clean rim.
+    bottom = cast(Part, bottom - _foot_recesses())
+    bottom = _chamfer_wedge_ground_edge(_as_part(bottom))
     bottom = _as_part(bottom)
 
     if side == "left":

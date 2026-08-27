@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from build123d import Solid
 from sofle_case import constants as C
-from sofle_case.case import tent_ground_z, _below_seam_cutter, _seam_sweep_params
+from sofle_case.case import skin_ground_z, _below_seam_cutter, _seam_sweep_params
 from tests.shared_builds import build_bottom_part, build_top_part
 
 INSET = C.SEAM_SKIN + C.SEAM_FIT_CLEAR          # 2.2; how far the bottom hides behind the skin
@@ -105,7 +105,7 @@ def test_the_ramp_lands_on_the_rise_from_both_ends():
     ys = [C.TENT_SEAM_Y1, C.TENT_SEAM_Y2]
     zs = [_lowest_at(top, y) for y in ys]
     assert all(z is not None for z in zs), "the ramp has a hole in it"
-    start = tent_ground_z(C.TENT_SEAM_Y1) + C.TENT_SKIRT_LIFT
+    start = skin_ground_z(C.TENT_SEAM_Y1) + C.TENT_SKIRT_LIFT
     assert abs(zs[0] - start) < 0.06, "ramp does not start where the southern run ends"
     assert abs(zs[-1] - C.SEAM_NORTH_RISE_Z) < 0.06, "ramp does not finish at the rise"
 
@@ -117,7 +117,7 @@ def test_the_south_is_untouched():
     top, bot = _top(), _bottom()
     for y in (20.0, 40.0):
         got = _lowest_at(top, y)
-        want = tent_ground_z(y) + C.TENT_SKIRT_LIFT
+        want = skin_ground_z(y) + C.TENT_SKIRT_LIFT
         assert got is not None, f"no material at y={y}"
         assert abs(got - want) < 0.06, (
             f"y={y}: skin bottom at {got:.3f}, expected {want:.3f} — the south moved")

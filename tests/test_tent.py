@@ -54,8 +54,13 @@ def test_ground_face_is_one_exact_plane_pitched_the_right_way():
 
 def test_nothing_pokes_below_the_ground_plane():
     """Everything sits ON the plane, nothing through it. One stray vertex below becomes the
-    only contact point and the keyboard rocks on it."""
+    only contact point and the keyboard rocks on it.
+
+    The ground is the blind-port SKIN now, a _skin_drop() below the wedge line — so the plane
+    to measure against drops with it. The old wedge line survives only as the arm bottoms inside
+    the gap pockets, which sit a whole gap+skin ABOVE this plane."""
     o, n = tent_plane()
+    o = (o[0], o[1], o[2] - (C.BSKIN_GAP + C.BSKIN_THICK))
     for side in ("right", "left"):
         verts, _f = build_bottom_part(side).tessellate(0.2)
         worst = min((v.X - o[0]) * n[0] + (v.Y - o[1]) * n[1] + (v.Z - o[2]) * n[2] for v in verts)
@@ -67,34 +72,24 @@ def test_contact_is_the_whole_footprint():
     proof — unlike the four inset riser feet this design replaced."""
     face = ground_face(build_bottom_part("right"))
     assert face.area > 10000.0, f"ground face is only {face.area:.0f} mm² — that is not the footprint"
-    # Holes in the footprint are the FOUR foot seats plus the snap latches' release ports. Five
-    # of the nine arms show up here: their relief slot runs to the ground face and closes as its
-    # own loop. The other four are at the south, where the wedge is thin enough that the slot's
-    # outboard leg reaches the footprint's edge and merges into the outer wire instead.
+    # The ground is the blind-port SKIN now, so the ONLY holes in it are the FOUR foot seats. The
+    # snap release ports no longer reach the footprint — the skin caps them from below and they
+    # vent into the gap pockets a BSKIN_GAP above this face — so contact is the whole footprint
+    # bar the seats, and there is nothing left that could open a hole for the case to rock on.
     #
-    # Counted AND measured, because the count alone would pass a slot that had eaten half the
-    # footprint. What this test is really claiming is that the case still rests on essentially
-    # its whole plan area and cannot rock, so the load-bearing number is the area.
-    #
-    # THE PORTS ARE MEASURED; THE SEATS ARE NOT, AND THE SPLIT IS THE POINT. A release port is
-    # an open hole — nothing bears on it. A foot seat is a hole only until the rubber foot goes
-    # in, and that foot is FOOT_DEPTH deep and mostly proud below, so it is not merely filled,
-    # it is the part that actually touches the desk. Summing the two together made this gate a
-    # function of FOOT_DIA, which is how restoring Ø10 feet — strictly MORE contact area on the
-    # desk — read here as 3.0% and "the case can start to rock". That was the measurement being
-    # wrong about its own subject, not the design regressing. The docstring above always quoted
-    # the ports' ~0.9% as the load-bearing figure; the assertion now matches it, and gets
-    # sharper in the bargain: 0.9% against a 3% bound, with no FOOT_DIA term to dilute it.
+    # Counted AND measured, because the count alone would pass a stray slot that had somehow
+    # eaten into the skin. A foot seat is a hole only until the rubber foot goes in, and that foot
+    # is FOOT_DEPTH deep and mostly proud below, so it is the part that actually touches the desk.
     seats = [w for w in face.inner_wires() if abs(w.length - math.pi * C.FOOT_DIA) < 0.5]
     assert len(seats) == len(C.FOOT_POSITIONS), \
         f"expected {len(C.FOOT_POSITIONS)} foot seats in the ground face, found {len(seats)}"
-    port_wires = [w for w in face.inner_wires() if w not in seats]
-    assert len(port_wires) <= len(C.SNAP_ARMS), \
-        f"{len(port_wires)} holes in the footprint are neither foot seats nor snap release ports"
-    holes = sum(Face(w).area for w in face.inner_wires())      # total, for the record
-    ports = sum(Face(w).area for w in port_wires)
-    assert ports / (face.area + holes) < 0.03, \
-        f"open release ports take {ports / (face.area + holes) * 100:.1f}% of the footprint — " \
+    non_seat = [w for w in face.inner_wires() if w not in seats]
+    assert not non_seat, \
+        f"{len(non_seat)} holes in the skin footprint are not foot seats — a port broke through"
+    holes = sum(Face(w).area for w in face.inner_wires())      # the seats, for the record
+    non_seat_area = sum(Face(w).area for w in non_seat)
+    assert non_seat_area / (face.area + holes) < 0.03, \
+        f"non-seat holes take {non_seat_area / (face.area + holes) * 100:.1f}% of the footprint — " \
         f"that is no longer 'the whole footprint' and the case can start to rock"
 
 

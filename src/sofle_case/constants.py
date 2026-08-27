@@ -282,6 +282,24 @@ assert COVER_TOP_Z - FRONT_FACET_DROP >= SEAM_LEDGE_Z + 1.0, "front facet toe in
 TENT_ANGLE_DEG   = 6.0   # deg; typing angle the wedge stands the case at
 TENT_WEDGE_MIN_H = 1.0   # mm; wedge thickness at the south (the thin end)
 
+# ---- Blind-port bottom skin ----
+# The snap arms are freed by slots that run out the ground face as 11 visible "release ports"
+# (see the Rabbet snap latch block and snaps.py). This closes them from below WITHOUT touching
+# the latch: a solid skin grown under the wedge, held OFF the arms by an air gap so it ties
+# floor-to-rim under each arm rather than arm-to-rim across the slot. The arm keeps its full
+# arm_wall_height (beam width b), so every snap force is unchanged — the cost is paid in height,
+# not force. The port becomes blind: it vents into the gap, invisible from outside.
+#
+# The gap is mandatory and cannot shrink to zero: without it the skin fuses to the arm bottom in
+# the print and re-fixes the cantilever (the fixed-fixed fracture the whole latch design avoids).
+# The arm deflects in XY, never in Z, so the gap is print-clearance only — 0.5 mm is the minimum
+# that reliably will not bridge skin-to-arm. Skin + gap = the whole added height, ≈1.3 mm at the
+# bottom only. Full derivation: .omc/specs/deep-dive-bottom-cover-inlay.md
+BSKIN_THICK = 0.8   # mm; solid skin closing the underside (2 layers; a cap backed by the walls,
+#                     not a structural floor). The foot seats relocate into it.
+BSKIN_GAP   = 0.5   # mm; air gap between each arm's bottom edge and the skin top. Mandatory —
+#                     it is what keeps the skin off the flexing arm. Not recoverable.
+
 # ---- Where the two cases hand over: the visible parting line ----
 # Like the reference, the TOP case does not stop at Z=0 all the way round. Over the southern
 # stretch its skin carries on down to just above the desk, so the front of the keyboard reads

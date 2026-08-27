@@ -494,5 +494,15 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # the deeper catch pockets under the taller barb (proud 0.45 -> 0.55) both remove a little more.
     # This retune raised closing force ~1.9x and click energy ~3x for a firmer seat; see the note
     # above SNAP_ARMS in constants.py and the two guardrail tests in test_snaps.py.
+    # Rebased +17916.261 mm³ (+9.5%) for the BLIND-PORT SKIN: an 18461.36 mm³ slab added under the
+    # wedge to close the 11 snap release ports, less the 545.10 mm³ of air gap it carves back out
+    # under the arms (the standalone snap_bottom_gap() reads 674.8, but its outboard margin lies
+    # past the skin's rim profile and removes no real material). The arms keep their full height, so
+    # this touches no snap force (test_snaps is unchanged); the cost is ~1.3 mm of added height, not
+    # force. See .omc/specs/deep-dive-bottom-cover-inlay.md.
+    # Rebased +828.444 mm³ when the visible OUTER BAND was re-datumed to the skin desk too: the
+    # band used to stop at the old wedge ground and float _skin_drop() proud of the new desk, so it
+    # now extends down to reach it (the top skirt does the same at the south, restoring the front
+    # reveal to TENT_SKIRT_LIFT). Checked against _bottom_outer_shell()'s own volume growth.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 187726.502027) < 2e-2
+    assert abs(build_bottom_part(side).volume - 206471.209975) < 2e-2

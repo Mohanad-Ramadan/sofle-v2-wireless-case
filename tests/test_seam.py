@@ -30,8 +30,8 @@ from sofle_case.canopy import CANOPY_RIDGE_TOP_Z
 from sofle_case.case import (_below_seam_cutter, _bottom_outer_shell, _seam_ramp_edge,
                              _seam_sweep_params, _seam_z_at, bottom_deep_z,
                              seam_profile_max_z, seam_profile_min_z, seam_skirt_tub,
-                             skirt_extension, tent_ground_z, tent_plane, tub_outline_face,
-                             wedge_deep_z)
+                             skirt_extension, skin_ground_z, _skin_ground_plane,
+                             tub_outline_face, wedge_deep_z)
 # shared_builds' rule is "never import builders from sofle_case directly", and this is the one
 # sanctioned exception: the mutation test below patches a constant, which the side-keyed cache
 # cannot see. Named so nothing reaches for it by accident.
@@ -43,8 +43,10 @@ OUTER = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
 
 def _seam_z(y: float) -> float:
     """Where the skin's bottom edge belongs over the southern run: parallel to the tent plane,
-    lifted clear of it by TENT_SKIRT_LIFT."""
-    return tent_ground_z(y) + C.TENT_SKIRT_LIFT
+    lifted clear of the DESK by TENT_SKIRT_LIFT. The desk is the blind-port skin ground now
+    (a _skin_drop() below the wedge), so the run rides that, which is what keeps the top skin
+    covering to the desk after the skin dropped it."""
+    return skin_ground_z(y) + C.TENT_SKIRT_LIFT
 
 
 def _zero_crossings() -> tuple[float, float]:
@@ -114,8 +116,12 @@ def _worst_desk_clearance(side: str, builder=build_top_part) -> float:
     """Closest the top case comes to the tent plane anywhere, measured perpendicular to it over
     the whole tessellated skin. Negative means it has gone through the desk.
 
-    ``builder`` is a seam so the mutation test can hand in the UNCACHED build — see there."""
-    o, n = tent_plane()
+    ``builder`` is a seam so the mutation test can hand in the UNCACHED build — see there.
+
+    Measured against the SKIN ground plane, not the wedge tent plane: the blind-port skin dropped
+    the desk a _skin_drop() and the whole seam followed it down, so the reveal the skin keeps is
+    TENT_SKIRT_LIFT above the skin desk. Against the old plane the skin now reads as below it."""
+    o, n = _skin_ground_plane()
     verts, _f = builder(side).tessellate(0.2)
     return min((v.X - o[0]) * n[0] + (v.Y - o[1]) * n[1] + (v.Z - o[2]) * n[2] for v in verts)
 
@@ -233,7 +239,7 @@ def test_the_bottom_s_outline_IS_the_top_s_outline():
     while y <= C.OUTER_DEPTH - 0.5:
         # _seam_z_at, NOT this file's _seam_z — the latter is only the southern run's formula
         # (ground + lift) and is wrong everywhere the wave has left it, which is all of here.
-        mid = (tent_ground_z(y) + (_seam_z_at(y) - C.SEAM_REVEAL_H)) / 2.0   # clear of the rim
+        mid = (skin_ground_z(y) + (_seam_z_at(y) - C.SEAM_REVEAL_H)) / 2.0   # clear of the rim
         t, b = east(tub, y, 0.5), east(bottom, y, mid)
         if t is not None and b is not None:
             ys.append(y)
@@ -325,7 +331,7 @@ def test_the_rear_skirt_exists_and_closes_the_lens():
         f"no rear skirt: the skin stops at {rear} near the back, not below Z=0"
 
     def band(y):
-        return _lowest_at(top, y) - tent_ground_z(y)
+        return _lowest_at(top, y) - skin_ground_z(y)
 
     crest = max(band(y) for y in range(70, 100, 2))
     back = band(C.OUTER_DEPTH - 1.2)
@@ -704,13 +710,13 @@ def test_the_sweep_dips_below_the_run_and_costs_no_clearance(monkeypatch, angle)
     northward FASTER than the spline does. So dipping below z1 moves the skin AWAY from the desk,
     not toward it, and the ground clearance stays the full TENT_SKIRT_LIFT."""
     monkeypatch.setattr(C, "TENT_ANGLE_DEG", angle)
-    z1 = tent_ground_z(C.TENT_SEAM_Y1) + C.TENT_SKIRT_LIFT
+    z1 = skin_ground_z(C.TENT_SEAM_Y1) + C.TENT_SKIRT_LIFT
     lo = seam_profile_min_z()
     dip = z1 - lo
     assert dip > 0.0, "the sweep no longer leaves the run tangentially — someone kinked the seam"
     assert dip < 0.2, f"{angle} deg: sweep dips {dip:.4f} mm, far more than tangency explains"
     # and the clearance to the DESK is untouched by it — measured perpendicular to the plane
-    o, n = tent_plane()
+    o, n = _skin_ground_plane()                       # the desk is the skin ground now
     y_dip = C.TENT_SEAM_Y1 + 1.2                      # ~where the minimum sits, all angles
     gap = (y_dip - o[1]) * n[1] + (lo - o[2]) * n[2]
     assert gap >= C.TENT_SKIRT_CLEAR_MIN, (

@@ -338,6 +338,47 @@ def snap_catches(proud: float = C.SNAP_BARB_PROUD) -> Part:
     return cast(Part, _each(_catch_local, proud) + corner_catch(proud))
 
 
+# ---------------------------------------------------------------------------
+# Blind-port gap footprints — the air pocket that keeps the closing skin off each arm
+# ---------------------------------------------------------------------------
+# These are TALL XY prisms covering each arm's freed strip (tongue + slot). case.py intersects
+# them with the thin slab between the wedge ground and the skin top, leaving BSKIN_GAP of air
+# under every arm so the bottom skin ties floor-to-rim, never arm-to-rim. The arm keeps its full
+# height, so every latch force is unchanged. See .omc/specs/deep-dive-bottom-cover-inlay.md.
+_GAP_Z_LO, _GAP_Z_HI = -30.0, 5.0   # mm; tall enough to contain the gap band at any arm's Y
+
+
+def _gap_footprint_local(arm: C.SnapArm) -> Part:
+    """Tall footprint under one straight arm's freed strip (tongue + slot), local frame.
+
+    v spans from just outboard of the rim face (+1.0) to just inboard of the slot, so the skin
+    is held clear of the WHOLE strip — not only the slot — and can never touch the flexing arm.
+    u runs root to past the free end with a margin."""
+    u_free = arm.sense * (arm.length + C.SNAP_TAB_SLOT_W)
+    u0, u1 = min(0.0, u_free) - 1.5, max(0.0, u_free) + 1.5
+    return _local_box(u0, u1, _slot_v0(arm) - 0.5, 1.0, _GAP_Z_LO, _GAP_Z_HI)
+
+
+def _corner_gap_footprint() -> Part:
+    """N2's freed strip as a concentric band, tall in Z (trimmed to the gap band in case.py)."""
+    rim_out = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK
+    v_slot_in = rim_out - C.SNAP_CORNER_THK - C.SNAP_TAB_SLOT_W    # slot's inboard edge
+    return _corner_band(rim_out + 1.0, v_slot_in - 0.5, _GAP_Z_LO, _GAP_Z_HI)
+
+
+def snap_gap_footprints() -> Part:
+    """Union of every arm's tall freed-strip footprint, N2 included.
+
+    case.py intersects this with the wedge-ground-to-skin-top slab to cut the air gap that
+    keeps the blind-port skin off each flexing arm."""
+    out: Part | None = None
+    for arm in C.SNAP_ARMS:
+        placed = _placed(_gap_footprint_local(arm), arm)
+        out = placed if out is None else cast(Part, out + placed)
+    assert out is not None, "SNAP_ARMS is empty"
+    return cast(Part, out + _corner_gap_footprint())
+
+
 def corner_wall_height() -> float:
     from .case import tent_ground_z
     return C.SEAM_LEDGE_Z - tent_ground_z(
