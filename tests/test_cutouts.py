@@ -505,4 +505,10 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # now extends down to reach it (the top skirt does the same at the south, restoring the front
     # reveal to TENT_SKIRT_LIFT). Checked against _bottom_outer_shell()'s own volume growth.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 206471.209975) < 2e-2
+    # Rebased +329.693 mm³ for two dial changes together: SEAM_REVEAL_H 2.0 -> 1.5 mm (a
+    # shallower reveal exposes more of the flush outer band at a given Y — see test_north_rise's
+    # recess probe, which had to move for the same reason) and TENT_SEAM_SOUTH_FRAC/RAMP_FRAC
+    # 0.36/0.64 -> 0.3295/0.6705 (more ramp room so the wave spline leaves the southern run
+    # tangent to the knot after it instead of overshooting into a visible kink — the knot itself,
+    # and TENT_SEAM_Y2, are unmoved). Neither change touches the wedge or the snap arms.
+    assert abs(build_bottom_part(side).volume - 206800.903) < 2e-2

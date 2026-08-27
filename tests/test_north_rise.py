@@ -81,10 +81,15 @@ def test_the_recess_deepens_but_the_bottom_never_moves():
     bottom stays SEAM_SKIN + SEAM_FIT_CLEAR behind the skin exactly as it always did, at every
     Y and at every setting of the dial. Growing the bottom out to meet the skin instead was
     tried and rejected: it drags the bottom's outline onto the tub's real footprint."""
+    # Probe at Z=2.0, not 1.0: at y=100 the flush outer band now reaches up to ~1.3-1.5 (it
+    # rides SEAM_REVEAL_H below the parting line, and that dial shrank 2.0 -> 1.5), so a Z=1.0
+    # probe there was already inside the flush band, not the recessed plate behind it -- it read
+    # 0 mm of inset instead of INSET. 2.0 clears that band at both stations and is still well
+    # under SEAM_LEDGE_Z, where the bottom part ends.
     top, bot = _top(), _bottom()
     for y in (70.0, 100.0):
         t = _x_span_at(top, y, ABOVE_LINE)
-        b = _x_span_at(bot, y, 1.0)
+        b = _x_span_at(bot, y, 2.0)
         assert t is not None and b is not None, f"nothing to measure at y={y}"
         for side, tv, bv in (("west", t[0], b[0]), ("east", t[1], b[1])):
             assert abs(abs(tv - bv) - INSET) < 0.05, (

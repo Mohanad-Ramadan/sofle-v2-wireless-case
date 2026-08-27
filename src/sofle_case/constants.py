@@ -321,8 +321,18 @@ BSKIN_GAP   = 0.5   # mm; air gap between each arm's bottom edge and the skin to
 # front edge, 1.0 = it would run the whole way. Both ends of that range are accepted
 # in principle, but the usable ceiling is lower in practice -- the sweep has to finish before
 # the +Y relief bump (see the TENT_SEAM_Y2 guard, which computes the ceiling and reports it).
-TENT_SEAM_SOUTH_FRAC = 0.36   # fraction of depth where the top case rides the desk
-TENT_SEAM_RAMP_FRAC  = 0.64   # fraction of depth the wave takes to climb and come back down
+TENT_SEAM_SOUTH_FRAC = 0.3295 # fraction of depth where the top case rides the desk
+TENT_SEAM_RAMP_FRAC  = 0.6705 # fraction of depth the wave takes to climb and come back down
+# Retuned from 0.36/0.64 (Y1 45.36 -> 41.52): the blind-port skin redatums the ramp's south knot
+# to skin_ground_z (a _skin_drop() lower) while the wave's own interior knots stay put, so the
+# spline suddenly had to close a ~1.3 mm gap over the same short south stretch — with its start
+# tangent still fixed to the (still-falling) south run's slope, that overshot into a visible V
+# cusp right at the join. More ramp room lets it close the gap without the overshoot; Y1 can only
+# move down to just above y=40, where the east wall's own geometry starts (see
+# tests/test_seam.py's east_wall_south_y) — 41.52 clears that with ~1.5 mm to spare, and Y1+Y2
+# still sum to exactly OUTER_DEPTH (see the float-precision note on TENT_SEAM_FRAC_MAX below).
+# See .omc/specs/deep-dive-bottom-cover-inlay.md and the 2026-08-27 /debug session for the
+# rendered before/after.
 
 # How steeply the ramp is still falling when it reaches the back edge, as a MULTIPLE of the
 # desk's own slope. Above 1.0 the line drops faster than the desk does, which is the condition
@@ -357,7 +367,7 @@ TENT_SEAM_RAMP_FRAC  = 0.64   # fraction of depth the wave takes to climb and co
 # band is taller than the reveal, which starts partway up the ramp and runs to the back edge.
 # That is what "the bottom matches the top from where the top leaves the ground to the north
 # end" means in practice.
-SEAM_REVEAL_H = 2.0   # mm; vertical gap from the parting line down to the bottom case's top edge
+SEAM_REVEAL_H = 1.5   # mm; vertical gap from the parting line down to the bottom case's top edge
 
 # ---- FLUSH, not flared, and there is no dial for it ----
 # The old bottom sat SEAM_SKIN + SEAM_FIT_CLEAR (2.2 mm) INSIDE the skin -- the "skinny" look --
@@ -1534,6 +1544,14 @@ TENT_SEAM_Y2 = TENT_SEAM_Y1 + TENT_SEAM_RAMP_FRAC * OUTER_DEPTH          # 85.7 
 # whatever the wall above it is -- bump, fillet and all. The limit is therefore retired, which is
 # what lets the wave carry a rear skirt at all. What remains is only that the ramp has to fit in
 # the case.
+#
+# PICK SOUTH_FRAC/RAMP_FRAC SO THEIR SUM IS AN EXACT FLOAT 1.0, not just decimally equal: Y2 is
+# built as Y1 + RAMP_FRAC*OUTER_DEPTH (an addition), but test_seam.py's own dial guard recomputes
+# the ceiling as 1.0 - RAMP_FRAC (a subtraction) and checks SOUTH_FRAC against THAT — two
+# different float operations that do not always agree bit-for-bit even when the decimals "sum to
+# 1". 0.36/0.64 happened to round the same way; 0.33/0.67 does not (1.0-0.67 == 0.32999999999999996,
+# not 0.33) and fails that guard despite Y2 landing exactly on OUTER_DEPTH. Verify both
+# `south + ramp == 1.0` and `south <= 1.0 - ramp` in a REPL before committing new values.
 TENT_SEAM_FRAC_MAX = 1.0 - TENT_SEAM_RAMP_FRAC
 assert TENT_SEAM_Y2 <= OUTER_DEPTH, (
     f"TENT_SEAM_SOUTH_FRAC={TENT_SEAM_SOUTH_FRAC} puts the ramp's end at y={TENT_SEAM_Y2:.1f}, "
