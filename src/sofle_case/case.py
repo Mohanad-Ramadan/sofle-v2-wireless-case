@@ -9,6 +9,7 @@ still screw together through the same standoffs. See
 """
 from __future__ import annotations
 import math
+import numpy as np
 from functools import cache
 from typing import Literal, cast
 from build123d import (Part, Face, mirror, Plane, Pos, Rot, fillet, chamfer, Axis, BuildPart,
@@ -298,11 +299,93 @@ def _seam_sweep_params():
     return knots, ((1.0, slope), (1.0, tail))
 
 
-def _seam_ramp_edge():
-    """The ramp as a single OCC edge — built once, measured by everything that needs a number."""
+def _seam_ramp_curve_points(n_out: int = 81) -> tuple[tuple[float, float], ...]:
+    """Dense ``(caseY, caseZ)`` samples of the SMOOTHED wave ramp — the ONE source of the curve.
+
+    Both the cutter (``_below_seam_cutter``) and every measurement (``_seam_ramp_edge`` and its
+    consumers) build their spline from these points, so they cannot disagree about the curve. It
+    replaces the old ``Spline(*knots, tangents=...)`` exact through-fit, which rang into a visible
+    flat-spot at the south join — see the SEAM_WAVE_SMOOTH_LAMBDA / SOUTH_TANGENT_FRAC block in
+    constants.py for the why.
+
+    KEYED ON THE ACTUAL CURVE INPUTS, not on a list of dials: the fit's whole shape is fixed by
+    the knot table, the two end slopes and the two smoothing dials, so those ARE the key. Passing
+    them (rather than naming the constants they derive from) means no hidden dependency can slip
+    the cache — the angle-sweep AND lift-mutation tests both monkeypatch constants that reach the
+    curve only through the knots, and keying on the knots themselves catches every such case.
+    Same hazard ``_seam_ramp_table`` documents, closed more tightly."""
     knots, tangents = _seam_sweep_params()
+    run_slope = -math.tan(math.radians(C.TENT_ANGLE_DEG))
+    south = run_slope * C.SEAM_WAVE_SOUTH_TANGENT_FRAC   # relaxed join slope
+    north = tangents[1][1]                                # tail slope, preserved verbatim
+    return _seam_ramp_curve_points_cached(
+        knots, south, north, C.SEAM_WAVE_SMOOTH_LAMBDA, n_out)
+
+
+@cache
+def _seam_ramp_curve_points_cached(knots: tuple[tuple[float, float], ...], south: float,
+                                   north: float, lam: float,
+                                   n_out: int = 81) -> tuple[tuple[float, float], ...]:
+    """The smoothing-spline fit, cached on the curve inputs (``knots`` and the end slopes carry
+    every constant the shape depends on). See ``_seam_ramp_curve_points`` for the caller and why.
+
+    The fit is a roughness-penalised least-squares smoothing spline (Whittaker–Henderson: match
+    the knots, penalise the second difference), solved on an even grid, with FOUR hard end
+    constraints so the ends do not float: value ``z1`` and slope ``south`` at the south end, value
+    ``SEAM_NORTH_RISE_Z`` and slope ``north`` (the tail) at the north. Passing the resampled result
+    to OCC as plain points (no tangents) then reproduces this shape without re-introducing the ring
+    — the samples already lie on a curve that leaves the join relaxed."""
+    kx = np.array([k[0] for k in knots], dtype=float)
+    kz = np.array([k[1] for k in knots], dtype=float)
+    y0, yN = float(kx[0]), float(kx[-1])
+    M = 241
+    yg = np.linspace(y0, yN, M)
+    h = yg[1] - yg[0]
+    gi = [int(np.argmin(np.abs(yg - x))) for x in kx]
+    rows, rhs = [], []
+    w_data = 50.0
+    for j, z in zip(gi, kz):                     # data term: sit near each knot
+        r = np.zeros(M); r[j] = w_data; rows.append(r); rhs.append(w_data * z)
+    for i in range(1, M - 1):                    # roughness term: penalise curvature
+        r = np.zeros(M); r[i - 1] = lam / h**2; r[i] = -2 * lam / h**2; r[i + 1] = lam / h**2
+        rows.append(r); rhs.append(0.0)
+    A = np.array(rows); b = np.array(rhs)
+    W = 1.0e6                                     # hard end constraints, as heavy rows
+    for r, v in (
+        (_unit(M, 0, W), W * kz[0]),                        # f(y0) = z1
+        (_unit(M, -1, W), W * kz[-1]),                      # f(yN) = rise
+        (_slope_row(M, 0, W, h), W * south),                # f'(y0) = relaxed south slope
+        (_slope_row(M, -1, W, h), W * north),               # f'(yN) = tail slope
+    ):
+        A = np.vstack([A, r]); b = np.append(b, v)
+    f = np.linalg.lstsq(A, b, rcond=None)[0]
+    yo = np.linspace(y0, yN, n_out)
+    fo = np.interp(yo, yg, f)
+    fo[0], fo[-1] = float(kz[0]), float(kz[-1])  # pin the endpoints exactly
+    return tuple((float(y), float(z)) for y, z in zip(yo, fo))
+
+
+def _unit(m: int, i: int, w: float):
+    r = np.zeros(m); r[i] = w; return r
+
+
+def _slope_row(m: int, end: int, w: float, h: float):
+    """A finite-difference first-derivative row at an END (0 = south, -1 = north)."""
+    r = np.zeros(m)
+    if end == 0:
+        r[0] = -w / h; r[1] = w / h
+    else:
+        r[-2] = -w / h; r[-1] = w / h
+    return r
+
+
+def _seam_ramp_edge():
+    """The ramp as a single OCC edge — built once, measured by everything that needs a number.
+
+    Built from the SMOOTHED curve points (``_seam_ramp_curve_points``), not the raw knots, so it
+    measures the curve the cutter actually cuts."""
     with BuildLine() as bl:
-        Spline(*knots, tangents=tangents)
+        Spline(*_seam_ramp_curve_points())
     return bl.line.edges()[0]
 
 
@@ -399,7 +482,7 @@ def _below_seam_cutter() -> Part:
     fixed by ``TENT_SEAM_RAMP_FRAC``, so the higher the dial the steeper that climb — 3.14 mm
     over 8.8 mm at frac 0, 9.44 mm over the same 8.8 mm at frac 1. The joins stay tangent
     either way, but lengthening the ramp is the lever if the blend starts to read as a corner."""
-    knots, sweep_tangents = _seam_sweep_params()
+    knots, _tangents = _seam_sweep_params()   # tangents now live inside the smoothed curve points
     (y1, z1), (y2, rise) = knots[0], knots[-1]
     lift = C.TENT_SKIRT_LIFT
     slope = -math.tan(math.radians(C.TENT_ANGLE_DEG))
@@ -417,7 +500,11 @@ def _below_seam_cutter() -> Part:
                 Line((y_s - z_s / slope, 0.0), (y1, z1))
             else:
                 Line((y_s, z_s), (y1, z1))
-            Spline(*knots, tangents=sweep_tangents)
+            # The SMOOTHED ramp, from the one shared source, so the cut matches every measurement
+            # of it. Its endpoints ARE (y1, z1) and (y2, rise), so the runs on either side meet it
+            # without a gap. No tangents argument: the dense points already carry the shape (they
+            # leave the join at the relaxed SEAM_WAVE_SOUTH_TANGENT_FRAC slope).
+            Spline(*_seam_ramp_curve_points())
             Line((y2, rise), (y_n, rise))
             Line((y_n, rise), (y_n, bot))
             Line((y_n, bot), (y_s, bot))

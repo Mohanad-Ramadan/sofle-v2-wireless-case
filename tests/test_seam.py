@@ -695,15 +695,18 @@ def test_the_seam_cutter_holds_at_z0_south_of_the_case(monkeypatch, angle):
 
 @pytest.mark.parametrize("angle", [3.0, 7.0, 10.0])
 def test_the_sweep_dips_below_the_run_and_costs_no_clearance(monkeypatch, angle):
-    """The sweep leaves the southern run along the PLANE'S slope, so it keeps descending for a
-    few mm before it curves up — the profile's minimum is south of the ramp's midpoint and below
-    the run's end at y1, not equal to it.
+    """The sweep leaves the southern run at a RELAXED fraction of the plane's slope, so it still
+    descends a little before it curves up — the profile's minimum is south of the ramp's midpoint
+    and below the run's end at y1, not equal to it, just by less than full tangency gave.
 
-    That is tangency working as intended, not a defect, and the reason it needs its own test is
-    that it hid for a long time: at 3 deg the dip is 0.024 mm and four separate assertions
-    compared the tub's floor against z1 with a 0.05 tolerance, so it fitted underneath. At 7 deg
-    it is 0.074 and all four failed at once. They were wrong the whole time; the angle only made
-    it visible. They now compare against seam_profile_min_z() and can afford a 0.005 tolerance.
+    The wave used to leave along the plane's FULL slope. That, plus an exact pass through the first
+    climb knot ~9 mm north, over-constrained the join and rang into a visible flat-spot; the wave
+    now leaves at SEAM_WAVE_SOUTH_TANGENT_FRAC of the plane slope (see constants.py), which is what
+    removed the ring. The dip therefore shrinks with that fraction — ~0.30x what full tangency
+    gave: 0.006 mm at 3 deg, 0.022 at 7, 0.043 at 10 — but it stays strictly positive, which is
+    what this test guards. A dip of zero (or negative) would mean the wave leaves the join FLAT or
+    climbing, i.e. a corner in the parting line; the point of a partial tangent is that there is
+    none.
 
     THE INVARIANT THAT ACTUALLY MATTERS IS UNAFFECTED, which is the other half of this test. The
     dip is measured against z1 — one number — while the desk is a tilted plane that drops
@@ -713,7 +716,7 @@ def test_the_sweep_dips_below_the_run_and_costs_no_clearance(monkeypatch, angle)
     z1 = skin_ground_z(C.TENT_SEAM_Y1) + C.TENT_SKIRT_LIFT
     lo = seam_profile_min_z()
     dip = z1 - lo
-    assert dip > 0.0, "the sweep no longer leaves the run tangentially — someone kinked the seam"
+    assert dip > 0.0, "the sweep leaves the join flat or climbing — the relaxed tangent has become a corner"
     assert dip < 0.2, f"{angle} deg: sweep dips {dip:.4f} mm, far more than tangency explains"
     # and the clearance to the DESK is untouched by it — measured perpendicular to the plane
     o, n = _skin_ground_plane()                       # the desk is the skin ground now

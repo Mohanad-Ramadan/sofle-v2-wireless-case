@@ -511,4 +511,9 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # 0.36/0.64 -> 0.3295/0.6705 (more ramp room so the wave spline leaves the southern run
     # tangent to the knot after it instead of overshooting into a visible kink — the knot itself,
     # and TENT_SEAM_Y2, are unmoved). Neither change touches the wedge or the snap arms.
-    assert abs(build_bottom_part(side).volume - 206800.903) < 2e-2
+    # Rebased +27.059 mm³ when the wave went from an exact through-fit spline to a smoothing
+    # APPROXIMATION that leaves the south join at a relaxed slope (SEAM_WAVE_SOUTH_TANGENT_FRAC):
+    # the curve now passes near the digitised knots rather than through them and the parting line
+    # rises a hair sooner off the join, so the flush outer band gains a sliver of material along
+    # the ramp. All below the ledge, still just the band — the wedge and snaps are untouched.
+    assert abs(build_bottom_part(side).volume - 206827.966) < 2e-2

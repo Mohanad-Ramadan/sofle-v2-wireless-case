@@ -369,6 +369,35 @@ TENT_SEAM_RAMP_FRAC  = 0.6705 # fraction of depth the wave takes to climb and co
 # end" means in practice.
 SEAM_REVEAL_H = 1.5   # mm; vertical gap from the parting line down to the bottom case's top edge
 
+# ---- The wave is APPROXIMATED, not interpolated, and it leaves the join RELAXED ----
+# SEAM_WAVE_KNOTS is traced off a reference photo (the climb) plus a fitted tail model — data
+# precise to maybe a few hundredths of a mm, not exactly. An exact through-fit spline is forced
+# to pass through every one, so between knots it wiggles to hit each point: the curvature (and so
+# the slope) reverses several times over the climb where a clean S-curve reverses once. Rendered,
+# those reversals read as faint creases at the knot transitions.
+#
+# The bigger one is at the SOUTH join. The old curve was pinned to leave the join tangent to the
+# flat run (slope -tan(TENT_ANGLE_DEG)) AND pass exactly through the first climb knot ~9 mm north,
+# already rising at ~0.2. Those two over-constrain that short span — the interpolant overshoots
+# into a visible flat-spot ("the ring"). Measured: 3 slope reversals in the climb where there
+# should be 1. Holding the tangent, even heavy smoothing cannot remove it; the tangent clamp is
+# the cause, not the knot noise.
+#
+# So two dials, both consumed by case.py's _seam_ramp_curve_points (the ONE builder both the
+# cutter and every measurement now share):
+#   * SMOOTH_LAMBDA — roughness penalty of a least-squares fit that APPROXIMATES the knots (passes
+#     near, not through). Kills the secondary transition wiggles. 0 would reproduce the old exact
+#     interpolation; higher pulls the curve straighter (and further from the traced reference).
+#   * SOUTH_TANGENT_FRAC — the slope the wave leaves the join at, as a FRACTION of the run slope.
+#     1.0 = the old full tangency (and the ring); 0.0 = horizontal. ~0.3 is the most tangency the
+#     span will take before the ring returns (the reversals drop 3 -> 1 around there). The join is
+#     where the visible reveal is only TENT_SKIRT_LIFT tall, so the few-degree slope break it
+#     trades for reads far softer than a flat-spot mid-face would.
+# Endpoints stay pinned exactly (z1 south, SEAM_NORTH_RISE_Z north) and the north tail slope is
+# preserved, so nothing that measures the curve's ends has to move. See the 2026-08-27 session.
+SEAM_WAVE_SMOOTH_LAMBDA = 8.0        # roughness penalty; 0 = old exact interpolation
+SEAM_WAVE_SOUTH_TANGENT_FRAC = 0.30  # wave's south-join slope as a fraction of the run slope
+
 # ---- FLUSH, not flared, and there is no dial for it ----
 # The old bottom sat SEAM_SKIN + SEAM_FIT_CLEAR (2.2 mm) INSIDE the skin -- the "skinny" look --
 # so every bit of bottom case on show was a recess. The fix for that is to put the bottom on the
