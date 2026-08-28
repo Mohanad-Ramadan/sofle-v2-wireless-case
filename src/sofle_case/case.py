@@ -264,6 +264,31 @@ def snap_bottom_gap() -> Part:
     above_skin_top = cast(Part, prisms - _below_plane_cutter(*skin_top))
     return cast(Part, above_skin_top & _below_plane_cutter(origin, up))
 
+
+def skirt_extension(tub: Part) -> Part:
+    """The TOP case's outer skin carried on below Z=0 to HIDE the blind-port bottom skin.
+
+    Re-added after the bottom skin dropped the underside to ``skin_ground_z`` (Z=-1.3): without
+    this the inset bottom skin shows as a recess under the flush Z=0 parting line. Only the outer
+    ``SEAM_SKIN`` band — the same ring the tub's wall already is below the rabbet ledge — descends,
+    so it runs OUTBOARD of the bottom skin (which is inset ``SEAM_SKIN + SEAM_FIT_CLEAR``) with
+    exactly ``SEAM_FIT_CLEAR`` between them; the two never touch. It reaches the skin ground so the
+    outer face is one continuous skin from ``COVER_TOP_Z`` to the desk and the parting line drops
+    off the underside — the seamless look the tented design had.
+
+    Sectioned from the tub's OWN Z=0 cross-section (not a polygon offset), so it follows every
+    wall feature — the +Y relief bump and its corner fillet included. Pass the UN-chamfered tub:
+    the section is taken at Z=0, exactly where ``_chamfer_pocket_mouth`` sits, and the mouth
+    chamfer belongs to the pocket, not to the descending wall."""
+    z_bot = skin_ground_z(0.0)
+    slab = cast(Part, tub & Solid.make_box(400.0, C.OUTER_DEPTH + 200.0, 0.05)
+                .translate((-100.0, -100.0, 0.0)))
+    face = slab.faces().filter_by(Plane.XY).sort_by(Axis.Z)[0]
+    # DIRECTION GIVEN EXPLICITLY: the section face's own normal points at -Z, so a positive
+    # `amount` would build the band UPWARD through the tub. Force it down.
+    return cast(Part, extrude(face, amount=abs(z_bot), dir=(0.0, 0.0, -1.0)))
+
+
 @cache
 def seam_skirt_tub() -> Part:
     """The deep tub exactly as ``skirt_extension`` must see it: plate pocket carved, mouth NOT
@@ -1042,9 +1067,11 @@ def build_top_part(side: Side) -> Part:
     # outer wall — no mid-wall seam — and the rabbet ledge that receives the plate rim.
     tub = seam_skirt_tub()
     top = _chamfer_pocket_mouth(tub)   # tub-side starter chamfer at the pocket mouth
-    # Flat bottom: the tub already ends flush at Z=0, which IS the parting line, so there is no
-    # descending skirt to add, no seam wave to cut, and no lifted-mouth lead-in relief to open —
-    # the pocket mouth sits on Z=0 and _chamfer_pocket_mouth already gives it its starter.
+    # Carry the outer skin DOWN below Z=0 to hide the blind-port bottom skin (which grew the
+    # underside to skin_ground_z). Flat, so no seam wave to cut and no lifted-mouth relief — the
+    # band just descends straight to the desk, outboard of the inset bottom skin. Pass the
+    # UN-chamfered tub (the section is taken at Z=0, where the mouth chamfer lives).
+    top = cast(Part, top + skirt_extension(tub))
     top = cast(Part, top + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     top = apply_encoder_cover_style(top, side)
     top = cast(Part, top + build_canopy(side=side))

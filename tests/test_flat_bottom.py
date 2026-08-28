@@ -66,5 +66,6 @@ def test_halves_are_single_solids_and_bottom_is_the_plate():
     assert abs(bb.min.Z - GROUND_Z) < 1e-6, f"bottom underside at Z={bb.min.Z:.4f}, not the skin ground"
     assert bb.max.Z <= C.PLATE_SEAT_Z + 1e-3, f"bottom reaches Z={bb.max.Z:.4f}, above the plate seat"
     tb = t.bounding_box()
-    assert abs(tb.min.Z) < 1e-3, f"top underside at Z={tb.min.Z:.4f}, not ~0"
+    # the top's outer skirt descends to the skin ground to hide the bottom skin
+    assert abs(tb.min.Z - GROUND_Z) < 1e-3, f"top skirt at Z={tb.min.Z:.4f}, not the skin ground"
     assert tb.max.Z > C.COVER_TOP_Z, "the canopy/encoder should rise above the cover top"

@@ -62,14 +62,17 @@ def test_split_parts_are_valid_single_solids(side):
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_top_part_z_range(side):
-    """TOP is a deep tub whose outer skin runs unbroken to the FLAT Z=0 ground — no mid-wall seam.
+    """TOP is a deep tub whose outer skin runs unbroken to the desk — no mid-wall seam.
 
-    Flat bottom: the tub bottoms flush at Z=0 (that IS the parting line), so its deepest point is
-    Z=0. Above Z=0 nothing moved — the ceiling is the fused bay-canopy ridge, this half's own (the
-    ridge is derived per half, so left tops out 2.76 mm lower than right)."""
+    Flat bottom: the tub bottoms at Z=0, but the skirt extension carries the outer skin on down to
+    the skin ground (Z=-1.3) to hide the blind-port bottom skin, so the top's deepest point is the
+    skin ground. Above Z=0 nothing moved — the ceiling is the fused bay-canopy ridge, this half's
+    own (the ridge is derived per half, so left tops out 2.76 mm lower than right)."""
     from sofle_case import canopy as CAN
+    from sofle_case.case import skin_ground_z
     bb = build_top_part(side).bounding_box()
-    assert abs(bb.min.Z) < 0.005, f"tub floor at {bb.min.Z:.4f}, expected flat Z=0"
+    assert abs(bb.min.Z - skin_ground_z(0.0)) < 0.005, \
+        f"skirt floor at {bb.min.Z:.4f}, expected the skin ground {skin_ground_z(0.0):.4f}"
     assert abs(bb.max.Z - CAN.canopy_ridge_top_z(side)) < 0.01
 
 
@@ -169,14 +172,17 @@ def test_split_conserves_volume(side):
     from sofle_case.battery import battery_pocket, jst_pocket, jst_wire_channel
     from tests.shared_builds import build_top_cover
     from sofle_case.case import (_encoder_shell, _slide_scoop, _slide_actuator_cavity,
-                                 _foot_recesses, bottom_skin, snap_bottom_gap)
+                                 _foot_recesses, bottom_skin, snap_bottom_gap,
+                                 skirt_extension, seam_skirt_tub)
     from tests.shared_builds import build_canopy
     from sofle_case.snaps import snap_reliefs, snap_barbs
 
-    # Flat bottom: the un-split reference is just the assembled solid. No tent wedge, no skirt,
-    # no flared band and no blind-port skin exist below Z=0 any more, and the flat Z=0 parting
-    # line carves nothing off the tub above Z=0, so there is no seam recess to account for.
+    # Flat bottom: two below-Z=0 bodies exist in neither the tray nor the cover — the TOP's skirt
+    # extension (outer skin carried down to hide the bottom skin) and the BOTTOM's blind-port skin.
+    # Both are added here or the split looks like it invented material. The flat Z=0 parting line
+    # carves nothing off the tub above Z=0, so there is no seam recess to account for.
     ref = build_tray(rim_z=C.COVER_TOP_Z, bottom_chamfer=False)
+    ref = cast(Part, ref + skirt_extension(seam_skirt_tub()))
     from sofle_case.canopy import usb_port_cutter
     ref = cast(Part, ref + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     ref = cast(Part, ref + _encoder_shell())
