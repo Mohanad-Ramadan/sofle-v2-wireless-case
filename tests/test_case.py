@@ -1,6 +1,7 @@
 import pytest
 from build123d import Part
 from sofle_case import constants as C
+from sofle_case.tray import outer_south_overhang
 from tests.shared_builds import build_bottom_part, build_case_half, build_top_part
 
 
@@ -13,7 +14,14 @@ def test_left_outer_bbox():
     p = build_case_half("left")
     bb = p.bounding_box()
     assert abs((bb.max.X - bb.min.X) - C.OUTER_WIDTH) < 0.01
-    assert abs((bb.max.Y - bb.min.Y) - C.OUTER_DEPTH) < 0.01
+    # DEEPER than OUTER_DEPTH now: the three southern runs are grown outward by SOUTH_WALL_EXTRA
+    # to give the deep facet something to rake into, and OUTER_DEPTH was left as the datum the
+    # seam wave and tent plane are stated in rather than moved to absorb it.
+    over = outer_south_overhang()
+    assert 0.0 < over <= C.SOUTH_WALL_EXTRA + 0.01, \
+        "south skin cannot reach further south than the growth that pushed it"
+    assert abs((bb.max.Y - bb.min.Y) - (C.OUTER_DEPTH + over)) < 0.01
+    assert abs(bb.max.Y - C.OUTER_DEPTH) < 0.01, "the NORTH edge must not have moved"
     assert abs(bb.min.Z - 0.0) < 0.01
     assert abs(bb.max.Z - C.MAIN_RIM_Z) < 0.01  # flat walls, no hill
 
@@ -204,7 +212,8 @@ def test_split_conserves_volume(side):
     from tests.shared_builds import build_top_cover
     from sofle_case.case import (_encoder_shell, _slide_scoop, _slide_actuator_cavity,
                                  _foot_recesses, tent_wedge, skirt_extension, seam_skirt_tub,
-                                 _bottom_outer_shell, _plate_pocket, _below_seam_cutter)
+                                 _bottom_outer_shell, _plate_pocket, _below_seam_cutter,
+                                 bottom_skin, snap_bottom_gap)
     from tests.shared_builds import build_canopy
     from sofle_case.snaps import snap_reliefs, snap_barbs
 
@@ -231,7 +240,6 @@ def test_split_conserves_volume(side):
     # from. Any future floor recess has to be added here too or it will masquerade as seam loss.
     ref = cast(Part, ref - jst_pocket())
     ref = cast(Part, ref - jst_wire_channel())
-    ref = cast(Part, ref - _foot_recesses())   # anti-slip feet are cut from the bottom plate
     # The snap latches are the same kind of bookkeeping as the floor recesses above: the reliefs
     # are a void cut from the bottom and the barbs are material added to it, so both have to be
     # named here or the net (-4226 mm³) masquerades as the seam having eaten 2.2% of the case.
@@ -239,6 +247,13 @@ def test_split_conserves_volume(side):
     # have already opened, so cutting second would put back material the slot removed.
     ref = cast(Part, ref - snap_reliefs())
     ref = cast(Part, ref + snap_barbs())
+    # The blind-port skin is a fourth below-Z=0 body that exists in neither the tray nor the
+    # cover: a slab added under the wedge, minus the air gap carved back out under each arm. In
+    # build order (after the snaps) so it caps the ports the reliefs just opened. Omit it and the
+    # split looks like it invented ~18 cm³.
+    ref = cast(Part, ref + bottom_skin())
+    ref = cast(Part, ref - snap_bottom_gap())
+    ref = cast(Part, ref - _foot_recesses())   # anti-slip feet, cut LAST into the skin ground
 
     # The RECESS is a void by design, not a seam gap: north of the sweep the parting line rides
     # up to SEAM_NORTH_RISE_Z and the tub's skin below it is carved away, with nothing put back
@@ -254,16 +269,16 @@ def test_split_conserves_volume(side):
     assert lost / ref.volume < 0.012, f"seam gap {lost:.1f} exceeds the rabbet clearance"
 
 
-def test_top_screw_holes_open():
-    """M2 clearance holes pass through the membrane at all 5 standoff locations."""
+def test_top_has_no_screw_holes():
+    """SCREWLESS: the membrane is SOLID at all 5 standoff locations — no M2 clearance holes.
+    A probe at each standoff must be mostly blocked by membrane material."""
     from build123d import Solid
     top = build_top_part("right")
     for hx, hy in C.MOUNTING_HOLES:
         cx, cy = C.pcb_to_case(hx, hy)
-        pin = Solid.make_cylinder(
-            C.COVER_SCREW_CLEARANCE_DIA / 2 - 0.1, C.COVER_THICKNESS + 0.2
-        ).translate((cx, cy, C.MAIN_RIM_Z - 0.1))
-        assert (top & pin).volume < 1e-3, f"screw hole blocked at PCB ({hx}, {hy})"
+        probe = Solid.make_cylinder(1.0, C.COVER_THICKNESS).translate((cx, cy, C.MAIN_RIM_Z))
+        assert (top & probe).volume > 0.5 * probe.volume, (
+            f"membrane not solid at standoff PCB ({hx}, {hy}) — a screw hole has crept back")
 
 
 def test_encoder_bezel_is_hollow_shell():

@@ -106,13 +106,13 @@ def test_keycap_headroom():
     assert cover_top < full_press_skirt, "cover top would touch the keycap skirt at full press"
 
 
-def test_screw_holes_open():
-    """Each standoff position must be a clear M2 hole through the cover."""
+def test_no_screw_holes():
+    """SCREWLESS: the cover has NO M2 clearance holes — the membrane is SOLID at every standoff.
+    A thin probe at each standoff must be mostly blocked by membrane material; a hole creeping
+    back would let it pass and fail this."""
     cv = build_top_cover()
     for hx, hy in C.MOUNTING_HOLES:
         cx, cy = C.pcb_to_case(hx, hy)
-        # a thin pin the size of the M2 shaft must pass straight through
-        pin = Solid.make_cylinder(
-            C.COVER_SCREW_CLEARANCE_DIA / 2 - 0.1, C.COVER_THICKNESS + 0.2
-        ).translate((cx, cy, C.MAIN_RIM_Z - 0.1))
-        assert (cv & pin).volume < 1e-3, f"screw hole blocked at PCB ({hx}, {hy})"
+        probe = Solid.make_cylinder(1.0, C.COVER_THICKNESS).translate((cx, cy, C.MAIN_RIM_Z))
+        assert (cv & probe).volume > 0.5 * probe.volume, (
+            f"membrane not solid at standoff PCB ({hx}, {hy}) — a screw hole has crept back")

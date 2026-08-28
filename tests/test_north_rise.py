@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from build123d import Solid
 from sofle_case import constants as C
-from sofle_case.case import tent_ground_z, _below_seam_cutter, _seam_sweep_params
+from sofle_case.case import skin_ground_z, _below_seam_cutter, _seam_sweep_params
 from tests.shared_builds import build_bottom_part, build_top_part
 
 INSET = C.SEAM_SKIN + C.SEAM_FIT_CLEAR          # 2.2; how far the bottom hides behind the skin
@@ -81,10 +81,15 @@ def test_the_recess_deepens_but_the_bottom_never_moves():
     bottom stays SEAM_SKIN + SEAM_FIT_CLEAR behind the skin exactly as it always did, at every
     Y and at every setting of the dial. Growing the bottom out to meet the skin instead was
     tried and rejected: it drags the bottom's outline onto the tub's real footprint."""
+    # Probe at Z=2.0, not 1.0: at y=100 the flush outer band now reaches up to ~1.3-1.5 (it
+    # rides SEAM_REVEAL_H below the parting line, and that dial shrank 2.0 -> 1.5), so a Z=1.0
+    # probe there was already inside the flush band, not the recessed plate behind it -- it read
+    # 0 mm of inset instead of INSET. 2.0 clears that band at both stations and is still well
+    # under SEAM_LEDGE_Z, where the bottom part ends.
     top, bot = _top(), _bottom()
     for y in (70.0, 100.0):
         t = _x_span_at(top, y, ABOVE_LINE)
-        b = _x_span_at(bot, y, 1.0)
+        b = _x_span_at(bot, y, 2.0)
         assert t is not None and b is not None, f"nothing to measure at y={y}"
         for side, tv, bv in (("west", t[0], b[0]), ("east", t[1], b[1])):
             assert abs(abs(tv - bv) - INSET) < 0.05, (
@@ -105,7 +110,7 @@ def test_the_ramp_lands_on_the_rise_from_both_ends():
     ys = [C.TENT_SEAM_Y1, C.TENT_SEAM_Y2]
     zs = [_lowest_at(top, y) for y in ys]
     assert all(z is not None for z in zs), "the ramp has a hole in it"
-    start = tent_ground_z(C.TENT_SEAM_Y1) + C.TENT_SKIRT_LIFT
+    start = skin_ground_z(C.TENT_SEAM_Y1) + C.TENT_SKIRT_LIFT
     assert abs(zs[0] - start) < 0.06, "ramp does not start where the southern run ends"
     assert abs(zs[-1] - C.SEAM_NORTH_RISE_Z) < 0.06, "ramp does not finish at the rise"
 
@@ -114,10 +119,14 @@ def test_the_south_is_untouched():
     """The dial acts north of the sweep and nowhere else. Over the southern run the skin still
     descends to TENT_SKIRT_LIFT above the desk, and the bottom still hides INSET behind it — it
     has to, because the skin comes down outside it there with only SEAM_FIT_CLEAR to spare."""
+    # STATIONS DERIVE FROM Y1. The literals (20, 40) assumed the southern run reached past y=40,
+    # which was true at TENT_SEAM_SOUTH_FRAC 0.36 and false once it was tuned down — at 0.285 the
+    # run ends at 35.9, so a y=40 probe lands on the RAMP and is compared against the run's own
+    # formula. Sample the run wherever the dial actually puts it.
     top, bot = _top(), _bottom()
-    for y in (20.0, 40.0):
+    for y in (0.25 * C.TENT_SEAM_Y1, 0.85 * C.TENT_SEAM_Y1):
         got = _lowest_at(top, y)
-        want = tent_ground_z(y) + C.TENT_SKIRT_LIFT
+        want = skin_ground_z(y) + C.TENT_SKIRT_LIFT
         assert got is not None, f"no material at y={y}"
         assert abs(got - want) < 0.06, (
             f"y={y}: skin bottom at {got:.3f}, expected {want:.3f} — the south moved")

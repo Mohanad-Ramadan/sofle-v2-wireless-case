@@ -1,6 +1,6 @@
-"""Stepped standoff: lower shoulder (PCB seat) + upper pin (through PCB) + M2 tap bore."""
+"""Stepped standoff: lower shoulder (PCB seat) + upper pin (through PCB). Screwless — no tap."""
 from __future__ import annotations
-from build123d import Part, Cylinder, Cone, BuildPart, Mode, Locations
+from build123d import Part, Cylinder, BuildPart, Locations
 from . import constants as C
 
 
@@ -10,11 +10,15 @@ def stepped_standoff(at: tuple[float, float]) -> Part:
     Geometry:
       - Lower section: Z=FLOOR_THICKNESS → PCB_SEAT_Z, OD=STANDOFF_OD_LOWER (PCB-seat shoulder)
       - Upper section: Z=PCB_SEAT_Z → pin_top, OD=STANDOFF_OD_UPPER (passes through PCB hole)
-      - M2 tap bore: drilled top-down from pin_top to depth STANDOFF_TAP_DEPTH, Ø=STANDOFF_TAP_DIA
 
-    ``pin_top`` is PLATE_SEAT_Z − STANDOFF_PIN_RECESS, NOT PLATE_SEAT_Z. The pin is a screw
-    boss, not a seat: the plate is located by the switches, and a pin that reached the plate
-    would be a second datum for the same face. See STANDOFF_PIN_RECESS in constants.py.
+    SCREWLESS: the pin is now a SOLID PCB-registration boss — the M2 self-tap bore and its entry
+    chamfer are gone, since nothing screws into it. It still passes the PCB Ø4.1 hole to locate
+    the board in XY, and it carries the snap-closure compression reaction up from the floor.
+
+    ``pin_top`` is PLATE_SEAT_Z − STANDOFF_PIN_RECESS, NOT PLATE_SEAT_Z. The pin stops short of
+    the plate: the plate is located by the switches, and a pin that reached the plate would be a
+    second datum for the same face (and could dome the membrane into the keycaps). See
+    STANDOFF_PIN_RECESS in constants.py.
     """
     x, y = at
 
@@ -25,26 +29,11 @@ def stepped_standoff(at: tuple[float, float]) -> Part:
     lower_z = C.FLOOR_THICKNESS + lower_h / 2
     upper_z = C.PCB_SEAT_Z + upper_h / 2
 
-    bore_z = pin_top - C.STANDOFF_TAP_DEPTH / 2       # centre of tap bore (follows the pin down)
-
     with BuildPart() as bp:
         with Locations((x, y, lower_z)):
             Cylinder(radius=C.STANDOFF_OD_LOWER / 2, height=lower_h)
         with Locations((x, y, upper_z)):
             Cylinder(radius=C.STANDOFF_OD_UPPER / 2, height=upper_h)
-        with Locations((x, y, bore_z)):
-            Cylinder(
-                radius=C.STANDOFF_TAP_DIA / 2,
-                height=C.STANDOFF_TAP_DEPTH,
-                mode=Mode.SUBTRACT,
-            )
-        with Locations((x, y, pin_top - C.STANDOFF_TAP_CHAMFER / 2)):
-            Cone(
-                bottom_radius=C.STANDOFF_TAP_DIA / 2,
-                top_radius=C.STANDOFF_TAP_DIA / 2 + C.STANDOFF_TAP_CHAMFER,
-                height=C.STANDOFF_TAP_CHAMFER,
-                mode=Mode.SUBTRACT,
-            )
 
     assert bp.part is not None
     return bp.part

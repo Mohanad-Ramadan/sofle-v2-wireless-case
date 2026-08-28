@@ -460,5 +460,73 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # got thicker cuts MORE at its outboard through-cut (that leg spans the full
     # (thickness + SNAP_TAB_SLOT_W) band at the free end — see the SNAP_TAB_SLOT_W note), and
     # more arms got thicker than thinner this time.
+    # Rebased +46.187839 mm³ (+0.025%) for the SCREWLESS RE-TUNE: every straight arm and the N2
+    # corner back to a uniform 1.50 mm print floor (S1/E1/N1/W1/N3/W2/E2 1.866->1.500, SE1
+    # 1.542->1.500, N2 2.300->1.500; SW1/T1 already there), and SNAP_BARB_PROUD 0.52 -> 0.45. With
+    # the snaps now the sole closure, the 30 N force target is retired — thickness drops to the
+    # floor everywhere (see the note above SNAP_ARMS). Volume goes UP because thinner arms cut LESS
+    # at their outboard through-cut ((thickness + SNAP_TAB_SLOT_W) at the free end); the shorter
+    # barb (proud 0.52->0.45, a fused ADDER) subtracts a little of that gain, net +46.19. This
+    # almost exactly reverses the previous -51.35 mm³ thickening rebase, as expected.
+    # Rebased -110.703880 mm³ (-0.059%) for PRY-SPREAD STIFFNESS: the long arms and the corner go
+    # from the 1.50 mm floor to 2.20 mm and SW1 to 2.00 mm (its L/t>=8 limit), run thick so the
+    # snaps resist a drop/bag load that spreads the seam (stiffness ~ thickness^3). Only T1 stays
+    # at 1.50 mm — it is the one strain-binding arm and its fatigue margin is set by proud, not
+    # thickness (see the note above SNAP_ARMS). Volume goes DOWN because a thicker arm's outboard
+    # through-cut spans more of the local wall ((thickness + SNAP_TAB_SLOT_W) at the free end), so
+    # it removes MORE material. Worst-case strain is unchanged at 0.333% (T1).
+    # Rebased +6.613565 mm³ (+0.004%) for a TALLER BARB: SNAP_LEAD_IN_DEG 30 -> 22 makes the barb
+    # 0.78 -> 1.11 mm tall (~11 print layers at 0.1 mm instead of ~4) for print fidelity, at the
+    # same proud/deflect/strain. The barb is a fused ADDER, so a taller one adds a little volume.
+    # Rebased +52.419600 mm³ (+0.028%) for SCREWLESS: the M2 self-tap bore + entry chamfer are
+    # removed from all 5 standoff pins (the pins are now solid PCB-registration bosses), so the
+    # bottom part no longer subtracts those voids.
+    # Rebased +26.874874 mm³ (+0.014%) for STANDOFF_PIN_RECESS 0.6 -> 0.15: real print evidence
+    # (two shops) showed the old 0.6 mm gap let the switch plate sag/slip toward the PCB during
+    # assembly, not FDM inaccuracy — see the note above STANDOFF_PIN_RECESS in constants.py. Each
+    # of the 5 solid pins grew 0.45 mm taller (Ø3.9 cross-section), adding standoff material.
+    # Rebased +204.846 mm³ (+0.109%) for the AGGRESSIVE-HOLD RE-TUNE (2026-08-26): SEAM_FIT_CLEAR
+    # 0.20 -> 0.15, the long arms + SE1 + N2 corner 2.20 -> 2.35 mm (SW1 held at 2.00 by its L/t>=8
+    # limit, T1 at the 1.50 mm floor), and SNAP_BARB_PROUD 0.45 -> 0.55. Net volume goes UP because
+    # the tighter SEAM_FIT_CLEAR narrows the full-perimeter skirt pocket in the tub (SEAM_RIM_THK
+    # 2.55 -> 2.60), removing LESS material around the whole seam — a perimeter-scale effect that
+    # outweighs the two local subtractive ones: the thicker arms' wider outboard through-cuts and
+    # the deeper catch pockets under the taller barb (proud 0.45 -> 0.55) both remove a little more.
+    # This retune raised closing force ~1.9x and click energy ~3x for a firmer seat; see the note
+    # above SNAP_ARMS in constants.py and the two guardrail tests in test_snaps.py.
+    # Rebased +17916.261 mm³ (+9.5%) for the BLIND-PORT SKIN: an 18461.36 mm³ slab added under the
+    # wedge to close the 11 snap release ports, less the 545.10 mm³ of air gap it carves back out
+    # under the arms (the standalone snap_bottom_gap() reads 674.8, but its outboard margin lies
+    # past the skin's rim profile and removes no real material). The arms keep their full height, so
+    # this touches no snap force (test_snaps is unchanged); the cost is ~1.3 mm of added height, not
+    # force. See .omc/specs/deep-dive-bottom-cover-inlay.md.
+    # Rebased +828.444 mm³ when the visible OUTER BAND was re-datumed to the skin desk too: the
+    # band used to stop at the old wedge ground and float _skin_drop() proud of the new desk, so it
+    # now extends down to reach it (the top skirt does the same at the south, restoring the front
+    # reveal to TENT_SKIRT_LIFT). Checked against _bottom_outer_shell()'s own volume growth.
     # 2e-2 abs still tolerates OCC mirror/heal float noise on the left half (~1e-2).
-    assert abs(build_bottom_part(side).volume - 187500.263533) < 2e-2
+    # Rebased +329.693 mm³ for two dial changes together: SEAM_REVEAL_H 2.0 -> 1.5 mm (a
+    # shallower reveal exposes more of the flush outer band at a given Y — see test_north_rise's
+    # recess probe, which had to move for the same reason) and TENT_SEAM_SOUTH_FRAC/RAMP_FRAC
+    # 0.36/0.64 -> 0.3295/0.6705 (more ramp room so the wave spline leaves the southern run
+    # tangent to the knot after it instead of overshooting into a visible kink — the knot itself,
+    # and TENT_SEAM_Y2, are unmoved). Neither change touches the wedge or the snap arms.
+    # Rebased +27.059 mm³ when the wave went from an exact through-fit spline to a smoothing
+    # APPROXIMATION that leaves the south join at a relaxed slope (SEAM_WAVE_SOUTH_TANGENT_FRAC):
+    # the curve now passes near the digitised knots rather than through them and the parting line
+    # rises a hair sooner off the join, so the flush outer band gains a sliver of material along
+    # the ramp. All below the ledge, still just the band — the wedge and snaps are untouched.
+    # Rebased -9.494 mm³ (-0.005%) when the wave went PARAMETRIC: the five traced climb knots and
+    # their band multiplier are gone, replaced by a Kumaraswamy S-curve from the south run's end to
+    # SEAM_WAVE_CREST_Z, sampled at SEAM_WAVE_CLIMB_N stations. The defaults were fitted to the
+    # retired traced curve, so the parting line moves by at most 0.176 mm anywhere along the ramp
+    # and the visible band gains/loses only that sliver. Everything else about the bottom is
+    # untouched — wedge, snaps, skin, standoffs — which is why the move is five thousandths of a
+    # percent rather than the tenths the earlier reveal/ramp rebases cost.
+    # Rebased -979.383 mm3 (-0.47%) for a deliberate WAVE RETUNE, the first real use of the
+    # parametric dials: TENT_SEAM_SOUTH_FRAC 0.3295 -> 0.285 (a longer ramp, y1 41.5 -> 35.9) and
+    # SEAM_NORTH_RISE_FRAC -0.48 -> -1.0 (the rear parting line dropped 3.02 -> 6.30 mm below Z=0,
+    # a much deeper rear skirt). The bottom loses the material the top's skirt now covers over the
+    # rear, which is where essentially all of the change sits. The wedge, snaps, skin and
+    # standoffs are untouched; the crest is unmoved at SEAM_WAVE_CREST_Z.
+    assert abs(build_bottom_part(side).volume - 205839.093) < 2e-2

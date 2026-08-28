@@ -21,29 +21,41 @@ def test_height():
 def test_pin_stops_short_of_the_plate():
     """THE PIN MUST NOT REACH THE PLATE. The plate's height is a hardware datum set by the
     switches (PCB_TOP_Z + MX_BODY_CLEAR); a pin that touched it would be a second datum for
-    the same face, and the two only agree if MX_BODY_CLEAR is exact. It was out by 0.4-1.0 mm,
-    the pins held the plate off the switches, and the printed sandwich would not shut.
+    the same face. Screwless, nothing overpowers a pin that prints a hair tall, so a flush pin
+    risks doming the membrane into the keycaps (0.5 mm skirt clearance) — see the
+    STANDOFF_PIN_RECESS=0 experiment, tried and reverted 2026-08-26.
+
+    THE FLOOR IS NARROW ON PURPOSE (0.05 mm, not the old 0.29). Two independent print shops
+    showed the OLD 0.6 mm gap was real, unhelpful slack — not FDM-error margin — that let the
+    switch plate slip/sag toward the PCB during assembly and misalign the switches. 0.15 mm is
+    a deliberate firm pilot, not open air; this floor only catches a regression to fully flush
+    (0.0), not a return to the old loose gap.
 
     This is the assertion that keeps the pin a screw boss. A regression to a flush pin
     reintroduces the over-constraint silently — the geometry stays valid and every clearance
     test still passes, because nothing else measures this gap."""
     s = stepped_standoff(at=(50.0, 50.0))
     gap = C.PLATE_SEAT_Z - s.bounding_box().max.Z
-    assert gap > 0.29, (
-        f"standoff pin tops out {gap:.3f} mm below the plate — too little to absorb the "
-        f"MX_BODY_CLEAR uncertainty band (3.40-4.00, held at {C.MX_BODY_CLEAR})"
+    assert gap > 0.05, (
+        f"standoff pin tops out {gap:.3f} mm below the plate — at or past flush, risking the "
+        f"dome-into-keycaps failure (see STANDOFF_PIN_RECESS in constants.py)"
     )
     assert abs(gap - C.STANDOFF_PIN_RECESS) < 0.01
 
 
-def test_tap_bore_stays_inside_the_pin():
-    """Recessing the pin drags the tap bore down with it (STANDOFF_TAP_DEPTH is measured from
-    the pin top). The bore must still bottom out ABOVE the PCB seat, or it opens into the PCB
-    clearance and the screw has nothing to bite in its last turns."""
+def test_pin_is_solid_no_tap_bore():
+    """SCREWLESS: the pin is a solid PCB-registration boss — the M2 self-tap bore is gone.
+    Probe the pin axis just below the top; a Ø1.2 probe (narrower than the old Ø1.8 bore) must
+    land in SOLID material. If a tap bore or any axial void creeps back, the probe falls into it
+    and this fails."""
+    from build123d import Solid
+    s = stepped_standoff(at=(50.0, 50.0))
     pin_top = C.PLATE_SEAT_Z - C.STANDOFF_PIN_RECESS
-    bore_bottom = pin_top - C.STANDOFF_TAP_DEPTH
-    assert bore_bottom > C.PCB_SEAT_Z, (
-        f"tap bore bottoms at {bore_bottom:.2f}, at or below the PCB seat {C.PCB_SEAT_Z}"
+    probe = Solid.make_cylinder(0.6, 1.0).translate((50.0, 50.0, pin_top - 1.0))
+    inside = (s & probe).volume
+    assert inside > 0.99 * probe.volume, (
+        f"pin axis is not solid near the top ({inside:.3f} of {probe.volume:.3f} mm^3) — a tap "
+        f"bore or void has crept back in"
     )
 
 

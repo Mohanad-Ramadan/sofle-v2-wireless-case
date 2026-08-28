@@ -43,10 +43,16 @@ def test_tray_single_solid_with_facets():
 def test_constants_guards_hold():
     """The facet must leave >=1.5 mm rim wall, clear the membrane fuse band, and keep its
     south toe above the rabbet skin zone (these are asserted at import too — restated here)."""
-    assert C.FRONT_FACET_RUN <= C.WALL_THICKNESS - 1.5
+    # The SOUTH facet is raked out of a wall that SOUTH_WALL_EXTRA has already grown, so its
+    # budget is the grown thickness — the perimeter facet's is still the bare wall.
+    assert C.FRONT_FACET_RUN <= C.WALL_THICKNESS + C.SOUTH_WALL_EXTRA - 1.5
     assert C.RIM_FACET_RUN <= C.WALL_THICKNESS - 1.5
-    assert C.FRONT_FACET_RUN < C.WALL_THICKNESS - C.COVER_FUSE_MARGIN
+    assert C.FRONT_FACET_RUN < C.WALL_THICKNESS + C.SOUTH_WALL_EXTRA - C.COVER_FUSE_MARGIN
     assert C.COVER_TOP_Z - C.FRONT_FACET_DROP >= C.SEAM_LEDGE_Z + 1.0
+    # The convex flat-front/E4 corner must keep arc radius once the facet has shed its run,
+    # or its cone collapses into a visible crease (see test_facet_ring_is_tangent_continuous).
+    assert (C.FRONT_CORNER_ROUND_R + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+            - C.FRONT_FACET_RUN) >= 1.0
 
 
 def test_south_facet_removes_front_top():
@@ -70,7 +76,12 @@ def test_perimeter_facet_removes_side_top():
 def test_south_mask_two_clean_slashes():
     """Deep facet covers the low front (thumb ramp -> flat -> E4). The East '\\' is the cap
     y=FRONT_FACET_Y_MASK crossing E4; the West '/' is a DERIVED exact mirror twin of it — same X-run,
-    centred at the thumb-switch midpoint, leaning the mirror way. Thumb tip + side/back walls shallow."""
+    leaning the mirror way. Thumb tip + side/back walls shallow.
+
+    The West WANTS the thumb-switch midpoint and takes it whenever the run fits there; past that
+    it is clamped east onto the ramp (never reshaped), so what is pinned here is the twin itself
+    plus the clamp's two invariants — it stays on the ramp, and it never slides WEST of the
+    midpoint it would rather have."""
     from build123d import Solid
     from sofle_case.tray import _front_facet_mask, _front_slash_crossings, _poly_pts, _outer_poly_pts
     from sofle_case.pcb_geometry import thumb_switch_midpoint_x
@@ -82,10 +93,28 @@ def test_south_mask_two_clean_slashes():
     west_run = west_rim[0] - west_toe[0]                 # West '/': rim east of toe
     assert west_run > 0, "West must lean '/' (rim east of toe)"
     assert abs(west_run - abs(east_run)) < 0.3, "West run must match the East — exact twins"
-    assert abs((west_rim[0] + west_toe[0]) / 2 - thumb_switch_midpoint_x()) < 0.2, \
-        "West must be centred at the thumb-switch midpoint"
-    assert abs(east_rim[0] - 122.44) < 0.5 and abs(east_toe[0] - 134.23) < 0.5, \
-        "East slash moved off its original E4 place"
+    assert (west_rim[0] + west_toe[0]) / 2 >= thumb_switch_midpoint_x() - 0.2, \
+        "West may be clamped east of the thumb-switch midpoint, never west of it"
+    # ...and the clamp must have put it ON the ramp: both ends inside the ramp's own offset
+    # lines, keeping FRONT_CREASE_END_MARGIN clear at each end.
+    o = _outer_poly_pts()
+    a, b = o[2], o[3]                                    # grown, straightened thumb ramp
+    rnx = (b[1] - a[1]) / math.hypot(b[0] - a[0], b[1] - a[1])
+    outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+    assert west_toe[0] >= a[0] + rnx * outer + C.FRONT_CREASE_END_MARGIN - 0.01, \
+        "West toe hangs off the west end of the thumb ramp"
+    assert west_rim[0] <= b[0] + rnx * (outer - C.FRONT_FACET_RUN) - C.FRONT_CREASE_END_MARGIN + 0.01, \
+        "West rim runs past the flat-front corner"
+    # The East's RIM position is a pure function of the grown E4 line + FRONT_FACET_RUN +
+    # FRONT_FACET_Y_MASK — pinned here as a regression check, not derived, so a future retune of
+    # any of those three shows up as a deliberate value change rather than a silent drift.
+    assert abs(east_rim[0] - 114.84) < 0.5, "East slash's rim moved — was this retune intentional?"
+    # Its toe is then pure geometry. Offsetting E4's line outward by RUN moves its crossing of
+    # the flat cap by RUN / uy along X — not RUN * (ux/uy): the normal shifts the line in BOTH
+    # axes, and the y component walks the crossing further along the ramp again.
+    dx, dy = o[5][0] - o[4][0], o[5][1] - o[4][1]
+    assert abs(east_run - C.FRONT_FACET_RUN * math.hypot(dx, dy) / dy) < 0.05, \
+        "East run is no longer RUN carried along E4"
 
     m = _front_facet_mask()
 

@@ -36,14 +36,72 @@ def _poly_pts() -> list[tuple[float, float]]:
     return poly[:-1] if poly[0] == poly[-1] else poly
 
 
+def _grow_segments(pts: list[tuple[float, float]], idxs: set[int],
+                   extra: float) -> list[tuple[float, float]]:
+    """``pts`` with the segments in ``idxs`` pushed OUTWARD by ``extra``, corners re-solved.
+
+    Segment ``i`` runs ``pts[i] -> pts[i+1]``. Each listed segment's supporting LINE is moved out
+    along its own outward normal, then EVERY vertex is recomputed as the intersection of its two
+    adjacent lines. Doing it by line intersection rather than by moving points is what makes the
+    grown stretch join its untouched neighbours cleanly: the shared corner simply slides along the
+    neighbour's own line, so no step, no taper and no new vertices appear at the handover. A
+    parallel or degenerate pair keeps its original vertex."""
+    if not idxs or extra == 0.0:
+        return list(pts)
+    n = len(pts)
+    area2 = sum(pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1]
+                for i in range(n))
+    ccw = area2 > 0
+    lines: list[tuple[float, float, float, float]] = []   # (px, py, ux, uy)
+    for i in range(n):
+        p, q = pts[i], pts[(i + 1) % n]
+        ex, ey = q[0] - p[0], q[1] - p[1]
+        el = math.hypot(ex, ey)
+        ux, uy = ex / el, ey / el
+        nx, ny = (uy, -ux) if ccw else (-uy, ux)          # outward normal
+        off = extra if i in idxs else 0.0
+        lines.append((p[0] + nx * off, p[1] + ny * off, ux, uy))
+    out: list[tuple[float, float]] = []
+    for i in range(n):
+        ax, ay, aux, auy = lines[(i - 1) % n]
+        bx, by, bux, buy = lines[i]
+        den = aux * buy - auy * bux
+        if abs(den) < 1e-9:                               # parallel — nothing to re-solve
+            out.append(pts[i])
+            continue
+        t = ((bx - ax) * buy - (by - ay) * bux) / den
+        out.append((ax + aux * t, ay + auy * t))
+    return out
+
+
+# The southern runs, as segment indices into the STRAIGHTENED outline (the list `_outer_poly_pts`
+# grows): 2 = SW thumb ramp (pts[2]->pts[4]), 3 = flat front (pts[4]->pts[5]), 4 = SE ramp E4
+# (pts[5]->pts[6]). These three are what SOUTH_WALL_EXTRA pushes outward; their neighbours — the
+# west thumb edge and the east wall — are held, and the shared corners slide along them.
+SOUTH_RUN_IDXS = frozenset({2, 3, 4})
+
+# The flat-front/E4 corner — vertex 4 of the same list, the CONVEX one the deep facet drafts
+# through. `_rounded_wire` pre-rounds it by FRONT_CORNER_ROUND_R so the facet's cone survives
+# the inset there; see that constant's block.
+SOUTH_E4_IDX = 4
+
+
 def _outer_poly_pts() -> list[tuple[float, float]]:
-    """`_poly_pts()` with the SW reflex kink pts[3] dropped, so the thumb ramp pts[2]→pts[4] is ONE
-    straight segment. Used for the OUTER wall + rim facet only (`_reflex_vertex_points`/`_rounded_wire`),
-    so the West crease rides a clean straight ramp like the East on E4. The cavity and the sandwich
-    plate/pocket keep the full sharp `_poly_pts()`, so PCB clearance and rabbet fit are unchanged;
-    dropping the barely-1 mm kink only ADDS a sliver of outer material (fills the notch)."""
+    """`_poly_pts()` with the SW reflex kink dropped AND the southern runs grown outward.
+
+    Two departures from the sharp polygon, both OUTER-ONLY — `_reflex_vertex_points` /
+    `_rounded_wire` / the rim facets consume this, while the cavity and the sandwich plate/pocket
+    keep the full sharp `_poly_pts()`, so PCB clearance and rabbet fit are unchanged:
+
+      * pts[3], the barely-1 mm reflex kink, is DROPPED so the thumb ramp pts[2]->pts[4] is ONE
+        straight segment and the West crease rides a clean ramp like the East on E4. That only
+        ADDS a sliver of outer material (fills the notch).
+      * the three southern runs are pushed outward by ``SOUTH_WALL_EXTRA`` (`_grow_segments`) —
+        the material the deep south facet is raked into. See that constant's block.
+    """
     pts = _poly_pts()
-    return pts[:3] + pts[4:]     # drop pts[3] — straighten the SW thumb ramp
+    straight = pts[:3] + pts[4:]     # drop pts[3] — straighten the SW thumb ramp
+    return _grow_segments(straight, set(SOUTH_RUN_IDXS), C.SOUTH_WALL_EXTRA)
 
 
 def _reflex_vertex_points() -> list[tuple[float, float]]:
@@ -72,7 +130,8 @@ def _reflex_vertex_points() -> list[tuple[float, float]]:
 
 @cache
 def _rounded_wire() -> Wire:
-    """The outline wire with every REFLEX vertex rounded by REFLEX_ROUND_R (2-D).
+    """The outline wire with every REFLEX vertex rounded by REFLEX_ROUND_R, plus the convex
+    flat-front/E4 corner rounded by FRONT_CORNER_ROUND_R (2-D).
 
     Used for the OUTER wall and the rim-facet profiles only, so the drafted
     chamfer flows continuously around the jogs/notches instead of creasing at
@@ -81,12 +140,14 @@ def _rounded_wire() -> Wire:
     rounding a reflex corner only ADDS outer material (fills the notch), so the
     wall gets locally thicker there, never thinner. Per-vertex radius fallback
     so one tight corner can't abort the profile."""
+    rounds = [(p, C.REFLEX_ROUND_R) for p in _reflex_vertex_points()]
+    rounds.append((_outer_poly_pts()[SOUTH_E4_IDX], C.FRONT_CORNER_ROUND_R))
     with BuildSketch(Plane.XY) as sk:
         with BuildLine():
             Polyline(*_outer_poly_pts(), close=True)
         make_face()
-        for rx, ry in _reflex_vertex_points():
-            for r in (C.REFLEX_ROUND_R, C.REFLEX_ROUND_R * 0.5, C.REFLEX_ROUND_R * 0.25):
+        for (rx, ry), r0 in rounds:
+            for r in (r0, r0 * 0.5, r0 * 0.25):
                 verts = [v for v in sk.vertices()
                          if abs(v.X - rx) < 0.05 and abs(v.Y - ry) < 0.05]
                 if not verts:
@@ -158,6 +219,19 @@ def offset_lofted(levels, kind: Kind = Kind.ARC, rounded: bool = False) -> Part:
         loft(sections, ruled=True)
     assert bp.part is not None
     return cast(Part, bp.part)
+
+
+@cache
+def outer_south_overhang() -> float:
+    """How far SOUTH of Y=0 the outer skin reaches, in mm (0 before the south wall was grown).
+
+    ``OUTER_DEPTH`` is the outer skin's own bounding depth and the datum the seam wave's fractions
+    and the tent plane are stated in, so ``SOUTH_WALL_EXTRA`` was deliberately NOT folded back
+    into it — the case simply reaches below Y=0 now. This reports by how much, measured off the
+    real offset profile rather than predicted, because the southmost point is the thumb tip's
+    offset ARC and its dip is set by where the grown corner landed, not by the growth directly.
+    Public so the bbox tests can state the true depth instead of hard-coding a number."""
+    return max(0.0, -_outer_extruded(0.0, 1.0).bounding_box().min.Y)
 
 
 def _inner_extruded(z_lo: float, z_hi: float) -> Part:
@@ -485,9 +559,13 @@ def _bump_face_facets(rim_z: float) -> Part:
 
 
 def _sw_ramp_offset_pt_at_x(off: float, x: float) -> tuple[float, float]:
-    """Point (x, y) on the STRAIGHTENED SW thumb ramp (pts[2]→pts[4]) offset OUTWARD by ``off`` at
-    the given case-X. off=outer → the facet toe (outer-face) line; off=outer−RUN → the rim inset line."""
-    a, b = _poly_pts()[2], _poly_pts()[4]
+    """Point (x, y) on the GROWN, straightened SW thumb ramp offset OUTWARD by ``off`` at the given
+    case-X. off=outer → the facet toe (outer-face) line; off=outer−RUN → the rim inset line.
+
+    Read off `_outer_poly_pts()`, not the sharp polygon: the ramp the facet actually rides is the
+    one SOUTH_WALL_EXTRA has already pushed out, so the crease has to be dropped onto that line."""
+    o = _outer_poly_pts()
+    a, b = o[2], o[3]                         # SW thumb ramp, grown & straightened
     ex, ey = b[0] - a[0], b[1] - a[1]
     el = math.hypot(ex, ey); ux, uy = ex / el, ey / el
     nx, ny = uy, -ux                          # outward normal (CCW outline)
@@ -501,14 +579,15 @@ def _front_slash_crossings() -> tuple[tuple[float, float, float], ...]:
       • EAST '\\' — the cap y=FRONT_FACET_Y_MASK crossing ramp E4's offset lines (rim = outer−RUN, toe
         = full outer).
       • WEST '/'  — a DERIVED exact mirror twin of the East: the East's X-run mirrored (rim east of
-        toe) and centred at the thumb-switch midpoint, dropped onto the straightened SW ramp's offset
-        lines. Same run/angle as the East by construction."""
-    pts = _poly_pts()
+        toe), dropped onto the GROWN straightened SW ramp's offset lines. Same run/angle as the
+        East by construction. It sits centred on the thumb-switch midpoint while it fits there and
+        is otherwise CLAMPED east onto the ramp — see the block over the clamp below."""
+    pts = _outer_poly_pts()                   # GROWN outline — the wall the facet actually rides
     outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
     z_rim, z_toe = C.COVER_TOP_Z, C.COVER_TOP_Z - C.FRONT_FACET_DROP
     off_rim, off_toe = outer - C.FRONT_FACET_RUN, outer
-    # East '\': the cap crossing ramp E4 (pts[5]→pts[6]) offset lines.
-    a, b = pts[5], pts[6]
+    # East '\': the cap crossing ramp E4 — index 4 of the grown list (sharp pts[5]→pts[6]).
+    a, b = pts[4], pts[5]
     ex, ey = b[0] - a[0], b[1] - a[1]
     el = math.hypot(ex, ey); ux, uy = ex / el, ey / el
     nx, ny = uy, -ux                          # outward normal (CCW outline)
@@ -518,13 +597,48 @@ def _front_slash_crossings() -> tuple[tuple[float, float, float], ...]:
         return px + ux * (C.FRONT_FACET_Y_MASK - py) / uy
 
     e_rim_x, e_toe_x = _cap_cross(off_rim), _cap_cross(off_toe)
+    # Both crossings must stay ON the E4 segment, east of the flat-front/E4 corner (`a`) by
+    # FRONT_CREASE_END_MARGIN. `_cap_cross` solves the infinite LINE, not the bounded edge — push
+    # FRONT_FACET_Y_MASK low enough and the "crossing" extrapolates past the corner onto the
+    # flat-front's own line, which is not where the real wall bends and would silently mis-mask.
+    # Each offset line clears the corner at its OWN offset (the normal has an X component too).
+    corner_rim_x, corner_toe_x = a[0] + nx * off_rim, a[0] + nx * off_toe
+    assert e_rim_x >= corner_rim_x + C.FRONT_CREASE_END_MARGIN, (
+        "East crease rim crossing runs past the flat-front/E4 corner — raise FRONT_FACET_Y_MASK "
+        f"(corner at x={corner_rim_x:.2f}, need >= {corner_rim_x + C.FRONT_CREASE_END_MARGIN:.2f})")
+    assert e_toe_x >= corner_toe_x + C.FRONT_CREASE_END_MARGIN, (
+        "East crease toe crossing runs past the flat-front/E4 corner — raise FRONT_FACET_Y_MASK "
+        f"(corner at x={corner_toe_x:.2f}, need >= {corner_toe_x + C.FRONT_CREASE_END_MARGIN:.2f})")
     east_rim = (e_rim_x, C.FRONT_FACET_Y_MASK, z_rim)
     east_toe = (e_toe_x, C.FRONT_FACET_Y_MASK, z_toe)
-    # West '/': mirror the East's run about the thumb-switch midpoint (rim east of toe → '/').
+    # West '/': the East's run, mirrored (rim east of toe → '/'), laid on the thumb ramp.
+    #
+    # It WANTS to sit centred on the thumb-switch midpoint, and while it fits there it does. But
+    # the run is not a free choice — E4 lies 75° off +Y, so every mm of FRONT_FACET_RUN stretches
+    # the slash ~3.8 mm in X, and past ~3.25 mm of run a midpoint-centred twin hangs off the west
+    # end of the thumb ramp entirely. The mask's west boundary would then cross the west thumb
+    # EDGE instead of the ramp and the two creases would stop being twins.
+    #
+    # So the twin is CLAMPED, never reshaped: the run and the angle are the East's whatever
+    # happens, and only the position gives — it slides EAST just far enough to keep
+    # FRONT_CREASE_END_MARGIN clear of the ramp's ends, and not one mm further. At the runs that
+    # already fitted it does not move at all. Each end is measured against ITS OWN offset line
+    # (the toe on the outer face, the rim on the inset line), because those two lines start and
+    # end at different X.
     run = abs(e_toe_x - e_rim_x)
-    cx = thumb_switch_midpoint_x()
-    w_rim = _sw_ramp_offset_pt_at_x(off_rim, cx + run / 2)
-    w_toe = _sw_ramp_offset_pt_at_x(off_toe, cx - run / 2)
+    o = _outer_poly_pts()
+    a2, b2 = o[2], o[3]                       # grown, straightened thumb ramp
+    rx, ry = b2[0] - a2[0], b2[1] - a2[1]
+    rnx = ry / math.hypot(rx, ry)             # outward normal's X component (CCW outline)
+    m = C.FRONT_CREASE_END_MARGIN
+    toe_lo = a2[0] + rnx * off_toe + m        # ramp's outer face starts here
+    rim_hi = b2[0] + rnx * off_rim - m        # inset line ends at the flat-front corner
+    assert toe_lo <= rim_hi - run, (
+        "West crease twin no longer fits on the thumb ramp — lower FRONT_FACET_RUN "
+        f"(run {run:.2f} mm needs {rim_hi - toe_lo:.2f} mm of ramp)")
+    toe_x = min(max(thumb_switch_midpoint_x() - run / 2, toe_lo), rim_hi - run)
+    w_rim = _sw_ramp_offset_pt_at_x(off_rim, toe_x + run)
+    w_toe = _sw_ramp_offset_pt_at_x(off_toe, toe_x)
     west_rim = (w_rim[0], w_rim[1], z_rim)
     west_toe = (w_toe[0], w_toe[1], z_toe)
     return east_rim, east_toe, west_rim, west_toe
