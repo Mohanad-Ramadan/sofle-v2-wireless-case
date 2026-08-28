@@ -62,23 +62,14 @@ def test_split_parts_are_valid_single_solids(side):
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_top_part_z_range(side):
-    """TOP is a deep tub whose outer skin runs unbroken to the ground — no mid-wall seam.
+    """TOP is a deep tub whose outer skin runs unbroken to the FLAT Z=0 ground — no mid-wall seam.
 
-    'The ground' is no longer Z=0 over the southern stretch: the skin carries on down to
-    TENT_SKIRT_LIFT above the tent plane there, so the front reads as one piece over a thin
-    reveal and the bottom wedge only shows properly further north. Its deepest point is
-    therefore that lifted run at TENT_SEAM_Y1. Above Z=0 nothing moved — the ceiling is still
-    the fused bay-canopy ridge, now THIS half's own (the ridge is derived per half, so left tops
-    out 2.76 mm lower than right)."""
+    Flat bottom: the tub bottoms flush at Z=0 (that IS the parting line), so its deepest point is
+    Z=0. Above Z=0 nothing moved — the ceiling is the fused bay-canopy ridge, this half's own (the
+    ridge is derived per half, so left tops out 2.76 mm lower than right)."""
     from sofle_case import canopy as CAN
-    from sofle_case.case import seam_profile_min_z
-    # NOT tent_ground_z(y1) + lift. That is where the southern RUN ends; the sweep leaves it
-    # tangentially and so keeps descending a little further before it climbs. seam_profile_min_z
-    # is the profile's real minimum and the tolerance can be tight because of it.
-    want = seam_profile_min_z()
     bb = build_top_part(side).bounding_box()
-    assert abs(bb.min.Z - want) < 0.005, \
-        f"tub floor at {bb.min.Z:.4f}, expected the seam profile's minimum {want:.4f}"
+    assert abs(bb.min.Z) < 0.005, f"tub floor at {bb.min.Z:.4f}, expected flat Z=0"
     assert abs(bb.max.Z - CAN.canopy_ridge_top_z(side)) < 0.01
 
 
@@ -89,31 +80,12 @@ def test_pocket_mouth_has_starter_chamfer():
     elephant-foot-pinch. Probed on a plain −X wall span."""
     from build123d import Solid
 
-    # Borrowed rather than duplicated: this is the same curve, and a second crossing-finder here
-    # would be one more thing to keep in step with the wave.
-    from tests.test_seam import _zero_crossings
     top = build_top_part("right")
-    # DERIVED, NOT HARD-CODED, and it had to become so. The station must satisfy three things at
-    # once: a PLAIN −X wall span (the MCU hill and slide scoop own roughly y=72..104, where there
-    # is no skin to probe at this depth), SOUTH of the +Y relief bump at y=115 (north of it the
-    # wall is pushed out and its inner face is not the nominal offset computed below), and inside
-    # the REAR-SKIRT stretch where the parting line has dropped back under Z=0 — which is the case
-    # the mouth clamp below exists for.
-    #
-    # y=110 satisfied all three until the wave grew its shoulder. Holding the line high past the
-    # crest moved the second Z=0 crossing from y≈108.9 back to y≈113.3, so y=110 is now ABOVE the
-    # line, its skin is cut away, and the test failed on a geometry that is perfectly correct.
-    # The window is real but narrow (≈1.7 mm), so it is computed and asserted rather than guessed,
-    # and the probe is sized to fit inside it.
-    BUMP_Y = 115.0
-    zc = _zero_crossings()[1]
-    lo, hi = zc + 0.3, BUMP_Y - 0.3
-    assert hi - lo > 0.6, (
-        f"the rear-skirt window has closed to {hi - lo:.2f} mm (crossing y={zc:.2f}, bump "
-        f"y={BUMP_Y}). There is nowhere left on a plain wall to probe the mouth from below the "
-        f"parting line — widen it or move the probe north of the bump and measure the wall")
-    y = (lo + hi) / 2.0
-    depth = min(3.0, hi - lo)
+    # Flat bottom: the mouth is the pocket's chamfered edge at Z=0 everywhere, so no wave-derived
+    # station is needed. Probe a PLAIN −X wall span south of the MCU hill (which owns ~y=72..104)
+    # and south of the +Y relief bump (y=115), where the inner face is the nominal offset.
+    y = 60.0
+    depth = 3.0
     # −X wall: outer face, then SEAM_SKIN inward = seated skirt-inner face.
     skin_inner = C.pcb_to_case(0, 0)[0] - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE + C.SEAM_SKIN
     probe_x = skin_inner - 0.15   # 0.15 inside the skin from the seated inner face
@@ -122,16 +94,9 @@ def test_pocket_mouth_has_starter_chamfer():
         b = Solid.make_box(s, depth, s).translate((probe_x - s / 2, y - depth / 2, z - s / 2))
         return (top & b).volume > 1e-6
 
-    # Measured from the MOUTH, not from Z=0, because the mouth moves with the parting line —
-    # a fixed 0.7/0.1 pair would probe empty space below the line entirely.
-    #
-    # CLAMPED AT ZERO, and that is the part the negative dial changed. The mouth is the pocket's
-    # own chamfered edge at Z=0; the parting line can only take it HIGHER, by cutting the skin
-    # back up the wall. When the line drops BELOW Z=0 — the rear skirt — the skin descends past
-    # the mouth and the mouth stays where the pocket put it.
-    mouth_z = max(0.0, C.SEAM_NORTH_RISE_Z)
-    assert solid_at(mouth_z + C.SEAM_LEAD_IN + 0.3), "seated skirt is missing skin — probe off the wall"
-    assert not solid_at(mouth_z + 0.1), "pocket mouth is not chamfered — no tub-side starter"
+    # The mouth is at Z=0: solid skin a little above it, chamfered to air right at it.
+    assert solid_at(C.SEAM_LEAD_IN + 0.3), "seated skirt is missing skin — probe off the wall"
+    assert not solid_at(0.1), "pocket mouth is not chamfered — no tub-side starter"
 
 
 @pytest.mark.parametrize("side", ["right", "left"])
@@ -178,24 +143,14 @@ def test_slide_scoop_top_open(side):
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_bottom_part_z_range(side):
-    """BOTTOM runs from the tent wedge's deepest point up to the standoff tap tops.
+    """Flat bottom: the part runs from the flat Z=0 underside up to the standoff tap tops.
 
-    The floor is no longer Z=0: the bottom case now carries the tent wedge, which hangs
-    TENT_WEDGE_MAX_H below the old bottom face at the north and TENT_WEDGE_MIN_H at the
-    south. The top is the standoff pin tops, which now stop STANDOFF_PIN_RECESS BELOW
-    PLATE_SEAT_Z — the plate is located by the switches, not by the pins — so the part is
-    taller than the rabbet ledge by design but no longer reaches the plate."""
-    import math
+    The floor is Z=0 (the inset plate's underside). The top is the standoff pin tops, which
+    stop STANDOFF_PIN_RECESS BELOW PLATE_SEAT_Z — the plate is located by the switches, not by
+    the pins — so the part is taller than the rabbet ledge by design but no longer reaches the
+    plate."""
     bb = build_bottom_part(side).bounding_box()
-    # A hair above the nominal deep end: the elephant-foot counter-chamfer trims the ground
-    # rim inboard by BOTTOM_CHAMFER, and 0.5 mm inboard on a 2 deg plane lifts the deepest
-    # surviving point by 0.5*tan(2 deg) ~ 0.017 mm. Never below, though.
-    # bottom_deep_z(), not wedge_deep_z(): the flared band reaches past the tub's skin, so the
-    # part's footprint runs ~3.7 mm further north than the wedge's and the desk is lower there.
-    from sofle_case.case import bottom_deep_z
-    lift = C.BOTTOM_CHAMFER * math.tan(math.radians(C.TENT_ANGLE_DEG))
-    assert bottom_deep_z() <= bb.min.Z <= bottom_deep_z() + lift + 1e-3, \
-        f"floor at {bb.min.Z:.4f}, expected the wedge's deep end {wedge_deep_z():.4f}"
+    assert abs(bb.min.Z) < 1e-3, f"floor at {bb.min.Z:.4f}, expected flat Z=0"
     assert abs(bb.max.Z - (C.PLATE_SEAT_Z - C.STANDOFF_PIN_RECESS)) < 0.01
 
 
@@ -211,60 +166,39 @@ def test_split_conserves_volume(side):
     from sofle_case.battery import battery_pocket, jst_pocket, jst_wire_channel
     from tests.shared_builds import build_top_cover
     from sofle_case.case import (_encoder_shell, _slide_scoop, _slide_actuator_cavity,
-                                 _foot_recesses, tent_wedge, skirt_extension, seam_skirt_tub,
-                                 _bottom_outer_shell, _plate_pocket, _below_seam_cutter,
-                                 bottom_skin, snap_bottom_gap)
+                                 _foot_recesses)
     from tests.shared_builds import build_canopy
     from sofle_case.snaps import snap_reliefs, snap_barbs
 
+    # Flat bottom: the un-split reference is just the assembled solid. No tent wedge, no skirt,
+    # no flared band and no blind-port skin exist below Z=0 any more, and the flat Z=0 parting
+    # line carves nothing off the tub above Z=0, so there is no seam recess to account for.
     ref = build_tray(rim_z=C.COVER_TOP_Z, bottom_chamfer=False)
-    # Both parts now carry material below Z=0 that exists in no other build: the BOTTOM's tent
-    # wedge, and the TOP's skin extension over the southern stretch. Without them here the
-    # split looks like it invented ~50 cm^3 and the sign check below fires.
-    ref = cast(Part, ref + tent_wedge())
-    ref = cast(Part, ref + skirt_extension(seam_skirt_tub()))
-    # ...and the flared band outboard of the wedge, which is the third thing that exists in
-    # neither the tray nor the cover. Without it the split looks like it invented ~8 cm^3.
-    ref = cast(Part, ref + _bottom_outer_shell())
+    from sofle_case.canopy import usb_port_cutter
     ref = cast(Part, ref + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     ref = cast(Part, ref + _encoder_shell())
-    ref = cast(Part, ref + build_canopy())   # the canopy is fused into the TOP now
+    ref = cast(Part, ref + build_canopy(side=side))   # per-half: the USB port sits at a different Z
+    ref = cast(Part, ref - usb_port_cutter(side))     # re-cut like build_top_part, so left matches
     ref = cast(Part, ref - _slide_scoop())   # the slide scoop is cut from the fused TOP
     ref = cast(Part, ref - _slide_actuator_cavity())  # then the switch drop-in pocket
     for hx, hy in C.MOUNTING_HOLES:
         ref = cast(Part, ref + stepped_standoff(at=C.pcb_to_case(hx, hy)))
     ref = cast(Part, ref - battery_pocket())
     # The JST pocket and its wire channel are floor recesses like the battery's. Omitting them
-    # here does not fail as "missing pocket" — it fails as a 2939 mm³ SEAM GAP, because this test
-    # can only see the difference between the reference and the split halves, not where it came
-    # from. Any future floor recess has to be added here too or it will masquerade as seam loss.
+    # here does not fail as "missing pocket" — it fails as a SEAM GAP, because this test can only
+    # see the difference between the reference and the split halves. Any future floor recess has
+    # to be added here too or it will masquerade as seam loss.
     ref = cast(Part, ref - jst_pocket())
     ref = cast(Part, ref - jst_wire_channel())
-    # The snap latches are the same kind of bookkeeping as the floor recesses above: the reliefs
-    # are a void cut from the bottom and the barbs are material added to it, so both have to be
-    # named here or the net (-4226 mm³) masquerades as the seam having eaten 2.2% of the case.
-    # Order matters here as it does in build_bottom_part — a barb fuses onto a rim the reliefs
-    # have already opened, so cutting second would put back material the slot removed.
+    # The snap latches: the reliefs are a void cut from the bottom and the barbs are material
+    # added to it, so both have to be named here or the net masquerades as seam loss. Order
+    # matters as in build_bottom_part — a barb fuses onto a rim the reliefs have already opened.
     ref = cast(Part, ref - snap_reliefs())
     ref = cast(Part, ref + snap_barbs())
-    # The blind-port skin is a fourth below-Z=0 body that exists in neither the tray nor the
-    # cover: a slab added under the wedge, minus the air gap carved back out under each arm. In
-    # build order (after the snaps) so it caps the ports the reliefs just opened. Omit it and the
-    # split looks like it invented ~18 cm³.
-    ref = cast(Part, ref + bottom_skin())
-    ref = cast(Part, ref - snap_bottom_gap())
-    ref = cast(Part, ref - _foot_recesses())   # anti-slip feet, cut LAST into the skin ground
-
-    # The RECESS is a void by design, not a seam gap: north of the sweep the parting line rides
-    # up to SEAM_NORTH_RISE_Z and the tub's skin below it is carved away, with nothing put back
-    # (the bottom stays inset — see the constants block). The un-split solid still has that
-    # material, so it has to be named here or it reads as the seam having eaten 1.7% of the case.
-    # Measured, not asserted: exactly what the parting profile takes off the tub.
-    tub = cast(Part, build_tray(rim_z=C.COVER_TOP_Z, bottom_chamfer=False) - _plate_pocket())
-    recess = tub.volume - cast(Part, tub - _below_seam_cutter()).volume
+    ref = cast(Part, ref - _foot_recesses())   # anti-slip feet, cut LAST into the flat Z=0 face
 
     combined = build_top_part(side).volume + build_bottom_part(side).volume
-    lost = ref.volume - combined - recess
+    lost = ref.volume - combined
     assert lost > 0, "seam added material (double-count) — must only remove clearance"
     assert lost / ref.volume < 0.012, f"seam gap {lost:.1f} exceeds the rabbet clearance"
 

@@ -9,12 +9,10 @@ still screw together through the same standoffs. See
 """
 from __future__ import annotations
 import math
-import numpy as np
 from functools import cache
 from typing import Literal, cast
 from build123d import (Part, Face, mirror, Plane, Pos, Rot, fillet, chamfer, Axis, BuildPart,
-                       BuildSketch, BuildLine, Line, Spline, Locations, Cylinder,
-                       Sphere, Solid, Box, Location, GeomType, add, extrude, make_face,
+                       BuildSketch, BuildLine, Locations, Sphere, Solid, Box, Location, GeomType, extrude, make_face,
                        RectangleRounded, Rectangle, Polyline, revolve, loft, Circle)
 from OCP.Standard import Standard_Failure
 from OCP.ShapeFix import ShapeFix_Shape
@@ -28,7 +26,7 @@ from .top_cover import build_top_cover, _load_plate_cutouts
 from .canopy import build_canopy, usb_port_cutter, CANOPY_RIDGE_TOP_Z
 # snaps imports wedge_deep_z/tent_ground_z from here, but only inside its functions, so this
 # top-level import does not close a cycle.
-from .snaps import snap_reliefs, snap_barbs, snap_catches, snap_gap_footprints
+from .snaps import snap_reliefs, snap_barbs, snap_catches
 from . import canopy_puzzle as PZ
 
 
@@ -185,353 +183,29 @@ def build_case_half(side: Side) -> Part:
 
 
 # ---------------------------------------------------------------------------
-# Integrated tent wedge (BOTTOM case)
+# Flat bottom (BOTTOM case) — Z=0 compatibility shims
 # ---------------------------------------------------------------------------
+# The tent wedge, the seam wave/lens, the skirts and the blind-port skin are gone: the
+# underside is a single planar face at Z=0 and the halves part along one flat Z=0 line.
+# These three helpers survive only as flat shims so snaps.py (and any flat-bottom test)
+# keeps resolving the old ground-plane API without a tilt.
 
 def tent_plane() -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-    """``(origin, unit up-normal)`` of the plane the tented case stands on.
-
-    Pitched about X only, so it slopes front-to-back and never side to side: the south edge
-    sits at ``-TENT_WEDGE_MIN_H`` and it falls away northward at ``TENT_ANGLE_DEG``. Stand
-    that plane on a desk and it goes flat, tipping the whole assembly — plate, PCB, switch
-    plate, top case — forward by the tent angle as one rigid body. Nothing inside moves
-    relative to anything else, which is the entire point: the Z ladder is untouched."""
-    th = math.radians(C.TENT_ANGLE_DEG)
-    return (0.0, 0.0, -C.TENT_WEDGE_MIN_H), (0.0, math.sin(th), math.cos(th))
+    """``(origin, unit up-normal)`` of the (flat) plane the case stands on: Z=0, facing up."""
+    return (0.0, 0.0, 0.0), (0.0, 0.0, 1.0)
 
 
 def tent_ground_z(y: float) -> float:
-    """Z of the tent plane at a given case-Y — i.e. the underside of the bottom case there."""
-    origin, up = tent_plane()
-    return origin[2] - (up[1] / up[2]) * (y - origin[1])
+    """Z of the underside at any case-Y — flat, so always 0.0."""
+    return 0.0
 
 
-def _below_plane_cutter(origin: tuple[float, float, float],
-                        up: tuple[float, float, float]) -> Part:
-    """Half-space solid filling everything below the given plane."""
-    big = 500.0
-    box = Solid.make_box(big, big, big).translate((-big / 2, -big / 2, -big))
-    return cast(Part, Plane(origin=origin, z_dir=up).location * box)
-
-
-@cache
 def wedge_deep_z() -> float:
-    """Z of the wedge's deepest point — its north edge.
+    """Z of the deepest point of the bottom case — the flat Z=0 underside.
 
-    NOT ``-TENT_WEDGE_MAX_H``. That constant is the depth at ``OUTER_DEPTH``, i.e. at the
-    TUB's outline; the wedge rides the PLATE's rim profile, which stops SEAM_SKIN +
-    SEAM_FIT_CLEAR short of it and so tops out around y=123.8. The constant stays a safe
-    upper bound for sizing the stock; this is what the wedge actually reaches.
-
-    THE WEDGE, not the bottom part. Those parted company when the visible band started standing
-    proud of the skin — see ``bottom_deep_z``."""
-    rim_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK
-    y_max = offset_extruded(rim_outer, 0.0, 1.0).bounding_box().max.Y
-    return tent_ground_z(y_max)
-
-
-def bottom_deep_z() -> float:
-    """Z of the BOTTOM PART's deepest point — which is not the wedge's.
-
-    The wedge stops at the plate rim, ~2.2 mm inside the tub's skin, so it bottoms out at
-    y≈123.8. The visible band is flush with the skin, so it runs the full ``OUTER_DEPTH`` to
-    y=126 — and the desk is still falling over those last 2.2 mm.
-
-    ASKED OF THE OUTLINE, not of a constant. ``tub_outline_face()`` is the same silhouette the
-    band is extruded from, so this cannot drift from what the band actually reaches.
-
-    It was 0.158 mm deeper while the band flared 1.5 mm proud: the footprint ran out to y≈127.5
-    then, and that overhang was the only height the flare cost.
-
-    THE WHOLE UNDERSIDE DROPPED ``_skin_drop()`` for the blind-port skin: the skin rides the
-    wedge's rim profile and the visible band is re-trimmed to the same skin desk, so BOTH fall by
-    the drop. The band still reaches furthest north (the tub outline, past the wedge), so it is
-    still the deepest point — just a drop lower than before."""
-    band_deep = tent_ground_z(tub_outline_face().bounding_box().max.Y)
-    return min(band_deep, wedge_deep_z()) - _skin_drop()
-
-
-def _seam_sweep_params():
-    """The ramp's knots and its end tangents — one definition, three consumers.
-
-    ``_below_seam_cutter`` draws the spline and ``seam_profile_min_z`` / ``seam_profile_max_z``
-    measure it, and they must all be measuring the SAME curve. Kept here rather than duplicated
-    so they cannot drift apart when a dial moves.
-
-    Returns the full knot list, south end first, INCLUDING both endpoints. It used to return
-    exactly two points and be typed that way by its callers; the wave needs interior knots (see
-    ``SEAM_WAVE_KNOTS``), and a through-fit spline over 2 points is precisely the old curve, so
-    this generalises rather than replaces. The tangents are unchanged and still do the same job:
-    the tent plane's own slope at the south so the ramp leaves the run without a kink, and
-    horizontal at the north so it arrives on the flat run the same way.
-
-    THE WAVE IS EVALUATED HERE, not read off ``SEAM_WAVE_Y`` or ``SEAM_WAVE_KNOTS``. Those hold
-    the same shape, but frozen at the angle constants.py was imported at; this asks
-    ``C.seam_wave_z`` for local Z against the tent plane as it is RIGHT NOW, so monkeypatching
-    ``TENT_ANGLE_DEG`` moves the wave with the desk instead of leaving it behind. The frozen
-    constants exist for the import-time guards, which have no plane to ask.
-
-    IT MATTERS MORE THAN IT USED TO. The wave's crest is absolute millimetres
-    (``SEAM_WAVE_CREST_Z``) since it went parametric, and a band fraction baked at one angle does
-    not re-expand to the same crest at another — measured, the crest drifts and the wave dips
-    0.46 mm below the south run at 10 deg if the frozen table is re-expanded instead of the shape
-    re-evaluated. Every guard keyed on the crest would then be measuring a number the geometry no
-    longer honours."""
-    y1, y2 = C.TENT_SEAM_Y1, C.TENT_SEAM_Y2
-    # ONLY the southern run drops with the desk. Over the south the parting line floats
-    # TENT_SKIRT_LIFT above the DESK, and the desk is the blind-port skin now (skin_ground_z, a
-    # _skin_drop() below the wedge), so z1 rides that — which is what keeps the top skin covering
-    # to the new desk and the front reveal at TENT_SKIRT_LIFT instead of opening by the skin drop.
-    # The WAVE keeps its designed shape on the wedge ground: its reveal is measured DOWN from the
-    # parting line (SEAM_REVEAL_H), not up from the desk, so it need not move — and moving it would
-    # reshape the lens (the tail blends between a dropped south and the fixed SEAM_NORTH_RISE_Z
-    # north, so it goes shallower). The band's own bottom reaches the new desk via the skin-ground
-    # trim in _bottom_outer_shell. So the ramp simply climbs from a _skin_drop()-lower z1 to the
-    # unchanged wave. See .omc/specs/deep-dive-bottom-cover-inlay.md.
-    z1 = skin_ground_z(y1) + C.TENT_SKIRT_LIFT
-    slope = -math.tan(math.radians(C.TENT_ANGLE_DEG))
-    # The live tent geometry, handed to the wave so it is shaped against the desk as it is now.
-    # tent_ground_z(OUTER_DEPTH) IS -TENT_WEDGE_MAX_H, asked of the live plane, so the rise is
-    # that less the wedge's thin end.
-    tent_rise = -tent_ground_z(C.OUTER_DEPTH) - C.TENT_WEDGE_MIN_H
-    wave = tuple((u * C.OUTER_DEPTH, C.seam_wave_z(u, C.TENT_WEDGE_MIN_H, tent_rise))
-                 for u in C.SEAM_WAVE_U)
-    knots = ((y1, z1), *wave, (y2, C.SEAM_NORTH_RISE_Z))
-    # THE END TANGENT IS NOT HORIZONTAL, and that is the whole reason the ramp reaches the back
-    # edge now. A horizontal arrival flattens the line while the desk keeps dropping away beneath
-    # it, so the visible band starts WIDENING again over the last stretch — the profile turned
-    # back up at the end. It has to keep descending, and faster than the desk does, or the band
-    # cannot still be closing when the case runs out. SEAM_TAIL_SLOPE is that rate, and it is
-    # stated as a multiple of the desk's own slope so it stays correct at any tent angle.
-    tail = slope * C.SEAM_TAIL_SLOPE
-    return knots, ((1.0, slope), (1.0, tail))
-
-
-def _seam_ramp_curve_points(n_out: int = 81) -> tuple[tuple[float, float], ...]:
-    """Dense ``(caseY, caseZ)`` samples of the SMOOTHED wave ramp — the ONE source of the curve.
-
-    Both the cutter (``_below_seam_cutter``) and every measurement (``_seam_ramp_edge`` and its
-    consumers) build their spline from these points, so they cannot disagree about the curve. It
-    replaces the old ``Spline(*knots, tangents=...)`` exact through-fit, which rang into a visible
-    flat-spot at the south join — see the SEAM_WAVE_SMOOTH_LAMBDA / SOUTH_TANGENT_FRAC block in
-    constants.py for the why.
-
-    KEYED ON THE ACTUAL CURVE INPUTS, not on a list of dials: the fit's whole shape is fixed by
-    the knot table, the two end slopes and the two smoothing dials, so those ARE the key. Passing
-    them (rather than naming the constants they derive from) means no hidden dependency can slip
-    the cache — the angle-sweep AND lift-mutation tests both monkeypatch constants that reach the
-    curve only through the knots, and keying on the knots themselves catches every such case.
-    Same hazard ``_seam_ramp_table`` documents, closed more tightly."""
-    knots, tangents = _seam_sweep_params()
-    run_slope = -math.tan(math.radians(C.TENT_ANGLE_DEG))
-    south = run_slope * C.SEAM_WAVE_SOUTH_TANGENT_FRAC   # relaxed join slope
-    north = tangents[1][1]                                # tail slope, preserved verbatim
-    return _seam_ramp_curve_points_cached(
-        knots, south, north, C.SEAM_WAVE_SMOOTH_LAMBDA, n_out)
-
-
-@cache
-def _seam_ramp_curve_points_cached(knots: tuple[tuple[float, float], ...], south: float,
-                                   north: float, lam: float,
-                                   n_out: int = 81) -> tuple[tuple[float, float], ...]:
-    """The smoothing-spline fit, cached on the curve inputs (``knots`` and the end slopes carry
-    every constant the shape depends on). See ``_seam_ramp_curve_points`` for the caller and why.
-
-    The fit is a roughness-penalised least-squares smoothing spline (Whittaker–Henderson: match
-    the knots, penalise the second difference), solved on an even grid, with FOUR hard end
-    constraints so the ends do not float: value ``z1`` and slope ``south`` at the south end, value
-    ``SEAM_NORTH_RISE_Z`` and slope ``north`` (the tail) at the north. Passing the resampled result
-    to OCC as plain points (no tangents) then reproduces this shape without re-introducing the ring
-    — the samples already lie on a curve that leaves the join relaxed."""
-    kx = np.array([k[0] for k in knots], dtype=float)
-    kz = np.array([k[1] for k in knots], dtype=float)
-    y0, yN = float(kx[0]), float(kx[-1])
-    M = 241
-    yg = np.linspace(y0, yN, M)
-    h = yg[1] - yg[0]
-    gi = [int(np.argmin(np.abs(yg - x))) for x in kx]
-    rows, rhs = [], []
-    w_data = 50.0
-    for j, z in zip(gi, kz):                     # data term: sit near each knot
-        r = np.zeros(M); r[j] = w_data; rows.append(r); rhs.append(w_data * z)
-    for i in range(1, M - 1):                    # roughness term: penalise curvature
-        r = np.zeros(M); r[i - 1] = lam / h**2; r[i] = -2 * lam / h**2; r[i + 1] = lam / h**2
-        rows.append(r); rhs.append(0.0)
-    A = np.array(rows); b = np.array(rhs)
-    W = 1.0e6                                     # hard end constraints, as heavy rows
-    for r, v in (
-        (_unit(M, 0, W), W * kz[0]),                        # f(y0) = z1
-        (_unit(M, -1, W), W * kz[-1]),                      # f(yN) = rise
-        (_slope_row(M, 0, W, h), W * south),                # f'(y0) = relaxed south slope
-        (_slope_row(M, -1, W, h), W * north),               # f'(yN) = tail slope
-    ):
-        A = np.vstack([A, r]); b = np.append(b, v)
-    f = np.linalg.lstsq(A, b, rcond=None)[0]
-    yo = np.linspace(y0, yN, n_out)
-    fo = np.interp(yo, yg, f)
-    fo[0], fo[-1] = float(kz[0]), float(kz[-1])  # pin the endpoints exactly
-    return tuple((float(y), float(z)) for y, z in zip(yo, fo))
-
-
-def _unit(m: int, i: int, w: float):
-    r = np.zeros(m); r[i] = w; return r
-
-
-def _slope_row(m: int, end: int, w: float, h: float):
-    """A finite-difference first-derivative row at an END (0 = south, -1 = north)."""
-    r = np.zeros(m)
-    if end == 0:
-        r[0] = -w / h; r[1] = w / h
-    else:
-        r[-2] = -w / h; r[-1] = w / h
-    return r
-
-
-def _seam_ramp_edge():
-    """The ramp as a single OCC edge — built once, measured by everything that needs a number.
-
-    Built from the SMOOTHED curve points (``_seam_ramp_curve_points``), not the raw knots, so it
-    measures the curve the cutter actually cuts."""
-    with BuildLine() as bl:
-        Spline(*_seam_ramp_curve_points())
-    return bl.line.edges()[0]
-
-
-def seam_profile_min_z() -> float:
-    """The LOWEST Z the parting line actually reaches — which is NOT the southern run's end.
-
-    The southern run descends northward (it is parallel to the tent plane), so its lowest point
-    is its northern end at ``TENT_SEAM_Y1``. The sweep then leaves that point along the plane's
-    own slope, because tangency is the whole design intent — a horizontal departure would put a
-    visible kink in the parting line. Leaving tangentially means the spline keeps DESCENDING
-    for a few mm before it curves up, so the profile's true minimum sits a little south of the
-    ramp's midpoint and a little BELOW z1:
-
-        angle    dip below z1     where
-         3 deg      0.024 mm      y = 63.9
-         7 deg      0.074 mm      y = 64.2
-        10 deg      0.123 mm      y = 64.3
-
-    THE DIP COSTS NO GROUND CLEARANCE, and that is the point worth keeping. It is measured
-    against z1, a single number; the DESK is a tilted plane that keeps dropping northward and
-    drops faster than the spline does. Perpendicular to the desk the skin's closest approach is
-    0.4963 mm at 7 deg, i.e. essentially the full ``TENT_SKIRT_LIFT`` — the dip never eats into
-    it. ``test_the_skin_never_touches_the_desk`` measures that invariant directly and is the one
-    to trust for clearance.
-
-    It exists so tests can state the tub's floor EXACTLY instead of asserting z1 with enough
-    slack to hide the difference. At 3 deg the dip was 0.024 and every such assertion carried a
-    0.05 tolerance, so it fitted underneath and nobody had to know; at 7 deg it is 0.074 and
-    four assertions failed at once. They were never quite right — the angle only made it
-    visible."""
-    edge = _seam_ramp_edge()
-    # Sketch-local (u, v) here maps to (case Y, case Z), so .Y on the sampled point is the Z.
-    lo = min((edge @ (i / 400.0)).Y for i in range(401))
-    return min(lo, _seam_sweep_params()[0][0][1])
-
-
-def seam_profile_max_z() -> float:
-    """The HIGHEST Z the parting line reaches anywhere over the case, measured off the curve.
-
-    Companion to ``seam_profile_min_z``, and it exists for the same reason: so callers ask the
-    INSTALLED profile what it does instead of reading a dial and assuming.
-
-    ``_lead_in_relief`` is the caller that needed it. Both its stock ceiling and the gate in
-    ``build_top_part`` used to test ``SEAM_NORTH_RISE_Z > 0.0`` — a constant, not a property of
-    the curve. That is only the same question while the northern run is the profile's high
-    point. Any profile that climbs above Z=0 some other way (a crest mid-depth, say) would ship
-    with the channel mouth unopened and NOTHING WOULD FAIL, because the thing being asked is not
-    the thing that matters. Same defect class as the sweep dip: a test written against a dial
-    rather than against the geometry.
-
-    Bounded to the case's own footprint. South of y=0 the cutter deliberately rides up to Z=0 as
-    an overhang guard (see ``_below_seam_cutter``), and that stretch is not parting line — it is
-    outside the part and must not drag the answer up with it."""
-    edge = _seam_ramp_edge()
-    hi = max((edge @ (i / 400.0)).Y for i in range(401))
-    # The southern run is parallel to the tent plane, which rises going south, so its high point
-    # inside the case is at y=0. North of the ramp the run is flat at SEAM_NORTH_RISE_Z. The south
-    # run rides the SKIN ground now (see _seam_sweep_params), so its y=0 high point is measured
-    # there too.
-    return max(hi, C.SEAM_NORTH_RISE_Z, skin_ground_z(0.0) + C.TENT_SKIRT_LIFT)
-
-
-def _below_seam_cutter() -> Part:
-    """Everything BELOW the top case's bottom edge, as a solid swept across the full width.
-
-    The edge profile is drawn once in the Y-Z plane and extruded along X, so every wall gets
-    the same handover with no per-wall special casing — it is a function of Y alone.
-
-    Three stretches, south to north: running parallel to the tent plane; a SPLINE ramp; then flat
-    at ``SEAM_NORTH_RISE_Z``. The spline is given the tent plane's slope as its start tangent and
-    horizontal as its end tangent, so it leaves the desk and arrives at the northern run
-    tangentially — swept, not kinked.
-
-    The ramp is a THROUGH-FIT over ``SEAM_WAVE_KNOTS``, not a two-point hump, and that is what
-    makes the bottom case read as a lens instead of a skirt: it crests above Z=0 around u=0.67
-    and eases back down. A two-point spline between the runs is monotonic by construction, so
-    the visible band could only widen northward. See the knot table for where the shape came
-    from and how far to trust it.
-
-    The southern run is offset ``TENT_SKIRT_LIFT`` ABOVE the plane rather than lying on it, so
-    the skin floats clear of the desk and a band of bottom case shows beneath it. Offsetting
-    the whole profile (spline start included) keeps the tangency: the run is still parallel to
-    the plane, so the sweep still leaves it without a kink.
-
-    The NORTHERN run used to be Z=0 flat. It now sits at ``SEAM_NORTH_RISE_Z``, which is 0 only
-    when that dial is. Everything below the profile is the cutter, so raising the northern run
-    carves the tub's skin off the wall up to that height and hands the face to the bottom part.
-    That is safe at any height up to ``SEAM_LEDGE_Z`` and no higher: below the ledge the tub is
-    ONLY its outer skin — ``_plate_pocket`` has already taken the floor and inner wall out from
-    behind it — so the cutter eats skin and nothing else. Above the ledge it would start eating
-    the tub proper, which is what ``SEAM_NORTH_RISE_FRAC``'s ceiling of 1.0 exists to prevent.
-
-    Note the steepening: the sweep climbs from the southern run to the northern one over a run
-    fixed by ``TENT_SEAM_RAMP_FRAC``, so the higher the dial the steeper that climb — 3.14 mm
-    over 8.8 mm at frac 0, 9.44 mm over the same 8.8 mm at frac 1. The joins stay tangent
-    either way, but lengthening the ramp is the lever if the blend starts to read as a corner."""
-    knots, _tangents = _seam_sweep_params()   # tangents now live inside the smoothed curve points
-    (y1, z1), (y2, rise) = knots[0], knots[-1]
-    lift = C.TENT_SKIRT_LIFT
-    slope = -math.tan(math.radians(C.TENT_ANGLE_DEG))
-    y_s, y_n = -20.0, C.OUTER_DEPTH + 60.0
-    z_s = skin_ground_z(y_s) + lift   # south run rides the skin desk, parallel to the plane
-    bot = wedge_deep_z() - 20.0
-    with BuildSketch(Plane.YZ) as sk:            # sketch u -> case Y, sketch v -> case Z
-        with BuildLine():
-            # The cutter starts 20 mm south of the case, by which point the LIFTED plane has
-            # risen above Z=0. Hold the profile at Z=0 until it drops back under: the cutter
-            # must never reach above Z=0 anywhere, or it eats the tub proper, not the skirt.
-            # (Purely a guard on the overhang — the case itself starts at y=0.)
-            if z_s > 0.0:
-                Line((y_s, 0.0), (y_s - z_s / slope, 0.0))
-                Line((y_s - z_s / slope, 0.0), (y1, z1))
-            else:
-                Line((y_s, z_s), (y1, z1))
-            # The SMOOTHED ramp, from the one shared source, so the cut matches every measurement
-            # of it. Its endpoints ARE (y1, z1) and (y2, rise), so the runs on either side meet it
-            # without a gap. No tangents argument: the dense points already carry the shape (they
-            # leave the join at the relaxed SEAM_WAVE_SOUTH_TANGENT_FRAC slope).
-            Spline(*_seam_ramp_curve_points())
-            Line((y2, rise), (y_n, rise))
-            Line((y_n, rise), (y_n, bot))
-            Line((y_n, bot), (y_s, bot))
-            Line((y_s, bot), (y_s, min(0.0, z_s)))   # back to wherever the run actually started
-        make_face()
-    return _extrude_across_x(sk)
-
-
-def _extrude_across_x(sk: BuildSketch) -> Part:
-    """Take a Y-Z profile sketch and sweep it across the full width of the case.
-
-    Extrudes the LOCATED face functionally, along its own +X normal. Doing it via
-    `add(sketch)` inside a BuildPart instead loses the plane association and extrudes along
-    global +Z — which yields a zero-thickness solid that silently deletes everything it is
-    subtracted from."""
-    face = sk.sketch.faces()[0]  # type: ignore[union-attr]
-    solid = extrude(face, amount=C.OUTER_WIDTH + 120.0)
-    return cast(Part, solid.translate((-60.0, 0.0, 0.0)))
-
+    Kept so ``snaps._slot_z`` still has a ground datum: the relief slots run from just
+    below this up to ``SEAM_LEDGE_Z`` and open on the flat Z=0 underside."""
+    return 0.0
 
 @cache
 def seam_skirt_tub() -> Part:
@@ -543,300 +217,6 @@ def seam_skirt_tub() -> Part:
     whole tray. ``build_bottom_part`` never touched a tray before this; without the cache the
     suite pays for one per bottom build."""
     return cast(Part, build_tray(rim_z=C.COVER_TOP_Z, bottom_chamfer=False) - _plate_pocket())
-
-
-@cache
-def tub_outline_face() -> Face:
-    """The TOP case's real outer outline at Z=0, filled — the silhouette the bottom must match.
-
-    Sectioned rather than reconstructed, for the same reason ``skirt_extension`` sections: the
-    outline is not a polygon offset. It carries the +Y relief bump (``_bump_facet_south_y``,
-    y=115) squared off proud of the nominal offset, and that bump's NW corner fillet. Offsetting
-    the PCB polygon instead is what put the bottom case 36 mm outside the top at y=115 when the
-    two were compared from below.
-
-    OUTER WIRE ONLY. At Z=0 the tub is a ring — ``_plate_pocket`` has taken the floor and inner
-    wall out from behind the skin — so the section comes back with an inner wire too, which is
-    the pocket bore and is not this outline. Filling from the outer wire alone gives the plan
-    silhouette rather than the wall's cross-section.
-
-    Taken at Z=0 exactly, below the mouth chamfer, and from the UN-chamfered tub, for the
-    reasons ``skirt_extension`` spells out."""
-    tub = seam_skirt_tub()
-    slab = cast(Part, tub & Solid.make_box(400.0, C.OUTER_DEPTH + 200.0, 0.05)
-                .translate((-100.0, -100.0, 0.0)))
-    section = slab.faces().filter_by(Plane.XY).sort_by(Axis.Z)[0]
-    return cast(Face, make_face(section.outer_wire()))
-
-
-def skirt_extension(tub: Part) -> Part:
-    """The TOP case's skin carried on below Z=0, down toward the desk.
-
-    Only the outer ``SEAM_SKIN`` band — the same ring the tub's wall already is below the
-    rabbet ledge — so it descends OUTBOARD of the wedge (which is inset SEAM_SKIN +
-    SEAM_FIT_CLEAR) and the two never meet. Bounded above by Z=0 and below by the seam profile,
-    which is what makes it appear and die away on its own wherever that profile crosses Z=0.
-
-    It stops ``TENT_SKIRT_LIFT`` short of the tent plane rather than landing on it, so the
-    wedge alone carries the ground contact and a reveal of bottom case shows under the skin.
-
-    Adds no height: it fills space that already existed between Z=0 and the tent plane.
-
-    THE OUTLINE IS THE TUB'S OWN CROSS-SECTION, taken at Z=0 and projected straight down —
-    not a polygon offset. That is what lets the skirt run the WHOLE perimeter, including the
-    rear, and it is the difference between this and the version that could only work south of
-    the +Y relief bump. The bump stands proud of the nominal offset and carries a corner
-    fillet, so a polygon-offset band reaching it would sit INSIDE the wall above and leave a
-    step at Z=0 all along the bump's face; a ceiling on the seam's south fraction existed to
-    keep the skirt away from that region rather than solve it (it has since been retired
-    entirely — the ramp runs to the back edge). Sectioning the tub solves it for every wall
-    feature at once, present and future, because the band is by construction whatever the wall
-    directly above it is.
-
-    PASS THE UN-CHAMFERED TUB. The section is taken at Z=0, and that is precisely where
-    ``_chamfer_pocket_mouth`` sits: a 45° chamfer on the mouth edge takes material from the bore
-    AND from the Z=0 face, so a chamfered tub hands back a bore already set back
-    ``SEAM_POCKET_LEAD_IN``. The band inherits it, the channel's own ``SEAM_LEAD_IN`` relief
-    then has 0.4 mm less to cut, and the mouth measures 0.2 mm of lead-in instead of 0.6 — the
-    two starters cancelling instead of stacking. The mouth chamfer belongs to the pocket, not to
-    the wall, and must not run down the skirt."""
-    z_bot = wedge_deep_z() - 1.0
-    slab = cast(Part, tub & Solid.make_box(400.0, C.OUTER_DEPTH + 200.0, 0.05)
-                .translate((-100.0, -100.0, 0.0)))
-    face = slab.faces().filter_by(Plane.XY).sort_by(Axis.Z)[0]
-    # DIRECTION GIVEN EXPLICITLY. This face is the slab's underside, so its own normal already
-    # points at -Z; `amount=z_bot` (negative) reverses that and builds the band UPWARD through
-    # the tub instead — it came back spanning Z 0..15.01 rather than -15.24..0. Same trap as
-    # _extrude_across_x's, and the same fix: never leave the direction to the face's normal.
-    band = cast(Part, extrude(face, amount=abs(z_bot), dir=(0.0, 0.0, -1.0)))
-    # Keep only what lies BETWEEN the seam and Z=0. Subtracting everything below the seam does
-    # both jobs at once: where the seam runs below Z=0 this trims the skin to it, and where the
-    # seam has climbed above Z=0 the band vanishes entirely and the wedge shows instead.
-    band = cast(Part, band - _below_seam_cutter())
-    return cast(Part, band - _lead_in_relief(z_bot))
-
-
-def _lead_in_relief(z_bot: float) -> Part:
-    """Cutter that widens the channel mouth so the bottom case can find it.
-
-    Where the skin descends past the wedge the two form a channel with only ``SEAM_FIT_CLEAR``
-    (0.2 mm) between them, and its mouth is at the SEAM — just above the desk over the southern
-    stretch, not at Z=0. ``_chamfer_pocket_mouth``'s Z=0 starter is buried inboard there and
-    does nothing, so without this the bottom case has to arrive within 0.2 mm to start.
-
-    BUILT AS A CUTTER, NOT A CHAMFER, and that is deliberate. OCC propagates a chamfer along
-    the tangent-continuous edge chain, and this one runs through a 0.84 mm arc at the SE corner
-    (the 3.25 mm offset radius turning 14.7°). That arc poisons the whole front-and-east chain
-    at ANY leg — it was verified to fail down to 0.05 mm — so chamfering succeeded on the west
-    and thumb edges and silently skipped the rest, leaving half the perimeter square. A cutter
-    is uniform, exact, and has no propagation or edge-ordering failure mode at all.
-
-    It is a square relief rather than a 45° taper: the inner face steps out by ``SEAM_LEAD_IN``
-    for the bottom ``SEAM_LEAD_IN`` of the channel. Measured from the SEAM (this is the seam
-    cutter shifted up by that much) rather than from a plane, so it tracks the sweep through
-    the blend as well as the flat run.
-
-    The stock's ceiling TRACKS THE MOUTH rather than being a constant. North of the sweep the
-    mouth is not near Z=0 any more — it is up at ``SEAM_NORTH_RISE_Z``, wherever the dial puts
-    it — and a stock capped just above Z=0 would sit entirely below the thing it is supposed to
-    open, leaving the plate rim to find a square 0.2 mm channel unaided over the whole northern
-    half.
-
-    It is capped, though, and not simply run to the ledge. Anywhere ABOVE Z=0 this relief eats
-    POCKET WALL — the face the plate rim seats against — so it is opened only where the mouth
-    genuinely needs it, and then by exactly ``SEAM_LEAD_IN``.
-
-    With the mouth ON Z=0 — which is precisely where ``_chamfer_pocket_mouth`` puts the tub-side
-    starter — nothing is owed here and the stock stops at 0.1 as it always did. Lift the mouth
-    off that plane and the chamfer is stranded below it; then, and only then, this has to reach
-    up and open the mouth itself.
-
-    THE CEILING IS READ OFF THE CURVE, not off ``SEAM_NORTH_RISE_Z``. Those agree only while the
-    northern run is the profile's high point; ``seam_profile_max_z`` asks the installed profile
-    directly, so a crest anywhere along the depth is served too."""
-    pocket_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK + C.SEAM_FIT_CLEAR
-    mouth_z = seam_profile_max_z()
-    stock_top = 0.1 if mouth_z <= 0.0 else mouth_z + C.SEAM_LEAD_IN + 0.1
-    wide = offset_extruded(pocket_outer + C.SEAM_LEAD_IN, z_bot - 1.0, stock_top)
-    above_mouth = cast(Part, _below_seam_cutter().translate((0.0, 0.0, C.SEAM_LEAD_IN)))
-    return cast(Part, wide & above_mouth)
-
-
-def tent_wedge() -> Part:
-    """The bottom case's tent wedge: the block below Z=0 that stands the keyboard at an angle.
-
-    Follows the PLATE's own rim profile, so the wedge stays inset behind the tub's skin by
-    SEAM_SKIN + SEAM_FIT_CLEAR (2.2 mm). Concentric offsets of one polygon, which is what
-    guarantees that clearance everywhere.
-
-    KEEP IT ON THE POLYGON. Putting the wedge on the tub's outline instead — inset 2.2 from it,
-    to make the two silhouettes agree in plan — was tried and reverted: an INWARD offset raises
-    arcs at the concave corners that bulge toward the wall, so the 0.2 mm fit clearance is not
-    preserved there and the two parts overlapped by 197 mm³. Concentric offsets of the same
-    polygon cannot do that to each other.
-
-    It costs nothing to stay here. The wedge is only visible south of where the reveal opens,
-    and the tub's outline departs from the polygon at the +Y relief bump (y≥115) — nowhere near.
-    North of the reveal it is the flared band, not the wedge, that shows, and THAT is on the
-    tub's outline (see ``_bottom_outer_shell``).
-
-    ``TENT_WEDGE_MIN_H`` thick at the south, climbing to ``TENT_WEDGE_MAX_H`` at the north.
-    Solid rather than shelled — only a few mm thick, and the mass is welcome."""
-    rim_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK
-    stock = offset_extruded(rim_outer, -(C.TENT_WEDGE_MAX_H + 1.0), 0.0)
-    return cast(Part, stock - _below_plane_cutter(*tent_plane()))
-
-
-def _skin_drop() -> float:
-    """How far the blind-port skin's outer face sits below the wedge ground: gap + skin."""
-    return C.BSKIN_GAP + C.BSKIN_THICK
-
-
-def _skin_ground_plane() -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-    """The tent plane shifted straight down by ``_skin_drop()`` — the skin's outer (desk) face."""
-    origin, up = tent_plane()
-    return (origin[0], origin[1], origin[2] - _skin_drop()), up
-
-
-def skin_ground_z(y: float) -> float:
-    """Z of the blind-port skin's outer (desk) face at a given case-Y — the underside now.
-
-    The wedge ground (``tent_ground_z``) dropped a ``_skin_drop()`` when the skin closed the
-    ports; this is where the desk, the feet, and the ground chamfer now live."""
-    return tent_ground_z(y) - _skin_drop()
-
-
-def bottom_skin() -> Part:
-    """Solid skin closing the underside, grown a ``_skin_drop()`` below the wedge ground.
-
-    Same rim profile as the wedge (``rim_outer``), so it stays inset behind the tub's skin and
-    the reveal is untouched. It is the slab between the OLD wedge ground (top) and the new skin
-    ground (bottom); ``snap_bottom_gap`` then carves the air pocket under each arm so the skin
-    never touches a flexing latch. Added AFTER the reliefs/barbs so it caps the ports from below.
-    See .omc/specs/deep-dive-bottom-cover-inlay.md."""
-    rim_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK
-    stock = offset_extruded(rim_outer, -(C.TENT_WEDGE_MAX_H + _skin_drop() + 1.0), 0.0)
-    above_skin = cast(Part, stock - _below_plane_cutter(*_skin_ground_plane()))
-    return cast(Part, above_skin & _below_plane_cutter(*tent_plane()))
-
-
-def snap_bottom_gap() -> Part:
-    """Cutter: the air gap under every arm, between the wedge ground and the skin top.
-
-    Each arm's tall freed-strip footprint (``snap_gap_footprints``), trimmed to the slab between
-    the wedge ground (P0) and the skin top (P0 − BSKIN_GAP). Subtracting it from the skin leaves
-    BSKIN_GAP of air under each arm and BSKIN_THICK of skin below that — floor-to-rim, never
-    arm-to-rim. Entirely below P0, so it removes only skin: the arms and wedge are untouched."""
-    origin, up = tent_plane()
-    skin_top = (origin[0], origin[1], origin[2] - C.BSKIN_GAP), up
-    prisms = snap_gap_footprints()
-    above_skin_top = cast(Part, prisms - _below_plane_cutter(*skin_top))
-    return cast(Part, above_skin_top & _below_plane_cutter(origin, up))
-
-
-def _bottom_outer_shell() -> Part:
-    """The band of bottom case that SHOWS: the TOP's own outline, carried down to the desk.
-
-    This is the part of the design the old bottom simply did not have. The plate and the wedge
-    are both plain offsets inset behind the tub's skin, so every millimetre of bottom case on
-    show was the floor of a 2.2 mm recess. Here the visible band is FLUSH — it rides
-    ``tub_outline_face()``, the top's own sectioned silhouette, so the two shells share one
-    lateral surface exactly and read as a single body split along the wave.
-
-    ONE PRISM, TWO CUTS, and that is the whole point. The outer surface is a plain vertical
-    extrusion of the top's outline: 27 lateral faces (planes and cylinders, one per outline
-    edge), a ground plane, and a SINGLE face carrying the entire swoosh. No offset, no loft, no
-    freeform patch anywhere — which is why it cannot ripple. It is the same construction
-    ``skirt_extension`` uses for the top's skirt, which is what makes the two agree.
-
-    It used to flare 1.5 mm proud, keyed to depth below its own (wave-following) top edge. That
-    makes the offset a function of both Y and Z, a concentric offset can only vary with Z, and
-    so the band had to be stacked out of ~36 Y-slabs — 304 faces and ~7 visible divisions down
-    the east wall. See the flush block in constants.py for the four attempts at lofting it as
-    one surface and why none of them survived OCC.
-
-    Two cuts define it, plus the inner offset that keeps it a band rather than a slab:
-      * everything above ``seam − SEAM_REVEAL_H`` is removed, which is what opens the reveal.
-        The cutter is the seam cutter itself, shifted down — the two edges are the same curve,
-        so the gap is exactly parallel to the parting line the whole way round;
-      * the tent plane trims the bottom, so it lands on the desk with the wedge.
-
-    Where the visible band is shallower than the reveal — the front of the case — the first cut
-    takes all of it and nothing is added. That is the bottom case tapering out on its own, and
-    it is why the reveal reads as a lens without a lens ever being drawn."""
-    rim_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK
-    face = tub_outline_face()
-    z_bot = bottom_deep_z() - 1.0
-    z_top = C.SEAM_LEDGE_Z
-    # THE STOCK STARTS AT THE LEDGE, NOT AT Z=0, and that is not tidiness. tub_outline_face() is
-    # a face AT Z=0, so extruding it only downward caps the band there — but the parting line
-    # crests at seam_profile_max_z() = 3.87, so the band has to reach 1.87. Capped at zero it
-    # loses that 1.87 mm over the crest and the reveal silently opens to 3.87 mm there instead of
-    # SEAM_REVEAL_H. Nothing else in the suite sees it; only the crest measurement does.
-    #
-    # DIRECTION GIVEN EXPLICITLY — the face's own normal already points at -Z, so a negative
-    # `amount` builds upward instead. Same trap skirt_extension documents.
-    stock = cast(Part, extrude(cast(Part, Pos(0, 0, z_top) * face),
-                               amount=z_top - z_bot, dir=(0.0, 0.0, -1.0)))
-    band = cast(Part, stock - offset_extruded(rim_outer, z_bot - 1.0, z_top + 1.0))
-    # Open the reveal: drop the parting-line cutter by SEAM_REVEAL_H and keep only what is under
-    # it. Intersecting (not subtracting) because this cutter IS "everything below the line".
-    band = cast(Part, band & _below_seam_cutter().translate((0.0, 0.0, -C.SEAM_REVEAL_H)))
-    # Trimmed to the desk LAST, and once, so the underside comes out as a single planar face.
-    # The desk is the blind-port SKIN ground now, a _skin_drop() below the wedge, so the visible
-    # band reaches down to it instead of stopping short at the old wedge line — otherwise the band
-    # would float _skin_drop() proud of the desk with the inset skin poking out beneath it.
-    return cast(Part, band - _below_plane_cutter(*_skin_ground_plane()))
-
-
-@cache
-def _seam_ramp_table(_angle: float, _rise: float, _y1: float, _y2: float,
-                     n: int = 4001) -> tuple[float, ...]:
-    """The ramp resampled onto an even Y grid, built once.
-
-    KEYED ON THE DIALS IT DEPENDS ON. The four arguments are unused inside; they are there so a
-    test monkeypatching the tent angle or the north rise gets a fresh table rather than a stale
-    one, which is the whole hazard of caching something derived from mutable constants.
-
-    IT EXISTS BECAUSE THE LOOKUP WAS THE BUILD. ``_seam_z_at`` used to rebuild the ramp spline
-    and sample it a thousand times on EVERY call — about 12 ms each, and the band's layout asks
-    for it a few thousand times. Profiled: one offset 0.00 s, 240 wire samples 0.02 s, a spline
-    through 241 points 0.00 s, and 240 of these 2.96 s. That single helper was essentially the
-    entire 28 s cost of building the bottom part."""
-    edge = _seam_ramp_edge()
-    pts = sorted((p.X, p.Y) for p in (edge @ (i / 4000.0) for i in range(4001)))
-    out, j = [], 0
-    for i in range(n):
-        y = C.OUTER_DEPTH * i / (n - 1)
-        while j + 2 < len(pts) and pts[j + 1][0] < y:
-            j += 1
-        (ya, za), (yb, zb) = pts[j], pts[j + 1]
-        t = 0.0 if yb == ya else (y - ya) / (yb - ya)
-        out.append(za + (zb - za) * t)
-    return tuple(out)
-
-
-def _seam_z_at(y: float) -> float:
-    """The parting line's Z at a given case-Y — the three stretches, as the cutter draws them."""
-    if y <= C.TENT_SEAM_Y1:
-        return skin_ground_z(y) + C.TENT_SKIRT_LIFT   # south run floats above the skin desk
-    if y >= C.TENT_SEAM_Y2:
-        return C.SEAM_NORTH_RISE_Z
-    tbl = _seam_ramp_table(C.TENT_ANGLE_DEG, C.SEAM_NORTH_RISE_Z,
-                           C.TENT_SEAM_Y1, C.TENT_SEAM_Y2)
-    f = y / C.OUTER_DEPTH * (len(tbl) - 1)
-    i = min(int(f), len(tbl) - 2)
-    return tbl[i] + (tbl[i + 1] - tbl[i]) * (f - i)
-
-
-def _shell_y_range() -> tuple[float, float]:
-    """Where the visible band exists: from the first Y at which it is taller than the reveal,
-    to the back edge. The southern end is the lens's own point — nothing is drawn to make it."""
-    ys = [i * C.OUTER_DEPTH / 2000.0 for i in range(2001)]
-    for y in ys:
-        if _seam_z_at(y) - C.SEAM_REVEAL_H > skin_ground_z(y):   # desk is the skin ground now
-            return y, C.OUTER_DEPTH
-    raise ValueError("the reveal never opens — SEAM_REVEAL_H is deeper than the band ever gets")
 
 
 def ground_face(part: Part):
@@ -869,12 +249,12 @@ def ground_face(part: Part):
     return max(on_lowest, key=lambda f: f.area)
 
 
-def _chamfer_wedge_ground_edge(part: Part) -> Part:
-    """Counter-chamfer the wedge's ground rim (elephant-foot pre-compensation).
+def _chamfer_bottom_edge(part: Part) -> Part:
+    """Counter-chamfer the flat Z=0 bottom rim (elephant-foot pre-compensation).
 
-    The bottom case now meets the desk on the tilted wedge face, not at Z=0, so this is where
-    the squished first layers would otherwise bulge past the footprint. Falls back to a
-    smaller leg, then to none, rather than aborting the build."""
+    The bottom case meets the desk on the flat Z=0 underside, so this is where the squished
+    first layers would otherwise bulge past the footprint. Falls back to a smaller leg, then
+    to none, rather than aborting the build."""
     ground = ground_face(part)
     if ground is None:
         return part
@@ -893,19 +273,13 @@ def _foot_recesses() -> Part:
     the desk. Each cylinder starts 0.5 mm outside the face (so it opens cleanly, no
     coincident face) and recesses FOOT_DEPTH into the material.
 
-    The outer face is now the blind-port SKIN, a ``_skin_drop()`` below the wedge ground, so the
-    seats are cut there. At the corners the skin is backed by solid case (the BSKIN_GAP pockets
-    are local to the arms, mid-edge), so a FOOT_DEPTH seat keeps full backing — see the feet gate
-    in .omc/specs/deep-dive-bottom-cover-inlay.md.
-
-    Cut PERPENDICULAR to the tent plane, not plumb. The ground face is tilted, so a vertical
-    cylinder would meet it obliquely — the seat depth would vary by ±0.17 mm across a Ø10 seat
-    and the pad would sit on a slight ramp instead of flat against the desk.
+    The outer face is the flat Z=0 underside of the plate, backed by solid case at the
+    corners, so a FOOT_DEPTH seat keeps full backing.
     """
-    _origin, up = tent_plane()
+    _origin, up = tent_plane()   # (0,0,1) — flat, so the cylinders are plumb
     seats = None
     for x, y in C.FOOT_POSITIONS:
-        z = skin_ground_z(y)
+        z = tent_ground_z(y)     # 0.0
         start = (x - up[0] * 0.5, y - up[1] * 0.5, z - up[2] * 0.5)
         cyl = Solid.make_cylinder(C.FOOT_DIA / 2, C.FOOT_DEPTH + 0.5,
                                   Plane(origin=start, z_dir=up))
@@ -927,14 +301,9 @@ def build_bottom_part(side: Side) -> Part:
         raise ValueError(f"side must be 'left' or 'right', got {side!r}")
 
     bottom = _plate_envelope()
-    # The tent wedge IS the bottom case below Z=0: same rim profile as the plate, so it stays
-    # inset behind the tub's skin, thin at the south and thick at the north. Added, never cut —
-    # see the tent section in constants.py for why cutting would wreck the Z ladder.
-    bottom = cast(Part, bottom + tent_wedge())
-    # ...and the band that actually SHOWS, outboard of both of those: out to the tub's skin and
-    # flaring past it, starting where the visible band first gets taller than SEAM_REVEAL_H.
-    # Added last of the three so it fuses onto a wedge that is already whole.
-    bottom = cast(Part, bottom + _bottom_outer_shell())
+    # Flat bottom: the part IS the inset floor plate (Z 0 → SEAM_LEDGE_Z). No tent wedge and no
+    # visible outer band — the plate's outer face is flush behind the tub skin and its underside
+    # is the flat Z=0 desk contact.
     for hx, hy in C.MOUNTING_HOLES:
         cx, cy = C.pcb_to_case(hx, hy)
         bottom = cast(Part, bottom + stepped_standoff(at=(cx, cy)))
@@ -950,20 +319,11 @@ def build_bottom_part(side: Side) -> Part:
     # whole bottom edge, which is the horizontal-axis bending this design exists to avoid.
     bottom = cast(Part, bottom - snap_reliefs())
     bottom = cast(Part, bottom + snap_barbs())
-    # Blind-port skin: close the underside from below, then carve the air gap that keeps it off
-    # every flexing arm. The skin caps the release ports (they vent into the gap, invisible from
-    # outside) while the arms keep their full height, so no latch force moves. See
-    # .omc/specs/deep-dive-bottom-cover-inlay.md.
-    bottom = cast(Part, bottom + bottom_skin())
-    bottom = cast(Part, bottom - snap_bottom_gap())
-    # Feet and the ground-edge chamfer LAST, on the skin's outer face — the new ground.
-    #
-    # This is also why the chamfer moved after the snaps: it selects
-    # ``ground_face(part).outer_wire().edges()``, and the ports used to break that wire into extra
-    # edges (a 0.5 mm chamfer on the inside of a release port, 27.4 mm³ of stray cut). The skin's
-    # face is unbroken — the ports no longer reach it — so the chamfer gets a clean rim.
+    # Feet and the ground-edge chamfer LAST, cut into the flat Z=0 underside. The snap relief
+    # slots open straight onto that face as release ports; the chamfer selects
+    # ``ground_face(part).outer_wire().edges()`` on the plate's outer bottom rim.
     bottom = cast(Part, bottom - _foot_recesses())
-    bottom = _chamfer_wedge_ground_edge(_as_part(bottom))
+    bottom = _chamfer_bottom_edge(_as_part(bottom))
     bottom = _as_part(bottom)
 
     if side == "left":
@@ -1618,35 +978,9 @@ def build_top_part(side: Side) -> Part:
     # outer wall — no mid-wall seam — and the rabbet ledge that receives the plate rim.
     tub = seam_skirt_tub()
     top = _chamfer_pocket_mouth(tub)   # tub-side starter chamfer at the pocket mouth
-    # Carry the skin down to the desk over the southern stretch, so the front of the case
-    # reads as one piece and the bottom wedge only shows further north. Costs no height.
-    # The UN-chamfered tub is what the skirt is sectioned from. _chamfer_pocket_mouth opens the
-    # mouth bore by SEAM_POCKET_LEAD_IN at exactly Z=0, which is exactly where the section is
-    # taken, so the chamfered tub hands back a bore already set back 0.4 mm — and the channel's
-    # lead-in then measures 0.2 instead of SEAM_LEAD_IN's 0.6, the two starters cancelling. The
-    # mouth chamfer is a feature of the pocket, not of the wall, and must not run down the skirt.
-    top = cast(Part, top + skirt_extension(tub))
-    # ...and north of the sweep, carve the skin back UP the wall to SEAM_NORTH_RISE_Z, handing
-    # that band of face to the bottom part. The skirt only ever trimmed its own band, all of it
-    # below Z=0; the raised northern run cuts into the tub itself, so the same profile has to
-    # come off the whole part and not just the band. Everything fused on after this sits at
-    # COVER_TOP_Z or above, well clear of the cut.
-    top = cast(Part, top - _below_seam_cutter())
-    # The mouth of the rabbet pocket rides up with the parting line, so its lead-in has to come
-    # off the tub itself here — north of the sweep there is no skirt band left for
-    # skirt_extension to have taken it out of.
-    #
-    # Gated, because this one is not a no-op when the parting line stays at or below Z=0:
-    # skirt_extension only ever subtracts the relief from its own band, all of it below Z=0, and
-    # taking it off the whole tub would additionally shave the 0.1 mm of pocket wall the stock
-    # reaches above Z=0. Small (~7 mm³) and harmless, but it would mean a flat parting line no
-    # longer reproduces the un-dialled case.
-    #
-    # The gate asks the PROFILE, not the dial. `SEAM_NORTH_RISE_Z > 0.0` answered the same
-    # question only while the northern run was the high point of the curve — any other way of
-    # climbing above Z=0 got no relief and no failure. See seam_profile_max_z.
-    if seam_profile_max_z() > 0.0:
-        top = cast(Part, top - _lead_in_relief(wedge_deep_z() - 1.0))
+    # Flat bottom: the tub already ends flush at Z=0, which IS the parting line, so there is no
+    # descending skirt to add, no seam wave to cut, and no lifted-mouth lead-in relief to open —
+    # the pocket mouth sits on Z=0 and _chamfer_pocket_mouth already gives it its starter.
     top = cast(Part, top + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     top = apply_encoder_cover_style(top, side)
     top = cast(Part, top + build_canopy(side=side))

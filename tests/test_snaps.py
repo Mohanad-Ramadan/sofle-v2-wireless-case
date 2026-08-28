@@ -12,7 +12,12 @@ import pytest
 from build123d import Solid
 
 from sofle_case import constants as C
-from sofle_case.case import _seam_z_at, tent_ground_z
+from sofle_case.case import tent_ground_z
+
+
+def _seam_z_at(y: float) -> float:
+    """Flat bottom: the parting line is a single flat line at Z=0 everywhere."""
+    return 0.0
 from sofle_case.snaps import (
     _corner_s_to_xy,
     _slot_v0,
@@ -179,14 +184,13 @@ def test_hidden_cuts_are_hidden_and_the_rest_are_declared(bottom, top):
     for arm in C.SNAP_ARMS:
         if not arm.hidden_cut:
             continue
-        _cx, cy = cut_center(arm)
-        assert cy < C.TENT_SEAM_Y1, (
-            f"{arm.name}: cut at y={cy:.2f} is north of TENT_SEAM_Y1={C.TENT_SEAM_Y1}, where "
-            f"the reveal starts opening — measured zero-exposure runs to y=54.87, but the "
-            f"margin between y1 and there depends on the wave's spline knots")
-        # the skin must be outboard of the cut over the rim's whole covered height
+        _cx, _cy = cut_center(arm)
+        # Flat bottom: there is no reveal, so the old `cut is south of where the reveal opens`
+        # check is gone. What still has to hold is the geometry: the plate rim is inset behind
+        # the tub skin everywhere, so the skin must stand outboard of the cut over the rim's
+        # whole covered height (the cut shows only as the port on the flat Z=0 underside).
         sx, sy = _to_case(arm, cut_u(arm), C.SEAM_FIT_CLEAR + C.SEAM_SKIN / 2)
-        for z in (tent_ground_z(cy) + 0.6, C.SEAM_LEDGE_Z / 2, C.SEAM_LEDGE_Z - 0.8):
+        for z in (0.6, C.SEAM_LEDGE_Z / 2, C.SEAM_LEDGE_Z - 0.8):
             assert _probe(top, sx, sy, z, d=0.3) > 1e-6, (
                 f"{arm.name}: no tub skin covering its cut at Z={z:.2f} — the slot shows")
 
