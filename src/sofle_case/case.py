@@ -26,7 +26,7 @@ from .top_cover import build_top_cover, _load_plate_cutouts
 from .canopy import build_canopy, usb_port_cutter, CANOPY_RIDGE_TOP_Z
 # snaps imports wedge_deep_z/tent_ground_z from here, but only inside its functions, so this
 # top-level import does not close a cycle.
-from .snaps import snap_reliefs, snap_barbs, snap_catches
+from .snaps import snap_reliefs, snap_barbs, snap_catches, snap_gap_footprints
 from . import canopy_puzzle as PZ
 
 
@@ -183,29 +183,86 @@ def build_case_half(side: Side) -> Part:
 
 
 # ---------------------------------------------------------------------------
-# Flat bottom (BOTTOM case) — Z=0 compatibility shims
+# Flat bottom (BOTTOM case) — Z=0 shims + blind-port bottom skin
 # ---------------------------------------------------------------------------
-# The tent wedge, the seam wave/lens, the skirts and the blind-port skin are gone: the
-# underside is a single planar face at Z=0 and the halves part along one flat Z=0 line.
-# These three helpers survive only as flat shims so snaps.py (and any flat-bottom test)
-# keeps resolving the old ground-plane API without a tilt.
+# The tent wedge, the seam wave/lens and the skirts are gone: the parting line is a single flat
+# Z=0 line. tent_plane / tent_ground_z / wedge_deep_z survive as flat shims so snaps.py (and any
+# flat-bottom test) keeps resolving the old ground-plane API without a tilt. The BLIND-PORT SKIN
+# is kept: it grows a thin cap DOWN below Z=0 to hide the snap release ports, held off each arm by
+# an air gap (see bottom_skin / snap_bottom_gap). The true ground therefore drops to
+# skin_ground_z = -(BSKIN_GAP + BSKIN_THICK).
 
 def tent_plane() -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-    """``(origin, unit up-normal)`` of the (flat) plane the case stands on: Z=0, facing up."""
+    """``(origin, unit up-normal)`` of the (flat) plane the case parts along: Z=0, facing up."""
     return (0.0, 0.0, 0.0), (0.0, 0.0, 1.0)
 
 
 def tent_ground_z(y: float) -> float:
-    """Z of the underside at any case-Y — flat, so always 0.0."""
+    """Z of the parting plane at any case-Y — flat, so always 0.0."""
     return 0.0
 
 
 def wedge_deep_z() -> float:
-    """Z of the deepest point of the bottom case — the flat Z=0 underside.
+    """Z of the deepest point of the bottom case's rim — the flat Z=0 parting line.
 
     Kept so ``snaps._slot_z`` still has a ground datum: the relief slots run from just
-    below this up to ``SEAM_LEDGE_Z`` and open on the flat Z=0 underside."""
+    below this up to ``SEAM_LEDGE_Z`` and open on the underside (into the blind-port gap)."""
     return 0.0
+
+
+def _below_plane_cutter(origin: tuple[float, float, float],
+                        up: tuple[float, float, float]) -> Part:
+    """Half-space solid filling everything below the given plane."""
+    big = 500.0
+    box = Solid.make_box(big, big, big).translate((-big / 2, -big / 2, -big))
+    return cast(Part, Plane(origin=origin, z_dir=up).location * box)
+
+
+def _skin_drop() -> float:
+    """How far the blind-port skin's outer face sits below the Z=0 parting plane: gap + skin."""
+    return C.BSKIN_GAP + C.BSKIN_THICK
+
+
+def _skin_ground_plane() -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    """The parting plane shifted straight down by ``_skin_drop()`` — the skin's outer (desk) face."""
+    origin, up = tent_plane()
+    return (origin[0], origin[1], origin[2] - _skin_drop()), up
+
+
+def skin_ground_z(y: float) -> float:
+    """Z of the blind-port skin's outer (desk) face — the underside the case stands on.
+
+    The parting plane (``tent_ground_z``) is Z=0; the skin drops a ``_skin_drop()`` below it to
+    close the ports, so this is where the desk, the feet, and the ground chamfer now live."""
+    return tent_ground_z(y) - _skin_drop()
+
+
+def bottom_skin() -> Part:
+    """Solid skin closing the underside, grown a ``_skin_drop()`` below the Z=0 parting plane.
+
+    Same rim profile as the plate (``rim_outer``), so it stays inset behind the tub's skin. It is
+    the slab between the Z=0 parting plane (top) and the skin ground (bottom); ``snap_bottom_gap``
+    then carves the air pocket under each arm so the skin never touches a flexing latch. Added
+    AFTER the reliefs/barbs so it caps the ports from below.
+    See .omc/specs/deep-dive-bottom-cover-inlay.md."""
+    rim_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK
+    stock = offset_extruded(rim_outer, -(_skin_drop() + 1.0), 0.0)
+    above_skin = cast(Part, stock - _below_plane_cutter(*_skin_ground_plane()))
+    return cast(Part, above_skin & _below_plane_cutter(*tent_plane()))
+
+
+def snap_bottom_gap() -> Part:
+    """Cutter: the air gap under every arm, between the Z=0 parting plane and the skin top.
+
+    Each arm's tall freed-strip footprint (``snap_gap_footprints``), trimmed to the slab between
+    the parting plane (P0) and the skin top (P0 − BSKIN_GAP). Subtracting it from the skin leaves
+    BSKIN_GAP of air under each arm and BSKIN_THICK of skin below that — floor-to-rim, never
+    arm-to-rim. Entirely below P0, so it removes only skin: the arms are untouched."""
+    origin, up = tent_plane()
+    skin_top = (origin[0], origin[1], origin[2] - C.BSKIN_GAP), up
+    prisms = snap_gap_footprints()
+    above_skin_top = cast(Part, prisms - _below_plane_cutter(*skin_top))
+    return cast(Part, above_skin_top & _below_plane_cutter(origin, up))
 
 @cache
 def seam_skirt_tub() -> Part:
@@ -273,13 +330,14 @@ def _foot_recesses() -> Part:
     the desk. Each cylinder starts 0.5 mm outside the face (so it opens cleanly, no
     coincident face) and recesses FOOT_DEPTH into the material.
 
-    The outer face is the flat Z=0 underside of the plate, backed by solid case at the
-    corners, so a FOOT_DEPTH seat keeps full backing.
+    The outer face is the blind-port SKIN, a ``_skin_drop()`` below the parting plane. At the
+    corners the skin is backed by solid case (the BSKIN_GAP pockets are local to the arms,
+    mid-edge), so a FOOT_DEPTH seat keeps full backing.
     """
     _origin, up = tent_plane()   # (0,0,1) — flat, so the cylinders are plumb
     seats = None
     for x, y in C.FOOT_POSITIONS:
-        z = tent_ground_z(y)     # 0.0
+        z = skin_ground_z(y)     # -(BSKIN_GAP + BSKIN_THICK)
         start = (x - up[0] * 0.5, y - up[1] * 0.5, z - up[2] * 0.5)
         cyl = Solid.make_cylinder(C.FOOT_DIA / 2, C.FOOT_DEPTH + 0.5,
                                   Plane(origin=start, z_dir=up))
@@ -319,9 +377,15 @@ def build_bottom_part(side: Side) -> Part:
     # whole bottom edge, which is the horizontal-axis bending this design exists to avoid.
     bottom = cast(Part, bottom - snap_reliefs())
     bottom = cast(Part, bottom + snap_barbs())
-    # Feet and the ground-edge chamfer LAST, cut into the flat Z=0 underside. The snap relief
-    # slots open straight onto that face as release ports; the chamfer selects
-    # ``ground_face(part).outer_wire().edges()`` on the plate's outer bottom rim.
+    # Blind-port skin: cap the underside from below, then carve the air gap that keeps it off
+    # every flexing arm. The skin closes the release ports (they vent into the gap, invisible from
+    # outside) while the arms keep their full height, so no latch force moves. The underside now
+    # sits a _skin_drop() below Z=0. See .omc/specs/deep-dive-bottom-cover-inlay.md.
+    bottom = cast(Part, bottom + bottom_skin())
+    bottom = cast(Part, bottom - snap_bottom_gap())
+    # Feet and the ground-edge chamfer LAST, on the skin's outer face — the new ground. The skin
+    # face is unbroken (the ports vent into the gap, not through it), so the chamfer gets a clean
+    # rim from ``ground_face(part).outer_wire().edges()``.
     bottom = cast(Part, bottom - _foot_recesses())
     bottom = _chamfer_bottom_edge(_as_part(bottom))
     bottom = _as_part(bottom)

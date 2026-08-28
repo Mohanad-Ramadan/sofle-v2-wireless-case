@@ -529,10 +529,9 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # a much deeper rear skirt). The bottom loses the material the top's skirt now covers over the
     # rear, which is where essentially all of the change sits. The wedge, snaps, skin and
     # standoffs are untouched; the crest is unmoved at SEAM_WAVE_CREST_Z.
-    # Rebased for the FLAT BOTTOM: the tent wedge, the flared outer band and the blind-port skin
-    # were all removed, so the bottom part is now just the inset floor plate + standoffs − battery
-    # − snaps − feet. 205839.093 -> 68011.31. Then rebased again for FLOOR_THICKNESS 6.3 -> 6.6
-    # (the flat-bottom JST-floor fix): the inset plate spans floor→SEAM_LEDGE_Z, both of which
-    # rose 0.3 mm, so the plate grew ~3.0 cm³ -> 71012.044. The test's point is unchanged — the
-    # slide cavity is a TOP feature and must not show up here.
-    assert abs(build_bottom_part(side).volume - 71012.044) < 2e-2
+    # Rebased for the FLAT BOTTOM: the tent wedge and the flared outer band were removed, so the
+    # bottom part is the inset floor plate + standoffs − battery − snaps + blind-port skin − feet.
+    # 205839.093 -> (flat, no skin) 68011.31 -> (FLOOR_THICKNESS 6.3->6.6, the JST-floor fix) 71012
+    # -> (blind-port skin re-added, grown down a _skin_drop() to hide the snap ports) 88866.126.
+    # The test's point is unchanged — the slide cavity is a TOP feature and must not show up here.
+    assert abs(build_bottom_part(side).volume - 88866.126) < 2e-2

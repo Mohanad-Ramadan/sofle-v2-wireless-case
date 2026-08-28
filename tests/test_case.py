@@ -143,14 +143,17 @@ def test_slide_scoop_top_open(side):
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_bottom_part_z_range(side):
-    """Flat bottom: the part runs from the flat Z=0 underside up to the standoff tap tops.
+    """Flat bottom: the part runs from the blind-port skin's flat underside up to the standoff
+    tap tops.
 
-    The floor is Z=0 (the inset plate's underside). The top is the standoff pin tops, which
-    stop STANDOFF_PIN_RECESS BELOW PLATE_SEAT_Z — the plate is located by the switches, not by
-    the pins — so the part is taller than the rabbet ledge by design but no longer reaches the
-    plate."""
+    The underside is the skin ground, a _skin_drop() below the Z=0 parting plane. The top is the
+    standoff pin tops, which stop STANDOFF_PIN_RECESS BELOW PLATE_SEAT_Z — the plate is located by
+    the switches, not by the pins — so the part is taller than the rabbet ledge by design but no
+    longer reaches the plate."""
+    from sofle_case.case import skin_ground_z
     bb = build_bottom_part(side).bounding_box()
-    assert abs(bb.min.Z) < 1e-3, f"floor at {bb.min.Z:.4f}, expected flat Z=0"
+    assert abs(bb.min.Z - skin_ground_z(0.0)) < 1e-3, \
+        f"floor at {bb.min.Z:.4f}, expected the skin ground {skin_ground_z(0.0):.4f}"
     assert abs(bb.max.Z - (C.PLATE_SEAT_Z - C.STANDOFF_PIN_RECESS)) < 0.01
 
 
@@ -166,7 +169,7 @@ def test_split_conserves_volume(side):
     from sofle_case.battery import battery_pocket, jst_pocket, jst_wire_channel
     from tests.shared_builds import build_top_cover
     from sofle_case.case import (_encoder_shell, _slide_scoop, _slide_actuator_cavity,
-                                 _foot_recesses)
+                                 _foot_recesses, bottom_skin, snap_bottom_gap)
     from tests.shared_builds import build_canopy
     from sofle_case.snaps import snap_reliefs, snap_barbs
 
@@ -195,7 +198,12 @@ def test_split_conserves_volume(side):
     # matters as in build_bottom_part — a barb fuses onto a rim the reliefs have already opened.
     ref = cast(Part, ref - snap_reliefs())
     ref = cast(Part, ref + snap_barbs())
-    ref = cast(Part, ref - _foot_recesses())   # anti-slip feet, cut LAST into the flat Z=0 face
+    # The blind-port skin is a below-Z=0 body that exists in neither the tray nor the cover: a slab
+    # grown under the parting plane, minus the air gap carved back out under each arm. In build
+    # order (after the snaps) so it caps the ports the reliefs just opened.
+    ref = cast(Part, ref + bottom_skin())
+    ref = cast(Part, ref - snap_bottom_gap())
+    ref = cast(Part, ref - _foot_recesses())   # anti-slip feet, cut LAST into the skin ground
 
     combined = build_top_part(side).volume + build_bottom_part(side).volume
     lost = ref.volume - combined

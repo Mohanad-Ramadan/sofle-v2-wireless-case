@@ -7,7 +7,7 @@ with the tent, so every probe here is taken relative to the local SKIN ground he
 import math
 from build123d import Solid
 from sofle_case import constants as C
-from sofle_case.case import tent_ground_z as skin_ground_z   # flat: the desk face is Z=0
+from sofle_case.case import skin_ground_z   # the blind-port skin's outer (desk) face
 from tests.shared_builds import build_bottom_part
 
 

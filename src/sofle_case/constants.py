@@ -308,16 +308,30 @@ assert FRONT_FACET_RUN < WALL_THICKNESS + SOUTH_WALL_EXTRA - COVER_FUSE_MARGIN, 
 assert COVER_TOP_Z - FRONT_FACET_DROP >= SEAM_LEDGE_Z + 1.0, "front facet toe intrudes on the rabbet skin zone"
 
 # ---------- Flat bottom (no tent) ----------
-# The integrated tent wedge, the seam wave/lens, the front/rear skirts and the blind-port bottom
-# skin were all removed: the case underside is a single planar face at Z=0 and the two clamshell
-# halves part along one flat line at Z=0 all the way round. TENT_ANGLE_DEG / TENT_WEDGE_MIN_H are
-# kept as 0.0 symbols only so case.py's compatibility shims (tent_plane / tent_ground_z /
-# wedge_deep_z, all now Z=0) and any flat-bottom test still resolve. Nothing tilt-derived remains,
-# so nothing divides by tan(angle) or by the (zero) wedge height. The rabbet seam (SEAM_LEDGE_Z,
-# SEAM_SKIN, SEAM_FIT_CLEAR, SEAM_RIM_THK, the lead-ins) is unchanged and still joins the halves.
+# The integrated tent wedge, the seam wave/lens and the front/rear skirts were removed: the case
+# underside is a single planar face and the two clamshell halves part along one flat line at Z=0
+# all the way round. TENT_ANGLE_DEG / TENT_WEDGE_MIN_H are kept as 0.0 symbols only so case.py's
+# compatibility shims (tent_plane / tent_ground_z / wedge_deep_z, all now Z=0) and any flat-bottom
+# test still resolve. Nothing tilt-derived remains, so nothing divides by tan(angle) or by the
+# (zero) wedge height. The rabbet seam (SEAM_LEDGE_Z, SEAM_SKIN, SEAM_FIT_CLEAR, SEAM_RIM_THK, the
+# lead-ins) is unchanged and still joins the halves.
 TENT_ANGLE_DEG   = 0.0   # deg; FLAT BOTTOM — no tent
 TENT_WEDGE_MIN_H = 0.0   # mm; no wedge (flat bottom)
 assert TENT_ANGLE_DEG == 0.0, "flat-bottom build: the tent angle must be 0"
+
+# ---- Blind-port bottom skin (kept from the tented design, re-based flat) ----
+# The 11 snap arms are freed by slots that run out the underside as visible release ports. This
+# closes them from below WITHOUT touching the latch: a solid skin grown DOWN below the flat Z=0
+# underside, held OFF each arm by an air gap so it ties floor-to-rim under the arm rather than
+# arm-to-rim across the slot. The arm keeps its full wall height, so every snap force is unchanged
+# — the cost is paid in height, not force. The port becomes blind: it vents into the gap, invisible
+# from outside. The gap is mandatory (without it the skin fuses to the arm bottom in the print and
+# re-fixes the cantilever). Skin + gap = the whole added height, ≈1.3 mm, and the underside drops
+# from Z=0 to Z=-(BSKIN_GAP + BSKIN_THICK). Full derivation: .omc/specs/deep-dive-bottom-cover-inlay.md
+BSKIN_THICK = 0.8   # mm; solid skin closing the underside (2 layers; a cap backed by the walls).
+#                     The foot seats relocate into it.
+BSKIN_GAP   = 0.5   # mm; air gap between each arm's bottom edge and the skin top. Mandatory —
+#                     it is what keeps the skin off the flexing arm. Not recoverable.
 
 # ---------- Encoder plateau (TOP part, around EC11 rotary encoder) ----------
 # The EC11 body is a ~12 mm box that mounts through the plate's encoder cutout
