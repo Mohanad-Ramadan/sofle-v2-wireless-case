@@ -65,14 +65,14 @@ def test_top_part_z_range(side):
     """TOP is a deep tub whose outer skin runs unbroken to the desk — no mid-wall seam.
 
     Flat bottom + S-spline lens: the skirt carries the outer skin down toward the desk, but the
-    seam cut trims its lower edge to the lens, which pinches to SEAM_LENS_END_Z at front/rear, so
-    the top's deepest point is SEAM_LENS_END_Z (not the full skin ground — the bottom skin shows a
-    hairline below it at the pinch). Above Z=0 nothing moved — the ceiling is the fused bay-canopy
-    ridge, this half's own (the ridge is derived per half, so left tops out 2.76 mm lower)."""
+    seam cut trims its lower edge to the lens, which pinches to SEAM_LENS_FRONT_Z at the nose (the
+    rear is raised), so the top's deepest point is the front pinch. Above Z=0 nothing moved — the
+    ceiling is the fused bay-canopy ridge, this half's own (the ridge is derived per half, so left
+    tops out 2.76 mm lower)."""
     from sofle_case import canopy as CAN
     bb = build_top_part(side).bounding_box()
-    assert abs(bb.min.Z - C.SEAM_LENS_END_Z) < 0.005, \
-        f"skirt floor at {bb.min.Z:.4f}, expected the lens pinch {C.SEAM_LENS_END_Z:.4f}"
+    want = min(C.SEAM_LENS_FRONT_Z, C.SEAM_LENS_REAR_Z)
+    assert abs(bb.min.Z - want) < 0.005, f"skirt floor at {bb.min.Z:.4f}, expected the lens pinch {want:.4f}"
     assert abs(bb.max.Z - CAN.canopy_ridge_top_z(side)) < 0.01
 
 
@@ -174,7 +174,8 @@ def test_split_conserves_volume(side):
     from tests.shared_builds import build_top_cover
     from sofle_case.case import (_encoder_shell, _slide_scoop, _slide_actuator_cavity,
                                  _foot_recesses, bottom_skin, snap_bottom_gap,
-                                 skirt_extension, seam_skirt_tub, _below_seam_cutter)
+                                 skirt_extension, seam_skirt_tub, _below_seam_cutter,
+                                 _bottom_outer_shell)
     from tests.shared_builds import build_canopy
     from sofle_case.snaps import snap_reliefs, snap_barbs
 
@@ -183,7 +184,9 @@ def test_split_conserves_volume(side):
     # Both are added here or the split looks like it invented material. The flat Z=0 parting line
     # carves nothing off the tub above Z=0, so there is no seam recess to account for.
     ref = build_tray(rim_z=C.COVER_TOP_Z, bottom_chamfer=False)
-    ref = cast(Part, ref + skirt_extension(seam_skirt_tub()))
+    # CUT skirt (above the parting only), matching the actual top, so it does not overlap the
+    # below-parting flush band added later — in the real parts the two never touch (top∩bottom=0).
+    ref = cast(Part, ref + cast(Part, skirt_extension(seam_skirt_tub()) - _below_seam_cutter()))
     from sofle_case.canopy import usb_port_cutter
     ref = cast(Part, ref + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     ref = cast(Part, ref + _encoder_shell())
@@ -203,6 +206,10 @@ def test_split_conserves_volume(side):
     # The snap latches: the reliefs are a void cut from the bottom and the barbs are material
     # added to it, so both have to be named here or the net masquerades as seam loss. Order
     # matters as in build_bottom_part — a barb fuses onto a rim the reliefs have already opened.
+    # The flush visible band is a below-Z=0 body that exists in neither the tray nor the cover: it
+    # rides the top's outline a SEAM_REVEAL_H below the parting. Added before the reliefs (as in
+    # build_bottom_part) so the arm slots cut it too.
+    ref = cast(Part, ref + _bottom_outer_shell())
     ref = cast(Part, ref - snap_reliefs())
     ref = cast(Part, ref + snap_barbs())
     # The blind-port skin is a below-Z=0 body that exists in neither the tray nor the cover: a slab
@@ -212,11 +219,10 @@ def test_split_conserves_volume(side):
     ref = cast(Part, ref - snap_bottom_gap())
     ref = cast(Part, ref - _foot_recesses())   # anti-slip feet, cut LAST into the skin ground
 
-    # The S-spline lens carves outer skin off the TOP below the parting line (exposing the inset
-    # bottom as a recess) — material that exists in ref but in neither split half. Measure exactly
-    # what the parting takes off the tub and net it out, or it reads as a huge seam gap.
-    tub = cast(Part, seam_skirt_tub() + skirt_extension(seam_skirt_tub()))
-    recess = tub.volume - cast(Part, tub - _below_seam_cutter()).volume
+    # The S-spline lens carves outer skin off the TOP's TUB below the parting line (the skirt is
+    # already cut above). ref still has the full-tray skin there, so measure what the seam cut takes
+    # off the tub and net it out, or it reads as a huge seam gap.
+    recess = seam_skirt_tub().volume - cast(Part, seam_skirt_tub() - _below_seam_cutter()).volume
 
     combined = build_top_part(side).volume + build_bottom_part(side).volume
     lost = ref.volume - combined - recess

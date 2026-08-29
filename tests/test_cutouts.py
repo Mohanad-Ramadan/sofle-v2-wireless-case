@@ -532,6 +532,7 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # Rebased for the FLAT BOTTOM: the tent wedge and the flared outer band were removed, so the
     # bottom part is the inset floor plate + standoffs − battery − snaps + blind-port skin − feet.
     # 205839.093 -> (flat, no skin) 68011.31 -> (FLOOR_THICKNESS 6.3->6.6, the JST-floor fix) 71012
-    # -> (blind-port skin re-added, grown down a _skin_drop() to hide the snap ports) 88866.126.
+    # -> (blind-port skin re-added, grown down a _skin_drop() to hide the snap ports) 88866.126
+    # -> (flush _bottom_outer_shell band added — the visible swoosh that walks with the top) 90094.98.
     # The test's point is unchanged — the slide cavity is a TOP feature and must not show up here.
-    assert abs(build_bottom_part(side).volume - 88866.126) < 2e-2
+    assert abs(build_bottom_part(side).volume - 90094.98) < 2e-2

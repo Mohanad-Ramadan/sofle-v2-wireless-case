@@ -306,27 +306,75 @@ def _below_seam_cutter() -> Part:
     """Everything BELOW the S-spline parting line, swept across the full width.
 
     Subtracted from the TOP part, it gives the tub skin + skirt their lens lower edge: where the
-    parting climbs the wall (crest), the outer skin is carved away and the INSET bottom case shows
-    behind it as a recessed shadow band; where it pinches to SEAM_LENS_END_Z at front/rear, the
-    skirt survives to the desk and the bottom is hidden. A function of Y alone (every wall gets the
-    same edge). The profile is flat at SEAM_LENS_END_Z (below Z=0) beyond the case, so it never
-    reaches above Z=0 outside the part — no overhang guard needed."""
+    parting climbs the wall the outer skin is carved away and the bottom band shows below it; where
+    it pinches (FRONT_Z at the nose, REAR_Z at the back) the skirt survives and the band tapers.
+    A function of Y alone (every wall gets the same edge). Flat beyond the case at the front (below
+    Z=0) and at the rear (REAR_Z), and there is no part north of the case for the rear run to
+    over-cut, so no overhang guard is needed."""
     depth = C.OUTER_DEPTH
     n = 121
     pts = [(u * depth, C.seam_wave_z(u)) for u in (i / (n - 1) for i in range(n))]
     y_s, y_n = -20.0, depth + 60.0
-    z_end = C.SEAM_LENS_END_Z
+    z_front, z_rear = C.SEAM_LENS_FRONT_Z, C.SEAM_LENS_REAR_Z
     bot = skin_ground_z(0.0) - 20.0
     with BuildSketch(Plane.YZ) as sk:            # sketch u -> case Y, sketch v -> case Z
         with BuildLine():
-            Line((y_s, z_end), (pts[0][0], pts[0][1]))    # south run out to y_s (flat at end_z)
-            Spline(*pts)                                   # the lens curve
-            Line((pts[-1][0], pts[-1][1]), (y_n, z_end))   # north run
-            Line((y_n, z_end), (y_n, bot))
+            Line((y_s, z_front), (pts[0][0], pts[0][1]))   # front run out to y_s (flat at FRONT_Z)
+            Spline(*pts)                                    # the lens curve
+            Line((pts[-1][0], pts[-1][1]), (y_n, z_rear))   # rear run (flat at REAR_Z)
+            Line((y_n, z_rear), (y_n, bot))
             Line((y_n, bot), (y_s, bot))
-            Line((y_s, bot), (y_s, z_end))
+            Line((y_s, bot), (y_s, z_front))
         make_face()
     return _extrude_across_x(sk)
+
+
+@cache
+def tub_outline_face() -> Face:
+    """The TOP case's real outer outline at Z=0, filled — the silhouette the flush band must match.
+
+    Sectioned rather than reconstructed: the outline is not a polygon offset (it carries the +Y
+    relief bump and its corner fillet). OUTER WIRE ONLY — at Z=0 the tub is a ring (``_plate_pocket``
+    took the floor/inner wall), so fill from the outer wire alone for the plan silhouette. Taken at
+    Z=0 from the UN-chamfered tub, the same construction ``skirt_extension`` uses, so the flush band
+    and the top skin share one lateral surface exactly."""
+    tub = seam_skirt_tub()
+    slab = cast(Part, tub & Solid.make_box(400.0, C.OUTER_DEPTH + 200.0, 0.05)
+                .translate((-100.0, -100.0, 0.0)))
+    section = slab.faces().filter_by(Plane.XY).sort_by(Axis.Z)[0]
+    return cast(Face, make_face(section.outer_wire()))
+
+
+def bottom_deep_z() -> float:
+    """Z of the bottom part's deepest point — the blind-port skin / flush-band ground (flat)."""
+    return skin_ground_z(0.0)
+
+
+def _bottom_outer_shell() -> Part:
+    """The band of bottom case that SHOWS, FLUSH with the top: the top's own outline carried down
+    to the desk, its top edge SEAM_REVEAL_H below the parting line so a constant reveal gap runs
+    between the two shells (the lens). It rides ``tub_outline_face()`` — the top's own sectioned
+    silhouette — so the two shells share one lateral surface and read as one body split along the
+    wave. Where the band would be shallower than the reveal (the pinched nose) the first cut takes
+    all of it and nothing is added: the band tapers out on its own.
+
+    ONE PRISM, TWO CUTS: a plain vertical extrusion of the outline (so it cannot ripple), minus the
+    inner offset that keeps it a band; then intersected with the seam cutter dropped SEAM_REVEAL_H
+    (opens the reveal), then trimmed to the skin ground (lands on the desk)."""
+    rim_outer = C.PCB_XY_CLEARANCE + C.SEAM_RIM_THK
+    face = tub_outline_face()
+    z_bot = bottom_deep_z() - 1.0
+    z_top = C.SEAM_LEDGE_Z
+    # Stock starts at the LEDGE, not Z=0: the parting crests at SEAM_WAVE_CREST_Z, so the band has
+    # to reach (crest - SEAM_REVEAL_H) above Z=0. DIRECTION EXPLICIT — the face normal points -Z.
+    stock = cast(Part, extrude(cast(Part, Pos(0, 0, z_top) * face),
+                               amount=z_top - z_bot, dir=(0.0, 0.0, -1.0)))
+    band = cast(Part, stock - offset_extruded(rim_outer, z_bot - 1.0, z_top + 1.0))
+    # Open the reveal: keep only what is under (parting - SEAM_REVEAL_H). The cutter IS "everything
+    # below the line", so intersect (the two edges are the same curve — a constant gap all round).
+    band = cast(Part, band & _below_seam_cutter().translate((0.0, 0.0, -C.SEAM_REVEAL_H)))
+    # Trim to the desk last, once, so the underside is a single planar face at the skin ground.
+    return cast(Part, band - _below_plane_cutter(*_skin_ground_plane()))
 
 
 @cache
@@ -424,9 +472,11 @@ def build_bottom_part(side: Side) -> Part:
         raise ValueError(f"side must be 'left' or 'right', got {side!r}")
 
     bottom = _plate_envelope()
-    # Flat bottom: the part IS the inset floor plate (Z 0 → SEAM_LEDGE_Z). No tent wedge and no
-    # visible outer band — the plate's outer face is flush behind the tub skin and its underside
-    # is the flat Z=0 desk contact.
+    # The band that SHOWS: flush with the top's outer skin (rides tub_outline_face), it walks with
+    # the top a constant SEAM_REVEAL_H below the parting line — the lens. It fuses onto the plate
+    # rim and is added BEFORE the snaps so each arm's relief slot cuts the whole wall (plate + band)
+    # in one go, keeping the arm a vertical-axis cantilever.
+    bottom = cast(Part, bottom + _bottom_outer_shell())
     for hx, hy in C.MOUNTING_HOLES:
         cx, cy = C.pcb_to_case(hx, hy)
         bottom = cast(Part, bottom + stepped_standoff(at=(cx, cy)))

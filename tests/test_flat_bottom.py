@@ -67,6 +67,7 @@ def test_halves_are_single_solids_and_bottom_is_the_plate():
     assert bb.max.Z <= C.PLATE_SEAT_Z + 1e-3, f"bottom reaches Z={bb.max.Z:.4f}, above the plate seat"
     tb = t.bounding_box()
     # the top's outer skirt descends to hide the bottom skin, its lower edge cut to the S-spline
-    # lens, which pinches to SEAM_LENS_END_Z at front/rear (the top's deepest point)
-    assert abs(tb.min.Z - C.SEAM_LENS_END_Z) < 1e-3, f"top skirt at Z={tb.min.Z:.4f}, not the lens pinch"
+    # lens; the front pinch (SEAM_LENS_FRONT_Z) is the lowest the top reaches (rear is raised)
+    assert abs(tb.min.Z - min(C.SEAM_LENS_FRONT_Z, C.SEAM_LENS_REAR_Z)) < 1e-3, \
+        f"top skirt at Z={tb.min.Z:.4f}, not the lens front pinch"
     assert tb.max.Z > C.COVER_TOP_Z, "the canopy/encoder should rise above the cover top"
