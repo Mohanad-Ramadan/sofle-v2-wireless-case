@@ -12,7 +12,8 @@ import math
 from functools import cache
 from typing import Literal, cast
 from build123d import (Part, Face, mirror, Plane, Pos, Rot, fillet, chamfer, Axis, BuildPart,
-                       BuildSketch, BuildLine, Locations, Sphere, Solid, Box, Location, GeomType, extrude, make_face,
+                       BuildSketch, BuildLine, Line, Spline, Locations, Sphere, Solid, Box, Location,
+                       GeomType, extrude, make_face,
                        RectangleRounded, Rectangle, Polyline, revolve, loft, Circle)
 from OCP.Standard import Standard_Failure
 from OCP.ShapeFix import ShapeFix_Shape
@@ -287,6 +288,45 @@ def skirt_extension(tub: Part) -> Part:
     # DIRECTION GIVEN EXPLICITLY: the section face's own normal points at -Z, so a positive
     # `amount` would build the band UPWARD through the tub. Force it down.
     return cast(Part, extrude(face, amount=abs(z_bot), dir=(0.0, 0.0, -1.0)))
+
+
+def _seam_z_at(y: float) -> float:
+    """The parting line's absolute Z at a given case-Y — the S-spline lens edge (style 3)."""
+    return C.seam_wave_z(y / C.OUTER_DEPTH)
+
+
+def _extrude_across_x(sk: BuildSketch) -> Part:
+    """Sweep a Y-Z profile sketch across the full width of the case (its own +X normal)."""
+    face = sk.sketch.faces()[0]  # type: ignore[union-attr]
+    solid = extrude(face, amount=C.OUTER_WIDTH + 120.0)
+    return cast(Part, solid.translate((-60.0, 0.0, 0.0)))
+
+
+def _below_seam_cutter() -> Part:
+    """Everything BELOW the S-spline parting line, swept across the full width.
+
+    Subtracted from the TOP part, it gives the tub skin + skirt their lens lower edge: where the
+    parting climbs the wall (crest), the outer skin is carved away and the INSET bottom case shows
+    behind it as a recessed shadow band; where it pinches to SEAM_LENS_END_Z at front/rear, the
+    skirt survives to the desk and the bottom is hidden. A function of Y alone (every wall gets the
+    same edge). The profile is flat at SEAM_LENS_END_Z (below Z=0) beyond the case, so it never
+    reaches above Z=0 outside the part — no overhang guard needed."""
+    depth = C.OUTER_DEPTH
+    n = 121
+    pts = [(u * depth, C.seam_wave_z(u)) for u in (i / (n - 1) for i in range(n))]
+    y_s, y_n = -20.0, depth + 60.0
+    z_end = C.SEAM_LENS_END_Z
+    bot = skin_ground_z(0.0) - 20.0
+    with BuildSketch(Plane.YZ) as sk:            # sketch u -> case Y, sketch v -> case Z
+        with BuildLine():
+            Line((y_s, z_end), (pts[0][0], pts[0][1]))    # south run out to y_s (flat at end_z)
+            Spline(*pts)                                   # the lens curve
+            Line((pts[-1][0], pts[-1][1]), (y_n, z_end))   # north run
+            Line((y_n, z_end), (y_n, bot))
+            Line((y_n, bot), (y_s, bot))
+            Line((y_s, bot), (y_s, z_end))
+        make_face()
+    return _extrude_across_x(sk)
 
 
 @cache
@@ -1072,6 +1112,11 @@ def build_top_part(side: Side) -> Part:
     # band just descends straight to the desk, outboard of the inset bottom skin. Pass the
     # UN-chamfered tub (the section is taken at Z=0, where the mouth chamfer lives).
     top = cast(Part, top + skirt_extension(tub))
+    # Carve the S-spline lens: remove the outer skin below the parting line so the inset bottom
+    # case shows as a recessed shadow band where the curve climbs the wall (style 3). Done before
+    # the canopy/cover fuse (all above Z=0) and before the catch pockets (cut last, so no catch
+    # survives on skin the parting has taken away).
+    top = cast(Part, top - _below_seam_cutter())
     top = cast(Part, top + build_top_cover(fuse_margin=C.COVER_FUSE_MARGIN))
     top = apply_encoder_cover_style(top, side)
     top = cast(Part, top + build_canopy(side=side))

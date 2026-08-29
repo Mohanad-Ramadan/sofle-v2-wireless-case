@@ -64,15 +64,15 @@ def test_split_parts_are_valid_single_solids(side):
 def test_top_part_z_range(side):
     """TOP is a deep tub whose outer skin runs unbroken to the desk — no mid-wall seam.
 
-    Flat bottom: the tub bottoms at Z=0, but the skirt extension carries the outer skin on down to
-    the skin ground (Z=-1.3) to hide the blind-port bottom skin, so the top's deepest point is the
-    skin ground. Above Z=0 nothing moved — the ceiling is the fused bay-canopy ridge, this half's
-    own (the ridge is derived per half, so left tops out 2.76 mm lower than right)."""
+    Flat bottom + S-spline lens: the skirt carries the outer skin down toward the desk, but the
+    seam cut trims its lower edge to the lens, which pinches to SEAM_LENS_END_Z at front/rear, so
+    the top's deepest point is SEAM_LENS_END_Z (not the full skin ground — the bottom skin shows a
+    hairline below it at the pinch). Above Z=0 nothing moved — the ceiling is the fused bay-canopy
+    ridge, this half's own (the ridge is derived per half, so left tops out 2.76 mm lower)."""
     from sofle_case import canopy as CAN
-    from sofle_case.case import skin_ground_z
     bb = build_top_part(side).bounding_box()
-    assert abs(bb.min.Z - skin_ground_z(0.0)) < 0.005, \
-        f"skirt floor at {bb.min.Z:.4f}, expected the skin ground {skin_ground_z(0.0):.4f}"
+    assert abs(bb.min.Z - C.SEAM_LENS_END_Z) < 0.005, \
+        f"skirt floor at {bb.min.Z:.4f}, expected the lens pinch {C.SEAM_LENS_END_Z:.4f}"
     assert abs(bb.max.Z - CAN.canopy_ridge_top_z(side)) < 0.01
 
 
@@ -84,10 +84,11 @@ def test_pocket_mouth_has_starter_chamfer():
     from build123d import Solid
 
     top = build_top_part("right")
-    # Flat bottom: the mouth is the pocket's chamfered edge at Z=0 everywhere, so no wave-derived
-    # station is needed. Probe a PLAIN −X wall span south of the MCU hill (which owns ~y=72..104)
-    # and south of the +Y relief bump (y=115), where the inner face is the nominal offset.
-    y = 60.0
+    # S-spline lens: the mouth-at-Z=0 chamfer only survives where the parting line is BELOW Z=0
+    # (the pinch regions); where the lens climbs the wall the outer skin is cut away and Z=0 is
+    # open. So probe a PLAIN −X wall span in the south pinch (parting < 0), south of the MCU hill
+    # (~y=72..104) — y=42 has parting ≈ −0.6 and a plain wall.
+    y = 42.0
     depth = 3.0
     # −X wall: outer face, then SEAM_SKIN inward = seated skirt-inner face.
     skin_inner = C.pcb_to_case(0, 0)[0] - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE + C.SEAM_SKIN
@@ -173,7 +174,7 @@ def test_split_conserves_volume(side):
     from tests.shared_builds import build_top_cover
     from sofle_case.case import (_encoder_shell, _slide_scoop, _slide_actuator_cavity,
                                  _foot_recesses, bottom_skin, snap_bottom_gap,
-                                 skirt_extension, seam_skirt_tub)
+                                 skirt_extension, seam_skirt_tub, _below_seam_cutter)
     from tests.shared_builds import build_canopy
     from sofle_case.snaps import snap_reliefs, snap_barbs
 
@@ -211,8 +212,14 @@ def test_split_conserves_volume(side):
     ref = cast(Part, ref - snap_bottom_gap())
     ref = cast(Part, ref - _foot_recesses())   # anti-slip feet, cut LAST into the skin ground
 
+    # The S-spline lens carves outer skin off the TOP below the parting line (exposing the inset
+    # bottom as a recess) — material that exists in ref but in neither split half. Measure exactly
+    # what the parting takes off the tub and net it out, or it reads as a huge seam gap.
+    tub = cast(Part, seam_skirt_tub() + skirt_extension(seam_skirt_tub()))
+    recess = tub.volume - cast(Part, tub - _below_seam_cutter()).volume
+
     combined = build_top_part(side).volume + build_bottom_part(side).volume
-    lost = ref.volume - combined
+    lost = ref.volume - combined - recess
     assert lost > 0, "seam added material (double-count) — must only remove clearance"
     assert lost / ref.volume < 0.012, f"seam gap {lost:.1f} exceeds the rabbet clearance"
 

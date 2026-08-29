@@ -333,6 +333,58 @@ BSKIN_THICK = 0.8   # mm; solid skin closing the underside (2 layers; a cap back
 BSKIN_GAP   = 0.5   # mm; air gap between each arm's bottom edge and the skin top. Mandatory —
 #                     it is what keeps the skin off the flexing arm. Not recoverable.
 
+# ---- S-spline recessed lens (parting-line wave, ABSOLUTE Z) ----
+# The top skirt's lower edge follows this S-curve in absolute local Z (no tilt): flat near the
+# skin ground at front and rear, climbing to a crest up the wall in the middle, so a lens-shaped
+# band of the INSET bottom case shows as a recessed shadow (style 3). Angle-free — the old tented
+# wave's ÷tan(angle) tail and wedge-height band fractions are gone; the Kumaraswamy climb is flat
+# at both ends by construction, so the raw curve is already smooth (no smoothing solver needed).
+SEAM_LENS_SOUTH_FRAC = 0.25   # fraction of OUTER_DEPTH the parting rides the desk before climbing
+SEAM_WAVE_CREST_U    = 0.67   # where the crest sits, as a fraction of OUTER_DEPTH
+SEAM_WAVE_CREST_Z    = 3.9    # mm, local Z; the crest height up the wall
+SEAM_LENS_END_Z      = -(BSKIN_GAP + BSKIN_THICK) + 0.3   # -1.0; parting pinches to just above the
+#                                                          desk at front/rear (bottom skin keeps
+#                                                          sole ground contact; hairline end reveal)
+SEAM_WAVE_CLIMB_A    = 2.06   # Kumaraswamy climb exponents (flat at both ends needs a>1, b>1)
+SEAM_WAVE_CLIMB_B    = 1.84
+SEAM_WAVE_SHOULDER   = 0.65   # tail: fraction of the post-crest run eased before the straight run
+SEAM_WAVE_LAP_MIN    = 2.0    # mm; rabbet lap that must survive under the crest
+assert SEAM_LENS_END_Z < 0.0 < SEAM_WAVE_CREST_Z, "the lens must climb from below Z=0 up the wall"
+assert SEAM_WAVE_CREST_Z <= SEAM_LEDGE_Z - SEAM_WAVE_LAP_MIN - 0.02, (
+    f"lens crest {SEAM_WAVE_CREST_Z} eats the rabbet lap; ceiling is "
+    f"{SEAM_LEDGE_Z - SEAM_WAVE_LAP_MIN - 0.02:.2f} (SEAM_LEDGE_Z - SEAM_WAVE_LAP_MIN - slop)")
+
+_SEAM_WAVE_TAIL_M = 1.0 / (1.0 - SEAM_WAVE_SHOULDER / 2.0)   # the straight-run gradient (scale-free)
+
+
+def _seam_wave_climb_shape(t: float) -> float:
+    """Kumaraswamy S: 1 - (1 - t^a)^b on t in [0,1]; zero slope at both ends when a>1, b>1."""
+    t = min(1.0, max(0.0, t))
+    return 1.0 - (1.0 - t ** SEAM_WAVE_CLIMB_A) ** SEAM_WAVE_CLIMB_B
+
+
+def _seam_wave_drop(s: float) -> float:
+    """Tail shape on s in [0,1]: gradient ramps 0->m over the shoulder, then holds — a shoulder
+    then a straight run. Returns the fraction of the crest->end fall consumed by station s."""
+    if s <= SEAM_WAVE_SHOULDER:
+        return _SEAM_WAVE_TAIL_M * s * s / (2.0 * SEAM_WAVE_SHOULDER)
+    return _SEAM_WAVE_TAIL_M * (s - SEAM_WAVE_SHOULDER / 2.0)
+
+
+def seam_wave_z(u: float) -> float:
+    """Local Z (absolute mm) of the parting line at u = caseY / OUTER_DEPTH. Angle-free.
+
+    Three stretches: flat at SEAM_LENS_END_Z until SEAM_LENS_SOUTH_FRAC, a Kumaraswamy climb to
+    (SEAM_WAVE_CREST_U, SEAM_WAVE_CREST_Z), then a shoulder-then-straight tail back to
+    SEAM_LENS_END_Z at u=1. Flat at every join, so a plain spline through its samples has no ring."""
+    if u <= SEAM_LENS_SOUTH_FRAC:
+        return SEAM_LENS_END_Z
+    if u <= SEAM_WAVE_CREST_U:
+        t = (u - SEAM_LENS_SOUTH_FRAC) / (SEAM_WAVE_CREST_U - SEAM_LENS_SOUTH_FRAC)
+        return SEAM_LENS_END_Z + (SEAM_WAVE_CREST_Z - SEAM_LENS_END_Z) * _seam_wave_climb_shape(t)
+    s = (u - SEAM_WAVE_CREST_U) / (1.0 - SEAM_WAVE_CREST_U)
+    return SEAM_WAVE_CREST_Z - (SEAM_WAVE_CREST_Z - SEAM_LENS_END_Z) * _seam_wave_drop(s)
+
 # ---------- Encoder plateau (TOP part, around EC11 rotary encoder) ----------
 # The EC11 body is a ~12 mm box that mounts through the plate's encoder cutout
 # (~12.7 mm). On the sandwich TOP part a single-body PLATEAU caps it: one low

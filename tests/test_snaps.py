@@ -12,12 +12,7 @@ import pytest
 from build123d import Solid
 
 from sofle_case import constants as C
-from sofle_case.case import tent_ground_z
-
-
-def _seam_z_at(y: float) -> float:
-    """Flat bottom: the parting line is a single flat line at Z=0 everywhere."""
-    return 0.0
+from sofle_case.case import tent_ground_z, _seam_z_at   # _seam_z_at = the S-spline lens parting line
 from sofle_case.snaps import (
     _corner_s_to_xy,
     _slot_v0,
