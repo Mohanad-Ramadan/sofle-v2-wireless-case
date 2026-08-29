@@ -351,18 +351,18 @@ SEAM_LENS_FRONT_Z = -(BSKIN_GAP + BSKIN_THICK) + 0.3   # -1.0; front pinch, just
 SEAM_LENS_REAR_Z  = 1.6    # rear pinch — RAISED off the desk so the lens stays visible from behind
 #                            (set to SEAM_LENS_FRONT_Z for a symmetric front/rear pinch)
 # --- crest (the tallest point of the band) ---
-SEAM_WAVE_CREST_U = 0.63    # where the crest sits along the depth (keep it clear of the snap arms;
+SEAM_WAVE_CREST_U = 0.56    # where the crest sits along the depth (keep it clear of the snap arms;
 #                             they cluster at u≈0.13-0.44 and u≈0.80-0.98, leaving a gap here)
-SEAM_WAVE_CREST_Z = 3.9     # crest height up the wall — the tallest the band gets (ceiling ~4.58)
+SEAM_WAVE_CREST_Z = 4.0     # crest height up the wall — the tallest the band gets (ceiling ~4.58)
 # --- where the flat runs hand over to the curve ---
-SEAM_LENS_SOUTH_FRAC = 0.25   # front flat run holds at FRONT_Z until here, then the climb starts
-SEAM_LENS_NORTH_FRAC = 0.90   # rear flat run holds at REAR_Z from here to the rear edge
+SEAM_LENS_SOUTH_FRAC = 0.30   # front flat run holds at FRONT_Z until here, then the climb starts
+SEAM_LENS_NORTH_FRAC = 0.99   # rear flat run holds at REAR_Z from here to the rear edge
 # --- curve shapes ---
-SEAM_WAVE_CLIMB_A = 2.06   # front->crest climb: raise for a lazier, later start (flat needs a>1)
-SEAM_WAVE_CLIMB_B = 1.84   # front->crest climb: raise for a longer, flatter arrival at the crest
+SEAM_WAVE_CLIMB_A = 1.06   # front->crest climb: raise for a lazier, later start (flat needs a>1)
+SEAM_WAVE_CLIMB_B = 2.84   # front->crest climb: raise for a longer, flatter arrival at the crest
 SEAM_WAVE_SHOULDER = 0.65  # crest->rear tail: fraction eased before it settles to a straight descent
 # --- the reveal (gap between the two shells) ---
-SEAM_REVEAL_H = 1.5        # mm; constant vertical gap from the parting line down to the flush band
+SEAM_REVEAL_H = 1.0        # mm; constant vertical gap from the parting line down to the flush band
 # --- guard limit ---
 SEAM_WAVE_LAP_MIN = 2.0    # mm; rabbet lap that must survive under the crest (do not lower blindly)
 
