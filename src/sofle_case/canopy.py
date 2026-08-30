@@ -14,18 +14,15 @@ X width (case Y, south → north):
              ends, no crease) up to the flat roof. Reaches full height ``CANOPY_RAMP_TOP_OLED_GAP``
              before the OLED pins; the whole south bay is empty (PCB-level) so the low foot clears.
   • Roof   — FLAT at ``CANOPY_RIDGE_TOP_Z`` over the MCU (clears the USB-C stack).
-  • North / West — VERTICAL walls landing at the chamfer FIRST point (chamfer EXPOSED); the
-             NW corner is ROUNDED to the case's own corner radius (``_round_nw_corner``). The
-             west wall's top shoulder carries a drafted facet cut by a swept boolean, NOT a 3-D
-             edge chamfer (``_chamfer_west_top`` — an edge chamfer cannot survive the ramp
-             spline's density). The USB-C port is cut
-             through the north wall (required — the plug must pass; the jack itself stops
-             0.57 mm short of the wall's inner face, see C.USB_JACK_Y_PROTRUDE). The wall's
-             thickness is DERIVED, not chosen — see CANOPY_NORTH_WALL.
-  • East   — mirrors the west: the east top shoulder now carries the SAME swept drafted facet
-             (``_chamfer_east_top``) as the west, so the roof's two shoulders read as one
-             continuous chamfered ridge. The lower east wall remains the plain vertical
-             switch-column boundary.
+  • North / West / East — VERTICAL walls landing at the chamfer FIRST point (chamfer
+             EXPOSED); BOTH north corners (NW + NE) are ROUNDED to the case's own corner radius
+             (``_round_nw_corner`` / ``_round_ne_corner``). Both top shoulders carry a drafted
+             facet cut by a swept boolean, NOT a 3-D edge chamfer (``_chamfer_west_top`` /
+             ``_chamfer_east_top`` — an edge chamfer cannot survive the ramp spline's density).
+             The USB-C port is cut through the north wall (required — the plug must pass; the jack
+             itself stops 0.57 mm short of the wall's inner face, see C.USB_JACK_Y_PROTRUDE). The
+             wall's thickness is DERIVED, not chosen — see CANOPY_NORTH_WALL. The lower east
+             wall remains the plain vertical switch-column boundary below its chamfered shoulder.
 
 There is deliberately NO reset poke-hole. The roof over RSW1 is unbroken: a bore there could not
 be relocated into the BOTTOM part (it would end at the PCB underside, Z=PCB_SEAT_Z, not at the
@@ -677,6 +674,26 @@ def _round_nw_corner(part: Part, x_w: float, y_n: float, r: float, z0: float, z1
     return cast(Part, part - sliver)
 
 
+def _round_ne_corner(part: Part, x_e: float, y_n: float, r: float, z0: float, z1: float) -> Part:
+    """Round the vertical NE corner (east wall ∩ north wall) to radius ``r`` by boolean —
+    the mirror of ``_round_nw_corner``.
+
+    The NE corner was historically left sharp while the NW was rounded to the case's own
+    corner radius. Rounding both makes the roof read as one continuous north edge rather
+    than a one-sided treatment, and it keeps the two top corners speaking the same language
+    as the tray's outer corners. Robust where a 3-D ``fillet`` fails for the same reason as
+    the NW.
+
+    The geometry mirrors NW: the sliver is the square ``[x_e-r, x_e] × [y_n-r, y_n]`` minus
+    the quarter-cylinder centred at its SW corner (``x_e-r, y_n-r``), i.e. the area outside
+    the arc at the outer NE corner."""
+    h = z1 - z0
+    box = cast(Part, Solid.make_box(r, r, h).translate((x_e - r, y_n - r, z0)))
+    cyl = cast(Part, Solid.make_cylinder(r, h).translate((x_e - r, y_n - r, z0)))
+    sliver = cast(Part, box - cyl)                    # the sharp corner outside the arc
+    return cast(Part, part - sliver)
+
+
 # How far beyond the wall face the chamfer cutter starts. Purely to avoid a coincident-face
 # boolean at the wall (the cutter's own boundary landing exactly on the wall it cuts); the
 # extra reach reduces to air, so any value > 0 gives the same result.
@@ -975,12 +992,13 @@ def build_canopy(hollow: bool = True, side: str = "right", puzzle: bool = True) 
 
     The ramp foot merges tangentially into the cover surface (``CANOPY_FOOT_Z``) — no tongue;
     the body base drops to ``CANOPY_FUSE_BASE_Z`` so it overlaps the cover/walls for a clean
-    union. Its −X / +Y walls land at the chamfer FIRST point (``CANOPY_WEST_OUTER_X`` /
-    ``CANOPY_NORTH_OUTER_Y``), chamfer EXPOSED; the NW corner is rounded to the case's own
-    corner radius (``CANOPY_CORNER_R``) and BOTH top shoulders (west + east) carry a swept
-    drafted facet (``_chamfer_west_top`` / ``_chamfer_east_top``) of the same 2:1 style.
-    ``hollow=False`` returns the solid envelope; ``hollow=True`` (default) the
-    printed shell. ``case.build_top_part`` adds the result onto the TOP.
+    union. Its −X / +Y / +X walls land at the chamfer FIRST point (``CANOPY_WEST_OUTER_X`` /
+    ``CANOPY_NORTH_OUTER_Y`` / ``CANOPY_EAST_X``), chamfer EXPOSED; BOTH north corners (NW +
+    NE) are rounded to the case's own corner radius (``CANOPY_CORNER_R``) and BOTH top
+    shoulders (west + east) carry a swept drafted facet (``_chamfer_west_top`` /
+    ``_chamfer_east_top``) of the same 2:1 style. ``hollow=False`` returns the solid envelope;
+    ``hollow=True`` (default) the printed shell. ``case.build_top_part`` adds the result onto
+    the TOP.
 
     ``side`` sets BOTH the ridge height (``canopy_ridge_top_z``) and the USB port band
     (``canopy_usb_z``) — the two halves carry the MCU in opposite orientations, so their jacks
@@ -998,6 +1016,7 @@ def build_canopy(hollow: bool = True, side: str = "right", puzzle: bool = True) 
                      north_chamfer=canopy_north_chamfer(side),
                      spline_range=ramp_span)
     body = _round_nw_corner(body, x_w, y_n, CANOPY_CORNER_R, z_base - 0.1, z_ridge + 0.1)
+    body = _round_ne_corner(body, x_e, y_n, CANOPY_CORNER_R, z_base - 0.1, z_ridge + 0.1)
     # Facet BOTH top shoulders — west and east — on the solid, before hollowing. East was
     # historically left sharp; it now carries the same 2:1 drafted facet as the west so the
     # roof reads as one continuous chamfered ridge rather than a one-sided shoulder.
