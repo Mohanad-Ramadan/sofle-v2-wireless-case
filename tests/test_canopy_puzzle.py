@@ -838,7 +838,13 @@ def test_the_east_arris_is_broken_at_most_once_per_half(side, bare, cut, segs):
     wall — so this test derives what it expects from the strokes instead of assuming one. An
     UNCUT arris where a stroke does reach it, and a cut one where none does, both fail; which half
     is which is pinned separately, in
-    ``test_the_pair_keeps_exactly_one_east_break_and_the_amplitude_is_what_cost_the_other``."""
+    ``test_the_pair_keeps_exactly_one_east_break_and_the_amplitude_is_what_cost_the_other``.
+
+    EAST is now chamfered like the west (``_chamfer_east_top``), so a stroke that runs past the
+    east wall FADES over the 1.2 mm × 2.4 mm facet rather than notching a sharp arris. The flat
+    roof just inboard of the facet top line is still cut, but the chamfer face itself is not —
+    which is the same terminus the west strokes have. The probe therefore sits on the chamfer
+    slope (``EAST_X - 0.4``) where a sharp notch would show and a fade shows nothing."""
     probe_x = CAN.CANOPY_EAST_X - 0.4
     z_ridge = CAN.canopy_ridge_top_z(side)
     breakers = [i for i, seg in enumerate(segs[side])
@@ -863,17 +869,15 @@ def test_the_east_arris_is_broken_at_most_once_per_half(side, bare, cut, segs):
             runs[-1].append(y)
         else:
             runs.append([y])
-    assert len(runs) == len(breakers), (
-        f"{side}: the east arris is cut in {len(runs)} places "
-        f"({[(r[0], r[-1]) for r in runs]}), but {len(breakers)} stroke(s) reach it"
+    # East now carries the same drafted facet as the west, so the chamfer face itself is NOT
+    # notched — a stroke past the wall fades over it like the west strokes do. The flat roof
+    # just inboard of the top line is still cut, but this probe sits on the slope to verify
+    # the facade stays intact.
+    assert len(runs) == 0, (
+        f"{side}: the east chamfer face is notched in {len(runs)} place(s) "
+        f"({[(r[0], r[-1]) for r in runs]}); with the east facet the groove should fade, "
+        f"not cut the chamfer (stroke(s) past the wall: {breakers})"
     )
-
-    # ...and it is the stroke that reaches the wall which did it, at the Y where it crosses.
-    for i, run in zip(breakers, runs):
-        y_expect = _y_at_x(segs[side][i], CAN.CANOPY_EAST_X)
-        y_mid = (run[0] + run[-1]) / 2
-        assert abs(y_mid - y_expect) < 2 * CAN.CANOPY_PUZZLE_W, \
-            f"{side}: the notch sits at y≈{y_mid:.2f}, line {i} crosses at {y_expect:.2f}"
 
 
 def test_strokes_do_not_detonate_the_mesh():

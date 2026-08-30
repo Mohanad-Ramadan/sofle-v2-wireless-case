@@ -22,7 +22,10 @@ X width (case Y, south → north):
              through the north wall (required — the plug must pass; the jack itself stops
              0.57 mm short of the wall's inner face, see C.USB_JACK_Y_PROTRUDE). The wall's
              thickness is DERIVED, not chosen — see CANOPY_NORTH_WALL.
-  • East   — plain vertical wall on the switch-column boundary.
+  • East   — mirrors the west: the east top shoulder now carries the SAME swept drafted facet
+             (``_chamfer_east_top``) as the west, so the roof's two shoulders read as one
+             continuous chamfered ridge. The lower east wall remains the plain vertical
+             switch-column boundary.
 
 There is deliberately NO reset poke-hole. The roof over RSW1 is unbroken: a bore there could not
 be relocated into the BOTTOM part (it would end at the PCB underside, Z=PCB_SEAT_Z, not at the
@@ -674,19 +677,20 @@ def _round_nw_corner(part: Part, x_w: float, y_n: float, r: float, z0: float, z1
     return cast(Part, part - sliver)
 
 
-# How far WEST of the wall face the chamfer cutter starts. Purely to avoid a coincident-face
-# boolean at x_w (the cutter's own boundary landing exactly on the wall it cuts); the extra
-# reach reduces to air, so any value > 0 gives the same result.
+# How far beyond the wall face the chamfer cutter starts. Purely to avoid a coincident-face
+# boolean at the wall (the cutter's own boundary landing exactly on the wall it cuts); the
+# extra reach reduces to air, so any value > 0 gives the same result.
 _WEST_CHAMFER_PAD = 1.0
+_EAST_CHAMFER_PAD = 1.0
 
 
 def _west_chamfer_section(roof: list[tuple[float, float]], k: float, v: float,
-                          z_ceil: float) -> Face:
-    """One loft section for ``_chamfer_west_top``: the Y–Z region ABOVE the roofline pushed DOWN
-    by ``k * v_eff(y)``, closed off at ``z_ceil``.
+                           z_ceil: float) -> Face:
+    """One loft section for the shoulder chamfer cutters: the Y–Z region ABOVE the roofline
+    pushed DOWN by ``k * v_eff(y)``, closed off at ``z_ceil``.
 
     ``v_eff`` clamps the vertical leg to the wall's own height above the cover surface, so the
-    facet fades to nothing at the ramp foot where the west wall is only 1 mm tall — without it
+    facet fades to nothing at the ramp foot where the wall is only 1 mm tall — without it
     the cut would eat the fuse overlap between MAIN_RIM_Z and COVER_TOP_Z. The ramp is drawn as
     a real ``Spline`` through the SAME points as the body's roofline, which is what makes this
     cutter track the body surface at any ``CANOPY_RAMP_SAMPLES``."""
@@ -714,8 +718,8 @@ def _west_chamfer_section(roof: list[tuple[float, float]], k: float, v: float,
 def _chamfer_west_top(part: Part, x_w: float, z_ridge: float,
                       chamfer_v: float, chamfer_h: float) -> Part:
     """Cut the drafted facet on the WEST top shoulder (roof/ramp ↔ west wall) so the tall west
-    side carries the same facet style as the case walls. The EAST top edge (switch-column
-    boundary) is left sharp on purpose. Done on the SOLID envelope, before hollowing, where
+    side carries the same facet style as the case walls. Mirrored by ``_chamfer_east_top``
+    on the east side. Done on the SOLID envelope, before hollowing, where
     there is full material below the cut; the cavity is set in one wall thickness so it never
     reaches it.
 
@@ -748,6 +752,39 @@ def _chamfer_west_top(part: Part, x_w: float, z_ridge: float,
     # Never leave this shoulder hard SILENTLY — the whole point of replacing the edge chamfer.
     assert part.volume - out.volume > 1.0, \
         f"west top shoulder facet removed no material (z_ridge={z_ridge})"
+    return out
+
+
+def _chamfer_east_top(part: Part, x_e: float, z_ridge: float,
+                      chamfer_v: float, chamfer_h: float) -> Part:
+    """Cut the drafted facet on the EAST top shoulder (roof/ramp ↔ east wall) — the mirror
+    of ``_chamfer_west_top``.
+
+    The east wall is the switch-column boundary; its top edge was historically left sharp
+    while the west shoulder carried the drafted facet. This adds the same 2:1 facet
+    (``chamfer_v`` vertical, ``chamfer_h`` inboard) to the east side so both shoulders
+    read as one continuous drafted roofline.
+
+    A BOOLEAN, not a 3-D edge chamfer, for the same reason as the west: OCC rejects an
+    edge chamfer once the ramp ``Spline`` density grows, and the ruled-loft cutter tracks
+    the roofline at any ``CANOPY_RAMP_SAMPLES``. The east wall is thinner
+    (``CANOPY_ROOF_WALL=1.5`` vs ``CANOPY_WEST_WALL=4.0``), so the remaining wall at the
+    rim is only ``CANOPY_ROOF_WALL - chamfer_h`` (≈0.3 mm at ``h=1.2``) — thin but
+    positive; the cutter still leaves material and the cavity is one wall thickness
+    inset so it never reaches the facet."""
+    roof = _roofline(z_ridge)
+    z_ceil = z_ridge + 5.0
+    k_east = (_EAST_CHAMFER_PAD + chamfer_h) / chamfer_h
+    sections = [Pos(x_e + _EAST_CHAMFER_PAD, 0, 0) * _west_chamfer_section(
+                    roof, k_east, chamfer_v, z_ceil),
+                Pos(x_e - chamfer_h, 0, 0) * _west_chamfer_section(
+                    roof, 0.0, chamfer_v, z_ceil)]
+    with BuildPart() as bp:
+        loft(sections, ruled=True)
+    assert bp.part is not None
+    out = cast(Part, part - cast(Part, bp.part))
+    assert part.volume - out.volume > 0.8, \
+        f"east top shoulder facet removed no material (z_ridge={z_ridge})"
     return out
 
 
@@ -940,7 +977,8 @@ def build_canopy(hollow: bool = True, side: str = "right", puzzle: bool = True) 
     the body base drops to ``CANOPY_FUSE_BASE_Z`` so it overlaps the cover/walls for a clean
     union. Its −X / +Y walls land at the chamfer FIRST point (``CANOPY_WEST_OUTER_X`` /
     ``CANOPY_NORTH_OUTER_Y``), chamfer EXPOSED; the NW corner is rounded to the case's own
-    corner radius (``CANOPY_CORNER_R``) and the west top shoulder carries a swept drafted facet.
+    corner radius (``CANOPY_CORNER_R``) and BOTH top shoulders (west + east) carry a swept
+    drafted facet (``_chamfer_west_top`` / ``_chamfer_east_top``) of the same 2:1 style.
     ``hollow=False`` returns the solid envelope; ``hollow=True`` (default) the
     printed shell. ``case.build_top_part`` adds the result onto the TOP.
 
@@ -960,8 +998,11 @@ def build_canopy(hollow: bool = True, side: str = "right", puzzle: bool = True) 
                      north_chamfer=canopy_north_chamfer(side),
                      spline_range=ramp_span)
     body = _round_nw_corner(body, x_w, y_n, CANOPY_CORNER_R, z_base - 0.1, z_ridge + 0.1)
-    # Facet the tall west top shoulder (east left sharp) on the solid, before hollowing.
+    # Facet BOTH top shoulders — west and east — on the solid, before hollowing. East was
+    # historically left sharp; it now carries the same 2:1 drafted facet as the west so the
+    # roof reads as one continuous chamfered ridge rather than a one-sided shoulder.
     body = _chamfer_west_top(body, x_w, z_ridge, chamfer_v, chamfer_h)
+    body = _chamfer_east_top(body, x_e, z_ridge, chamfer_v, chamfer_h)
     shell = body
 
     if hollow:
