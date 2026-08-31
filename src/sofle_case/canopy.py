@@ -10,9 +10,10 @@ X width (case Y, south → north):
              in front of the plateau is CLOSED (no open gap). The body base drops to
              ``CANOPY_FUSE_BASE_Z`` (one cover thickness below) so it overlaps the cover/walls
              (and the plateau stub) for a clean OCC union.
-  • Ramp   — a tangent S-curve (``_smoothstep`` via a real ``Spline`` — horizontal at both
-             ends, no crease) up to the flat roof. Reaches full height ``CANOPY_RAMP_TOP_OLED_GAP``
-             before the OLED pins; the whole south bay is empty (PCB-level) so the low foot clears.
+  • Ramp   — a tangent S-curve (exact single cubic ``Bezier`` — the analytic
+             3t²−2t³ with horizontal tangents, 0 deviation, minimal curvature) up to the
+             flat roof. Reaches full height ``CANOPY_RAMP_TOP_OLED_GAP`` before the OLED
+             pins; the whole south bay is empty (PCB-level) so the low foot clears.
   • Roof   — FLAT at ``CANOPY_RIDGE_TOP_Z`` over the MCU (clears the USB-C stack).
   • North / West / East — VERTICAL walls landing at the chamfer FIRST point (chamfer
              EXPOSED); BOTH north corners (NW + NE) are ROUNDED to the case's own corner radius
@@ -29,7 +30,7 @@ be relocated into the BOTTOM part (it would end at the PCB underside, Z=PCB_SEAT
 button), so the feature was dropped rather than moved. Reset means opening the case, or the
 nice!nano's double-tap over the USB-C port.
 
-Tangent curves are 2-D profile splines/fillets on the swept cross-section (robust), not
+Tangent curves are 2-D profile Beziers/fillets on the swept cross-section (robust), not
 fragile 3-D solid fillets. The slide finger-bowl (over on the −X wall) is handled in ``tray``
 and split cleanly into the TOP part by ``case``'s local seam step-down."""
 from __future__ import annotations
@@ -37,7 +38,7 @@ import math
 from typing import Callable, Sequence, cast
 
 from build123d import (
-    Part, Face, Pos, Line, Polyline, Spline, make_face, extrude, fillet, chamfer, loft, Solid,
+    Part, Face, Pos, Line, Polyline, Spline, Bezier, make_face, extrude, fillet, chamfer, loft, Solid,
     Plane, BuildPart, BuildSketch, BuildLine,
 )
 from OCP.Standard import Standard_Failure
@@ -87,31 +88,37 @@ CANOPY_RAMP_FOOT_Y  = (C.pcb_to_case(*C.SW_ENCODER_POS)[1]
                        + CANOPY_ENCODER_HALF - CANOPY_ENCODER_OVERLAP)                       # ≈ 58.8
 CANOPY_RAMP_TOP_OLED_GAP = 0.5
 CANOPY_RAMP_TOP_Y   = C.pcb_to_case(*C.J_OLED_POS)[1] - CANOPY_RAMP_TOP_OLED_GAP            # ≈ 81.6
-# Control points pinning the S-curve for the Spline. 9 was too sparse: the B-spline
-# interpolation through 9 points, forced to an exact horizontal tangent at both ends, RANG —
-# it overshot and undershot the analytic smoothstep by up to 0.14 mm right where the ramp
-# flattens into the roof (measured on the right half's rise; the shorter left ramp rang less —
-# 0.087 mm — but was not immune). Densifying damps it ~4x per 2x the samples.
+# The ramp is the cubic smoothstep 3t²−2t³ with horizontal tangents at both
+# ends — an exact single cubic Bezier, not an interpolating Spline through samples.
+# Its 4 control points are P0=(y0,z0), P1=(y0+L/3,z0), P2=(y1−L/3,z1), P3=(y1,z1)
+# (Y is linear in the Bezier parameter, Z carries the smoothstep). That curve is
+# used directly for the swept roofline (Bezier in _yz_prism / _west_chamfer_section),
+# so there is NO ringing, NO deviation to tune, and minimal curvature for OCC's
+# angular mesher.
 #
-# 25 IS A CEILING, NOT A FLOOR — do not raise it chasing the last micron. OCC meshes by
-# CURVATURE (angular tolerance), not by deviation, and a denser interpolating spline trades
-# deviation for high-frequency curvature wiggle. Measured on the bare prism, right half:
+# CANOPY_RAMP_SAMPLES survives only as a DEPRECATED alias for import compatibility
+# and for _roofline's dense analytic sampling (used by _offset_roofline / puzzle
+# depth queries). It no longer drives geometry — the ramp is one exact Bezier
+# regardless. The old interpolating Spline rang 0.14 mm at 9 samples and still
+# 0.032 mm at 25; densifying damped ~4× per 2× samples but OCC meshes by curvature,
+# not deviation, and a denser interpolating spline traded deviation for high-frequency
+# curvature wiggle. Measured on the bare prism, right half:
 #
 #     samples    9        15       25       41        51
 #     deviation  0.143mm  0.073mm  0.032mm  —         0.0086mm
 #     triangles  28,482   26,988   39,150   216,264   396,620
 #     right STL  2.5 MB   —        3.9 MB   —         39.9 MB
 #
-# Past ~25 the mesh detonates for smoothness that is already an order of magnitude under a
-# 0.2 mm layer line: 51 bought 0.023 mm of invisible flatness for 10x the STL. The left half
-# never blows up (its ramp is 2.76 mm shorter, so its curvature stays mild) — this is a
-# right-half failure mode, so measure the RIGHT half when touching this.
+# Past ~25 the mesh detonated for invisible gain (0.023 mm for 10× STL at 51).
+# The exact Bezier has 0 deviation by construction and the lowest achievable
+# curvature, so it does not detonate at any export tolerance. Do not reintroduce
+# an interpolating Spline to chase flatness — re-measure the RIGHT half (shorter
+# left never blew up, 2.76 mm lower) if touching this.
 #
 # NOTE: this number used to be load-bearing for the west top shoulder's facet — OCC's 3-D
 # chamfer on that run silently stopped working above ~9 samples. That coupling is gone;
-# _chamfer_west_top is a boolean and is verified at 9/13/21/51/81. Keep it that way: an edge
-# chamfer here re-introduces a hidden tie between ramp smoothness and wall style.
-CANOPY_RAMP_SAMPLES = 25
+# _chamfer_west_top/_chamfer_east_top are booleans. Keep it that way.
+CANOPY_RAMP_SAMPLES = 25  # deprecated: geometry is now an exact Bezier, not a sampled Spline
 CANOPY_NORTH_ROUND_R = 1.0
 # The north-top facet's DROP is that same number, and the equality is structural rather than tidy:
 # CANOPY_NORTH_ROUND_R is what ``canopy_ridge_top_z`` budgets for the top edge eating into the north
@@ -529,12 +536,29 @@ def _smoothstep(y0: float, z0: float, y1: float, z1: float, n: int) -> list[tupl
 
     Horizontal-tangent at BOTH ends, so the ramp merges into the flat cover at the foot and
     into the flat roof at the top with no crease at either — the slip grows seamlessly out of
-    the cover surface. Endpoints omitted; the caller supplies them."""
+    the cover surface. Endpoints omitted; the caller supplies them.
+
+    Kept for dense analytic sampling (_roofline / _offset_roofline / depth queries).
+    Geometry itself is now an exact single cubic Bezier (see _ramp_bezier_poles), not an
+    interpolating Spline through these samples, so this function no longer determines
+    curvature or mesh density."""
     out = []
     for i in range(1, n - 1):
         t = i / (n - 1)
         out.append((y0 + (y1 - y0) * t, z0 + (z1 - z0) * (3 * t * t - 2 * t ** 3)))
     return out
+
+
+def _ramp_bezier_poles(y0: float, z0: float, y1: float, z1: float) -> list[tuple[float, float]]:
+    """4 control points of the EXACT cubic smoothstep Bezier from (y0,z0) to (y1,z1).
+
+    With horizontal tangents at both ends the Hermite form is a single cubic and
+    the Bezier representation is P0=(y0,z0), P1=(y0+L/3,z0), P2=(y1−L/3,z1), P3=(y1,z1)
+    where L=y1−y0. Y is linear in the Bezier parameter (so t = (Y−y0)/L), Z carries
+    3t²−2t³ exactly — 0 deviation, minimal curvature, and no ringing. Used directly
+    by _yz_prism and _west_chamfer_section instead of Spline(*sampled points)."""
+    L = y1 - y0
+    return [(y0, z0), (y0 + L / 3.0, z0), (y1 - L / 3.0, z1), (y1, z1)]
 
 
 def _dedup(pts: list[tuple[float, float]], tol: float = 1e-4) -> list[tuple[float, float]]:
@@ -563,9 +587,12 @@ def _yz_prism(top_pts: list[tuple[float, float]], z_base: float, x_lo: float, x_
     of the west shoulder facet it is supposed to match. A wrong-but-successful chamfer is invisible;
     two explicit points cannot be misread. See ``occ-chamfer-leg-order``.
 
-    ``spline_range`` ``(y0, y1)`` draws the ramp between those Y as a real **Spline** (a smooth
-    curved edge, so the swept surface has no facet steps) with a horizontal tangent at ``y1``
-    (eases into the flat roof); the rest of the profile stays straight ``Line`` segments."""
+    ``spline_range`` ``(y0, y1)`` draws the ramp between those Y as a single exact
+    cubic **Bezier** (``_ramp_bezier_poles`` — the analytic 3t²−2t³ with horizontal
+    tangents, 0 deviation, minimal curvature) so the swept surface has no facet steps;
+    the rest of the profile stays straight ``Line`` segments. The dense sampled list
+    in ``top_pts`` is kept only for analytic queries; geometry no longer interpolates
+    through it."""
     top = _dedup(top_pts)
     y_lo, y_hi = top[0][0], top[-1][0]
     z_top = top[-1][1]
@@ -578,26 +605,34 @@ def _yz_prism(top_pts: list[tuple[float, float]], z_base: float, x_lo: float, x_
                     Polyline((y_lo, z_base), *top, (y_hi, z_base), close=True)
                 else:
                     y0, y1 = spline_range
-                    before = [p for p in top if p[0] <= y0 + 1e-6]
-                    ramp = _dedup([p for p in top if y0 - 1e-6 <= p[0] <= y1 + 1e-6])
-                    after = [p for p in top if p[0] >= y1 - 1e-6]
-                    Line((y_lo, z_base), before[0])              # south face (buried in the cover)
-                    if len(before) >= 2:
-                        Polyline(*before)                         # (unused: no tongue)
-                    # Horizontal tangents at BOTH ends: the ramp merges into the cover at the
-                    # foot and into the flat roof at the top with no crease at either.
-                    Spline(*ramp, tangents=((1.0, 0.0), (1.0, 0.0)))
+                    # Exact Bezier poles from the analytic endpoints at y0/y1, not from the
+                    # dense sampled ramp list — the list is for _offset_roofline queries.
+                    # Find Z at the ramp ends from top_pts (body: foot→ridge, cavity: offset,
+                    # puzzle inner: normal-offset). Search exact match, fall back to nearest.
+                    def _z_at(target_y: float) -> float:
+                        for yy, zz in top:
+                            if abs(yy - target_y) < 1e-6:
+                                return zz
+                        # No exact Y (e.g. offset list with same Y range) — nearest
+                        return min(top, key=lambda p: abs(p[0] - target_y))[1]
+                    z0, z1 = _z_at(y0), _z_at(y1)
+                    after = [p for p in top if p[0] > y1 + 1e-6]
+                    # South face: base to ramp foot
+                    Line((y_lo, z_base), (y0, z0))              # south face (buried in the cover)
+                    # The exact ramp — one cubic Bezier, 0 ringing, minimal curvature for OCC mesher
+                    ramp_poles = _ramp_bezier_poles(y0, z0, y1, z1)
+                    Bezier(*ramp_poles)
                     if north_chamfer is None:
-                        if len(after) >= 2:
-                            Polyline(*after)                      # flat roof
-                        Line(after[-1], (y_hi, z_base))           # north wall
+                        if after:
+                            Polyline((y1, z1), *after)                       # flat roof
+                        Line(after[-1] if after else (y1, z1), (y_hi, z_base))  # north wall
                     else:
                         run, drop = north_chamfer
-                        assert len(after) >= 2 and after[-2][0] < y_hi - run, \
+                        assert y1 < y_hi - run, \
                             f"a {run} mm north facet run swallows the flat roof"
-                        Polyline(*after[:-1], (y_hi - run, z_top))            # flat roof, cut short
-                        Line((y_hi - run, z_top), (y_hi, z_top - drop))       # the facet itself
-                        Line((y_hi, z_top - drop), (y_hi, z_base))            # north wall
+                        Polyline((y1, z1), (y_hi - run, z_top))              # flat roof, cut short
+                        Line((y_hi - run, z_top), (y_hi, z_top - drop))      # the facet itself
+                        Line((y_hi, z_top - drop), (y_hi, z_base))           # north wall
                     Line((y_hi, z_base), (y_lo, z_base))          # base
             make_face()
             for fy, fz, r in (fillets_2d or []):
@@ -708,26 +743,41 @@ def _west_chamfer_section(roof: list[tuple[float, float]], k: float, v: float,
 
     ``v_eff`` clamps the vertical leg to the wall's own height above the cover surface, so the
     facet fades to nothing at the ramp foot where the wall is only 1 mm tall — without it
-    the cut would eat the fuse overlap between MAIN_RIM_Z and COVER_TOP_Z. The ramp is drawn as
-    a real ``Spline`` through the SAME points as the body's roofline, which is what makes this
-    cutter track the body surface at any ``CANOPY_RAMP_SAMPLES``."""
+    the cut would eat the fuse overlap between MAIN_RIM_Z and COVER_TOP_Z. The ramp is the
+    exact single cubic Bezier (``_ramp_bezier_poles``) through the body's roofline, so the
+    cutter tracks the surface without sampling density dependence."""
     def lower(y: float, z: float) -> tuple[float, float]:
         v_eff = min(v, max(0.0, z - CANOPY_FOOT_Z))
         return y, z - k * v_eff
 
-    pts = [lower(y, z) for y, z in roof]
-    y_lo, y_hi = pts[0][0], pts[-1][0]
-    ramp = _dedup([p for p in pts
-                   if CANOPY_RAMP_FOOT_Y - 1e-6 <= p[0] <= CANOPY_RAMP_TOP_Y + 1e-6])
-    after = [p for p in pts if p[0] >= CANOPY_RAMP_TOP_Y - 1e-6]
+    y0, y1 = CANOPY_RAMP_FOOT_Y, CANOPY_RAMP_TOP_Y
+    # Z at ramp ends from the roof list (before lowering) — then lower the Bezier poles
+    def _z_at(target_y: float) -> float:
+        for yy, zz in roof:
+            if abs(yy - target_y) < 1e-6:
+                return zz
+        return min(roof, key=lambda p: abs(p[0] - target_y))[1]
+    z0_raw, z1_raw = _z_at(y0), _z_at(y1)
+    # Exact Bezier poles for the ramp, lowered
+    lower_poles = [lower(y, z) for y, z in _ramp_bezier_poles(y0, z0_raw, y1, z1_raw)]
+    # After: flat roof north of the ramp, lowered
+    after = [lower(y, z) for y, z in roof if y > y1 + 1e-6]
+    # y extents from lowered poles + after (for ceiling closure)
+    y_lo = lower_poles[0][0]
+    y_hi = after[-1][0] if after else lower_poles[-1][0]
     with BuildSketch(_YZ) as sk:
         with BuildLine():
-            Spline(*ramp, tangents=((1.0, 0.0), (1.0, 0.0)))
-            if len(after) >= 2:
-                Polyline(*after)
-            Line(after[-1], (y_hi, z_ceil))
+            Bezier(*lower_poles)
+            if after:
+                if len(after) == 1:
+                    Line(lower_poles[-1], after[0])
+                else:
+                    Polyline(lower_poles[-1], *after)
+                Line(after[-1], (y_hi, z_ceil))
+            else:
+                Line(lower_poles[-1], (y_hi, z_ceil))
             Line((y_hi, z_ceil), (y_lo, z_ceil))
-            Line((y_lo, z_ceil), ramp[0])
+            Line((y_lo, z_ceil), lower_poles[0])
         make_face()
     return cast(Face, sk.sketch.faces()[0])
 
