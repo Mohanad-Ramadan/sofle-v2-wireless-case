@@ -145,26 +145,29 @@ def line_offset(index: int) -> float:
 # straight mark, so the whole curve can be switched off in one edit and the old geometry comes back
 # exactly (``_drop_collinear`` then returns two points per stroke, not fifty).
 #
-# 4.75 mm is past the point where every old invariant survives, and it was chosen ANYWAY, knowingly.
-# Measured on the real geometry at 4.75 parallel — min radius 47 mm, so the mark reads as drawn:
+# 7 mm is past the point where every old invariant survives, and it was chosen ANYWAY, knowingly
+# (was 4.75, now 7 — increased to clear the slide-switch scoop on the right half with a fair gap).
+# Measured on the real geometry at 7 parallel — min radius 38.6 / 39.3 mm, still >25 mm, so the mark
+# reads as drawn but tighter:
 #
-#   left  A  27.0 mm   y 103.0..118.5   stops in open roof — NO east notch   <- a loss, accepted
-#   left  B  24.4 mm   y  77.6.. 86.2   crosses the ramp
-#   right A  64.0 mm   y  59.6..122.5   runs the whole ramp, exits north
-#   right B  31.4 mm   y  91.6..108.5   breaks the east arris
+#   left  A  25.8 mm   y 103.0..118.5   stops in open roof — NO east notch   <- a loss, accepted
+#   left  B  24.0 mm   y  78.8.. 86.2   crosses the ramp
+#   right A  45.7 mm   y  78.2..122.5   starts 2.7 mm north of the slide scoop (was 59.6, ran whole ramp)
+#   right B  34.1 mm   y  87.6..108.5   breaks the east arris
 #
 # The two losses, both real and both deliberate:
 #   • the east arris is notched ONCE IN THE PAIR (right half only) instead of once per half. The bow
 #     lifts the left half's line A off the east wall — the same failure ``PUZZLE_LINE_NUDGE``'s upper
-#     bound guards against, arrived at from the other direction.
-#   • right A dies at y 59.6, clipped by the WEST edge 0.8 mm short of the ramp foot. It runs out to
-#     an edge, so it is a legal terminal — it is just not the foot terminal the lab drew.
+#     bound guards against, arrived at from the other direction (short now 4.7 mm at 7, was 3.2 at 4.75).
+#   • right A now starts at y 78.2, 2.7 mm north of the slide scoop top (was clipped by the WEST edge
+#     0.8 mm short of the ramp foot at 4.75). It still crosses the ramp (78.2 < 81.56) and exits north,
+#     so the ramp-crossing cutter is still justified; it is just no longer the foot terminal the lab drew.
 #
 # The alternative was A ≈ 2.10, which keeps both notches AND lands right A exactly on the foot at
-# 58.8 (min radius 86 mm) — every invariant intact, at a peak departure of 2.1 mm instead of 4.75,
+# 58.8 (min radius 86 mm) — every invariant intact, at a peak departure of 2.1 mm instead of 7,
 # i.e. a bow you have to look for. Offered and declined: the mark is the point. Anyone re-tuning this
-# should know that 2.10 is where "nothing is given up" ends, not that 4.75 is a safe default.
-PUZZLE_CURVE_A = 4.75       # mm; the profile's value at |v| = 1 — the whole family's peak departure
+# should know that 2.10 is where "nothing is given up" ends, not that 7 is a safe default.
+PUZZLE_CURVE_A = 7       # mm; the profile's value at |v| = 1 — the whole family's peak departure
 #                             from the baseline inside the fitted span. 0.0 IS the straight mark.
 PUZZLE_CURVE_HANDS = (+1, +1)   # which way each line bends. Same sign = the pair reads as parallel
 #                                 curves; opposite = they bow away from each other. Mirrored (−1, −1)

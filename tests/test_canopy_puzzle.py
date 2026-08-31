@@ -166,13 +166,13 @@ def test_the_sampled_polyline_really_is_the_curve():
 def test_the_curve_stays_a_drawn_line_not_a_hook():
     """A 1.0 mm groove that turns too tightly stops reading as a drawn stroke. Pinned against
     ``PUZZLE_CURVE_MIN_R`` (25 mm), and separately against the amplitude that was actually approved:
-    at A = 4.75 the radii are 46.8 and 47.7 mm, so there is ~1.9× of headroom before the shape itself
-    is in question — and ~90× against the width, which is the fold-over limit ``_band_offsets``
-    guards."""
+    at A = 7 the radii are 38.6 and 39.3 mm (was 46.8 / 47.7 at 4.75), so there is ~1.5× of
+    headroom before the shape itself is in question — and ~75× against the width, which is the
+    fold-over limit ``_band_offsets`` guards."""
     for i in range(len(PZ.PUZZLE_LINES)):
         r = PZ.curve_min_radius(i)
         assert r >= PZ.PUZZLE_CURVE_MIN_R, f"line {i} bends to R={r:.1f} mm"
-        assert r >= 40.0, f"line {i}: R={r:.1f} mm — the approved mark measured 46.8 / 47.7"
+        assert r >= 35.0, f"line {i}: R={r:.1f} mm — the approved mark at A=7 measured 38.6 / 39.3"
 
 
 def test_the_parameterisation_still_comes_from_the_shipped_straight_layout(segs):
@@ -465,7 +465,8 @@ def test_no_stroke_but_the_upper_one_leaves_through_the_east_wall(side, segs):
 
 def test_the_pair_keeps_exactly_one_east_break_and_the_amplitude_is_what_cost_the_other(segs):
     """The straight mark notched the east arris ONCE PER HALF. The approved curve notches it once in
-    the PAIR, on the right half, and the left half's upper stroke stops 3.2 mm short in open roof.
+    the PAIR, on the right half, and the left half's upper stroke stops ~4.7 mm short in open roof
+    (was 3.2 at A=4.75, now 4.7 at A=7) — still the bow lifting it off the wall.
 
     That was a deliberate trade when ``PUZZLE_CURVE_A`` was chosen — A ≈ 2.10 keeps both — so it is
     pinned here rather than left to be rediscovered as a regression. Attributed, too: the same stroke
@@ -477,8 +478,8 @@ def test_the_pair_keeps_exactly_one_east_break_and_the_amplitude_is_what_cost_th
     assert east == [("right", 1)], f"the pair's east breaks are {east}, expected only right line 1"
 
     short = CAN.CANOPY_EAST_X - max(p[0] for p in segs["left"][0])
-    assert 2.5 < short < 4.0, \
-        f"the left half's upper stroke now stops {short:.2f} mm short of the east wall, not ~3.2"
+    assert 4.0 < short < 5.5, \
+        f"the left half's upper stroke now stops {short:.2f} mm short of the east wall, not ~4.7 (A=7)"
 
     saved = PZ.PUZZLE_CURVE_A
     try:
