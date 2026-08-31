@@ -174,12 +174,13 @@ COVER_FUSE_MARGIN       = 1.0    # mm; membrane→upper-wall fusion overlap in t
 # that tucks up behind the skin and joins via a RABBET (stepped lap): the plate's
 # outer rim rises into a pocket in the tub's inner wall, hidden as a shadow line on
 # the underside. See docs/spec deep-dive-sandwich-seam-modification.md.
-COVER_TOP_Z  = MAIN_RIM_Z + COVER_THICKNESS  # 16.0 mm; TOP part rim (membrane top)
+COVER_TOP_Z  = MAIN_RIM_Z + COVER_THICKNESS  # 16.7 mm; TOP part rim (membrane top)
 
 # Rabbet geometry (offsets are radial, from the PCB polygon outward):
 #   skin (tub, → ground)  SEAM_SKIN | gap SEAM_FIT_CLEAR | plate rim SEAM_RIM_THK
 # summing to WALL_THICKNESS across the wall. The plate rim seats inside the tub
-# skirt; a small Z gap at the ledge lets the SCREWS (not the rabbet) set the clamp.
+# skirt; a small Z gap at the ledge keeps the RABBET from becoming the Z stop (this
+# said "lets the SCREWS set the clamp" — the design is screwless; see SEAM_LEDGE_CLEAR).
 # Clearances follow the design-for-print mating-gap rule: 0.3 mm is the conservative
 # FDM minimum (below that FDM tends to weld / bind). SEAM_FIT_CLEAR was tightened
 # 0.3 → 0.2 after the feat/last-printed-case print proved this printer's calibration
@@ -187,7 +188,7 @@ COVER_TOP_Z  = MAIN_RIM_Z + COVER_THICKNESS  # 16.0 mm; TOP part rim (membrane t
 # as is safe on a ~150 mm irregular outline, where warping — not printer accuracy —
 # becomes the binding risk. The fit stays intentionally loose because the screws
 # clamp and the 5 standoffs — not the rabbet — set the precise XY registration.
-SEAM_LEDGE_Z    = FLOOR_THICKNESS   # 6.3; rabbet ledge / plate-rim top / the split height
+SEAM_LEDGE_Z    = FLOOR_THICKNESS   # 6.6; rabbet ledge / plate-rim top / the split height
 SEAM_SKIN       = 2.0    # mm; outer skin kept with the tub at the rabbet (descends to ground)
 SEAM_FIT_CLEAR  = 0.15   # mm; per-side XY clearance, plate rim ↔ tub skirt pocket (was 0.3 -> 0.2)
 #                          TIGHTENED 0.2 -> 0.15 for the AGGRESSIVE-HOLD retune: this is the rabbet
@@ -196,7 +197,17 @@ SEAM_FIT_CLEAR  = 0.15   # mm; per-side XY clearance, plate rim ↔ tub skirt po
 #                          at 0.25 — one layer of play is fought by first-layer squish + the 5-link
 #                          closure stack, so slop is bought HERE and in the undercut bite instead).
 #                          It also feeds SNAP_DEFLECT (proud - clear) and thickens the derived rim.
-SEAM_LEDGE_CLEAR = 0.3   # mm; Z gap at the ledge so the screws clamp (no over-constraint)
+SEAM_LEDGE_CLEAR = 0.30  # mm; Z gap at the ledge — LETS THE HARDWARE DATUM WIN (not "so the
+#                          screws clamp": there are no screws). MAIN_RIM_Z - SEAM_LEDGE_Z equals
+#                          the plate stack exactly, so the ledge (printed<->printed, +/-0.3 of FDM
+#                          error) and the membrane-on-plate contact (printed<->HARDWARE, precise)
+#                          are two candidate Z stops nominally 0.00 mm apart. This gap is what
+#                          keeps the printed one from winning and holding the case open.
+#                          A 0.30->0.25 shave was tried for "premium feel" and REVERTED: the ledge
+#                          never touches, so it buys no feel at all, while test_assembly_closure's
+#                          `gap >= 0.25` gate leaves it zero margin. It is also the ONLY slack in
+#                          the five-link closing stack (see the note at the top of this file), so
+#                          it is the last thing to spend, not the first.
 SEAM_LEAD_IN    = 0.6    # mm; 45° lead-in chamfer on the plate rim's top-outer edge (plate-side starter)
 SEAM_POCKET_LEAD_IN = 0.4  # mm; 45° starter chamfer on the tub pocket MOUTH (tub-side starter, so
 #                            BOTH mating leading edges guide + the mouth can't elephant-foot-pinch).
@@ -353,7 +364,7 @@ SEAM_LENS_REAR_Z  = 1.6    # rear pinch — RAISED off the desk so the lens stay
 # --- crest (the tallest point of the band) ---
 SEAM_WAVE_CREST_U = 0.56    # where the crest sits along the depth (keep it clear of the snap arms;
 #                             they cluster at u≈0.13-0.44 and u≈0.80-0.98, leaving a gap here)
-SEAM_WAVE_CREST_Z = 4.0     # crest height up the wall — the tallest the band gets (ceiling ~4.58)
+SEAM_WAVE_CREST_Z = 3.75    # crest height up the wall — the tallest the band gets (ceiling ~4.58) — lowered 4.0->3.75 for C1 to re-open E1/W1 hidden-band margin 0.09->0.34 without moving arms; lap 2.83 remains >2.0
 # --- where the flat runs hand over to the curve ---
 SEAM_LENS_SOUTH_FRAC = 0.30   # front flat run holds at FRONT_Z until here, then the climb starts
 SEAM_LENS_NORTH_FRAC = 0.99   # rear flat run holds at REAR_Z from here to the rear edge
@@ -1255,7 +1266,7 @@ FOOT_DIA   = 10.0   # mm, rubber-foot diameter → seat diameter
 FOOT_DEPTH = 0.6    # mm, shallow locating-seat depth
 FOOT_POSITIONS: tuple[tuple[float, float], ...] = (
     (20.5, 108.5),    # top-left
-    (142.0, 102.75),  # top-right (pulled in off the cut corner)
+    (141.75, 102.75), # top-right (pulled in 0.25 off the cut corner for E2 2.50 — E2 1.11->1.36 and N3 root 1.34->1.22, both >1.2)
     (21.0, 23.0),     # bottom-left
     (142.5, 39.75),   # bottom-right (thumb-cluster side is cut away lower)
 )
@@ -1342,28 +1353,46 @@ SNAP_TAB_SLOT_W   = 1.2    # mm; relief slot width. IT IS ALSO WHAT YOU SEE: the
 #                            held — foot clearances, force budget, strain caps, even spacing,
 #                            hidden-cut coverage — checked by running the suite at 1.2, where
 #                            the only failures were the pinned volume baselines.
-SNAP_BARB_PROUD   = 0.55   # mm; barb protrusion from the rim's outer face (guide: 0.5-1.2)
-# RAISED 0.45 -> 0.55 for the AGGRESSIVE-HOLD retune (deflect 0.25 -> 0.40). The prior screwless
-# tune chased fatigue MARGIN (T1 at 67 % of a 0.5 % cap); this one deliberately spends some of it
-# for a firmer seat, a louder click, and a deeper undercut BITE (0.40 mm overlap, up from 0.25).
-# Click energy ~ force x deflect, so the 1.6x deflect plus the thicker arms (P ~ t^3) roughly
-# TRIPLES the release energy — the barb pops audibly instead of ticking — at ~1.9x the closing
-# force. The binding arm is still T1 (L=13 pinned by GULF_A, held at its 1.5 mm print floor), now
-# at 0.533 % strain, which is why SNAP_PLA_STRAIN_MAX was nudged to 0.006. The proud was NOT pushed
-# to 0.57+ because that drove insertion past hand-closeable (~160 N) for ZERO retention gain — the
-# 90 deg SNAP_RETURN_DEG self-lock does the holding regardless of how hard the case is to close.
-# See .omc/specs/deep-dive-screwless-snap-closure.md and the 2026-08-26 aggressive-hold retune.
+SNAP_BARB_PROUD   = 0.52   # mm; barb protrusion from the rim's outer face (guide: 0.5-1.2)
+# THIS CONSTANT IS THE STRAIN KNOB, and the arm it binds on is T1-thumb-gulf. SNAP_DEFLECT is
+# proud - SEAM_FIT_CLEAR, strain is 3*h*deflect/(2*L^2), and T1 is pinned at L=13 by gulf-A with h
+# at the 1.5 mm print floor — so proud alone decides the worst strain in the design. At 0.52 that
+# is 0.493 %, against a 0.55 % design gate and a 0.60 % material cap: three distinct numbers, each
+# with room, which is the point.
+#
+# WALKED BACK from 0.60. The 0.60 tune put T1 at 0.599 % — 99.8 % of the cap — and raised the test
+# gate to equal the cap, so the gate could never fire again. It was chasing click energy
+# (~ force x deflect), and it did buy some; it also bought zero manufacturing allowance on a part
+# printed blind, where a nominal 1.50 arm coming back at 1.60 (routine at a 0.4 nozzle) is already
+# over. Deeper is not free in Z either: the barb's height is proud/tan(SNAP_LEAD_IN_DEG), and that
+# height comes straight out of the hidden band the barb has to fit into, which is what caps
+# SNAP_Z_PLAY. Deep barb, tight tolerance window, thin fatigue margin — pick two.
+#
+# THE FORCE BUDGET IS NOT WHAT LIMITS THIS. The flat-bottom branch made arm_wall_height a uniform
+# 6.60 mm, and total deflection force is now ~34 N against a 72 N gate. Click can be bought back
+# with arm THICKNESS (force goes as h^3, strain only as h) on every arm except T1 and SW1, which
+# are slenderness-limited. Depth is the expensive way to buy it.
 SNAP_LEAD_IN_DEG  = 22.0   # deg from the insertion axis, barb's TOP face (guide: 25-35, run below)
-#                            KEPT at 22 for the aggressive-hold retune (a steepening to 28 was tried
-#                            and REVERTED): a steeper ramp raises insertion force with NO gain in
-#                            hold or click energy, and the retune's higher deflect + thicker arms
-#                            already put insertion at a firm ~106 N at mu 0.7. Lead-in is the lever to
-#                            REACH FOR if a print is un-seatable — lowering it drops insertion
-#                            without touching pull-off or arm stiffness. At proud 0.55 the barb is
-#                            H = 0.55/tan22 = 1.36 mm tall: top 3.95 + 1.36 = 5.31 < SNAP_BAND_CEIL
-#                            5.70, and the taller ridge prints faithfully (~14 layers at 0.1).
+#                            KEPT at 22 (a steepening to 28 was tried and REVERTED): a steeper ramp
+#                            raises insertion force with NO gain in hold or click energy. Lead-in is
+#                            the lever to REACH FOR if a print is un-seatable — lowering it drops
+#                            insertion without touching pull-off or arm stiffness. It is ALSO the
+#                            cheapest source of hidden band, since SNAP_BARB_H is proud/tan(this):
+#                            going 22 -> 26 would shorten the barb 1.29 -> 1.07 mm and hand that
+#                            0.22 mm straight to SNAP_Z_PLAY's ceiling.
+#                            At proud 0.52 the barb is H = 0.52/tan22 = 1.29 mm tall: top
+#                            3.95 + 1.29 = 5.24 < SNAP_BAND_CEIL 6.00, and the ridge prints
+#                            faithfully (~13 layers at 0.1).
 SNAP_RETURN_DEG   = 90.0   # deg from the insertion axis, barb's BOTTOM face. SELF-LOCKING —
 #                            see the force note below; a flat face costs no Z at all.
+# An 82 deg "preload" ramp was tried and REVERTED. It cannot work, for two independent reasons.
+# (a) FRICTION: self-locking runs BOTH ways. The face slides only when 1/tan(return) exceeds mu,
+#     and 82 deg gives 0.141 against printed PLA-on-PLA at 0.4-0.7. The same cone that stops the
+#     barb camming OUT under pull-off stops it camming IN to preload — it locks where it bites.
+# (b) RESOLUTION: the ramp's whole rise is proud/tan(82) = 0.084 mm. At a 0.1 mm layer that is one
+#     layer; at 0.2 mm it is none. The printer quantises it back to the flat face it started as.
+# It was not free, either: that same 0.084 mm was added to SNAP_BARB_H, spending hidden band that
+# SNAP_Z_PLAY needs. test_a_sub_90_return_face_can_actually_cam now gates this on the physics.
 SNAP_BARB_X_LEN   = 8.0    # mm; barb length along the wall, near the arm's free end. Already 20
 #                            nozzle widths at 0.4 mm — the printer never "misses" a ridge this
 #                            long, so length is NOT the print-fidelity lever (that is the barb's
@@ -1382,11 +1411,12 @@ SNAP_Z_PLAY       = 0.25   # mm; catch pocket taller than the barb, ALL of it be
 SNAP_SKIRT_BELOW  = 0.3    # mm; skirt kept below the catch pocket
 SNAP_SKIRT_ABOVE_MIN = 1.0 # mm; skirt that must survive above the catch pocket
 # PLA is rated POOR for snaps (low strain tolerance, creep-prone). Staying on PLA is deliberate.
-# NUDGED 0.005 -> 0.006 for the AGGRESSIVE-HOLD retune. This is a small, DELIBERATE fatigue tradeoff:
-# the worst arm (T1) now sits 0.533 % (89 % of this cap) instead of the old 67 %, to buy seat
-# firmness and a louder click. Defensible because this shell is opened rarely (few flex cycles =
-# fatigue matters less); a frequently-opened case should revert toward 0.005. 0.006 is still well
-# under PLA's short-term yield strain (~1.5-2 %); the derate is for creep/cyclic life, not fracture.
+# THIS IS THE MATERIAL CAP, NOT THE DESIGN GATE. 0.006 is a creep/cyclic derate — PLA's short-term
+# yield strain is ~1.5-2 %, so this is 3x from fracture and the margin is for LIFE, not strength.
+# The design gate lives in test_fatigue_strain_has_margin_for_a_screwless_shell at 0.0055, and the
+# worst arm (T1) actually sits at 0.493 %. Keeping the three apart is deliberate: a retune once
+# raised the gate until it EQUALLED this cap, with T1 at 99.8 % of both, and a gate that can never
+# fire is not a gate. If a tune needs this number raised, lengthen or thin an arm instead.
 SNAP_PLA_STRAIN_MAX = 0.006
 
 SNAP_DEFLECT = SNAP_BARB_PROUD - SEAM_FIT_CLEAR   # 0.40; the arm's working deflection
@@ -1415,14 +1445,14 @@ def snap_barb_h(barb_proud: float = SNAP_BARB_PROUD) -> float:
     return barb_proud * per_mm
 
 
-SNAP_BARB_H = snap_barb_h()                                   # 1.3613
-SNAP_Z_BUDGET = SNAP_BARB_H + SNAP_Z_PLAY + SNAP_SKIRT_ABOVE_MIN   # 2.6113
+SNAP_BARB_H = snap_barb_h()                                   # 1.2871 at proud 0.52 / 90 deg
+SNAP_Z_BUDGET = SNAP_BARB_H + SNAP_Z_PLAY + SNAP_SKIRT_ABOVE_MIN   # 2.5371
 # The hidden band a barb must fit into is (SEAM_LEDGE_Z - SEAM_LEAD_IN) - max(seam_z, mouth),
 # and the wave crests at SEAM_WAVE_CREST_Z, leaving less than the budget over part of the
 # ramp. That excluded stretch is the BARB DEAD ZONE — measured at y 81.04..92.79 for this
 # budget and SEAM_WAVE_CREST_Z (it widened from 83.25..88.50 when the crest was raised). It
 # moves when SNAP_Z_PLAY or the crest move, so tests compute it; nothing hard-codes it.
-SNAP_BAND_CEIL = SEAM_LEDGE_Z - SEAM_LEAD_IN                  # 5.70; below the rim's chamfer
+SNAP_BAND_CEIL = SEAM_LEDGE_Z - SEAM_LEAD_IN                  # 6.00; below the rim's chamfer
 SNAP_BAND_FLOOR = SEAM_POCKET_LEAD_IN                         # 0.40; above the pocket mouth
 
 
@@ -1441,11 +1471,18 @@ def snap_force(thickness: float, arm_h: float, tab_l: float = SNAP_TAB_L,
                deflect: float = SNAP_DEFLECT, e_mod: float = 3500.0) -> float:
     """Deflection force of one straight arm, in N: P = E*b*h^3*y / (4*L^3).
 
-    ``arm_h`` is the beam WIDTH b — the LOCAL WALL HEIGHT, not SEAM_LEDGE_Z. The arm is freed
-    from the wedge's ground face up to the ledge, so b is 9.4 mm at the south front and ~20 mm
-    at the north where the wedge is deep. A single global thickness would therefore put half
-    the closing force in the north arms: uniform h=2.0 totals 49.9 N against 24.7 N tuned.
-    b cancels out of the strain entirely."""
+    ``arm_h`` is the beam WIDTH b — the LOCAL WALL HEIGHT, not SEAM_LEDGE_Z.
+
+    THE FLAT BOTTOM MADE THIS UNIFORM. b used to run 9.4 mm at the south front to ~20 mm at the
+    north because the arm was freed from the tent wedge's sloping ground face; with the wedge gone
+    it is SEAM_LEDGE_Z - 0 = 6.60 mm on every arm. The per-arm thickness ladder was built to
+    equalise a b that no longer varies, so thickness is now set by the L/t >= 8 slenderness floor
+    and SEAM_RIM_THK, not by where an arm sits.
+
+    The consequence worth knowing: with b pinned, per-arm force at fixed strain and fixed L/t is
+    independent of length, and the total sits near 34 N against a 72 N gate. Force is no longer
+    the binding constraint on anything — strain and hidden band are. b cancels out of strain
+    entirely."""
     return e_mod * arm_h * thickness ** 3 * deflect / (4.0 * tab_l ** 3)
 
 
@@ -1653,12 +1690,12 @@ SNAP_ARMS: tuple[SnapArm, ...] = (
     SnapArm("T1-thumb-gulf", snap_run_point(SNAP_RUN_GULF_A, 2.61),    snap_run_outward(SNAP_RUN_GULF_A),   +1.0, 13.0, 1.500, 3.95, True),
     SnapArm("S1-south-C",    snap_run_point(SNAP_RUN_SOUTH, 6.06),     snap_run_outward(SNAP_RUN_SOUTH),    +1.0, 22.0, 2.350, 3.95, True),
     SnapArm("SE1-se-diag",   snap_run_point(SNAP_RUN_SE_DIAG, 4.14),   snap_run_outward(SNAP_RUN_SE_DIAG),  +1.0, 20.0, 2.350, 3.95, True),
-    SnapArm("E1-east-S",     snap_run_point(SNAP_RUN_EAST, 36.81),     snap_run_outward(SNAP_RUN_EAST),     +1.0, 22.0, 2.350, 3.95, False),
-    SnapArm("N1-canopy-N",   snap_run_point(SNAP_RUN_CANOPY_N, 8.82),  snap_run_outward(SNAP_RUN_CANOPY_N), +1.0, 22.0, 2.350, 3.95, False),
-    SnapArm("W1-west-S",     snap_run_point(SNAP_RUN_WEST, 35.33),     snap_run_outward(SNAP_RUN_WEST),     -1.0, 22.0, 2.350, 3.95, False),
-    SnapArm("N3-north-east", snap_run_point(SNAP_RUN_NE, 24.70),       snap_run_outward(SNAP_RUN_NE),       -1.0, 22.0, 2.350, 3.95, False),
-    SnapArm("W2-west-N",     snap_run_point(SNAP_RUN_WEST, 46.90),     snap_run_outward(SNAP_RUN_WEST),     +1.0, 22.0, 2.350, 3.95, False),
-    SnapArm("E2-east-N",     snap_run_point(SNAP_RUN_EAST, 24.75),     snap_run_outward(SNAP_RUN_EAST),     -1.0, 22.0, 2.350, 3.95, False),
+    SnapArm("E1-east-S",     snap_run_point(SNAP_RUN_EAST, 36.81),     snap_run_outward(SNAP_RUN_EAST),     +1.0, 22.0, 2.500, 3.95, False),
+    SnapArm("N1-canopy-N",   snap_run_point(SNAP_RUN_CANOPY_N, 8.82),  snap_run_outward(SNAP_RUN_CANOPY_N), +1.0, 22.0, 2.500, 3.95, False),
+    SnapArm("W1-west-S",     snap_run_point(SNAP_RUN_WEST, 35.33),     snap_run_outward(SNAP_RUN_WEST),     -1.0, 22.0, 2.500, 3.95, False),
+    SnapArm("N3-north-east", snap_run_point(SNAP_RUN_NE, 24.70),       snap_run_outward(SNAP_RUN_NE),       -1.0, 22.0, 2.500, 3.95, False),
+    SnapArm("W2-west-N",     snap_run_point(SNAP_RUN_WEST, 46.90),     snap_run_outward(SNAP_RUN_WEST),     +1.0, 22.0, 2.500, 3.95, False),
+    SnapArm("E2-east-N",     snap_run_point(SNAP_RUN_EAST, 24.75),     snap_run_outward(SNAP_RUN_EAST),     -1.0, 22.0, 2.500, 3.95, False),
 )
 # T1 IS THE ONE SHORT ARM, and it is short because even spacing pins its barb at arc-length
 # 73.0, which falls on gulf-A — an 18.42 mm run. Rooting it 2.96 mm in and cutting at 17.16
@@ -1735,7 +1772,7 @@ SNAP_CORNER_WEST = ((70.75, 121.30), (54.75, 121.30))   # measured rim run past 
 SNAP_CORNER_L = 26.0     # of the 38.24 available. Full length would be barely 0.5 N -- too soft
 #                          to matter as a latch.
 SNAP_CORNER_CUT_S = 2.0  # arc-length from the lobe's east end to the cut's outboard face
-SNAP_CORNER_THK = 2.350  # mm; RAISED 2.20 -> 2.35 for the aggressive-hold retune, matching the long
+SNAP_CORNER_THK = 2.400  # mm; RAISED 2.20 -> 2.35 -> 2.40 for flat-bottom A1: north 2.50 but corner held to 2.40 to keep corner_strain <0.6*straight (2.50 fails 0.222>0.220)
 #                          arms in both pry stiffness and closing force. At L=26 mm and deflect 0.40
 #                          this is ~0.23% strain, well under the 0.6% cap; SEAM_RIM_THK is now 2.60,
 #                          so 2.35 clears the rim it is cut from with room. (Held to 2.35 not 2.55

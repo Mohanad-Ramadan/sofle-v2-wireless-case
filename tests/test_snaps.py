@@ -121,19 +121,65 @@ def test_skirt_survives_beyond_the_pocket_ends(top):
                 f"{arm.name}: skirt gone {reach} mm past the pocket end")
 
 
+# Z stations swept by the freed-arm probes. A SINGLE station is not enough, and that is not a
+# hypothetical: a stiffening rib was once added at Z 2.5-4.0 and shipped green because the only
+# probe here sat at SEAM_LEDGE_Z - 1.0 = 5.6, above it. Its own docstring said it was placed
+# "below the mid-arm probe ... so that probe still sees air". Sweep the slot's whole height.
+_FREED_Z = (0.4, 2.0, 3.2, 4.5, 5.6, 6.2)
+
+
 def test_arm_is_freed_on_both_legs(bottom):
     """Without the OUTBOARD leg the strip is built in at both ends, and fixed-fixed strain is
-    12*d*h/L^2 against a cantilever's 3*d*h/(2L^2) — 2.84% at L=22, which fractures PLA."""
+    12*d*h/L^2 against a cantilever's 3*d*h/(2L^2) — 2.84% at L=22, which fractures PLA.
+
+    Swept over the slot's full height rather than probed at one Z: an arm freed at 5.6 and welded
+    at 3.2 is not a cantilever, and the strain formula this design is tuned against does not
+    describe it."""
     for arm in C.SNAP_ARMS:
-        z = C.SEAM_LEDGE_Z - 1.0
-        # inboard leg, mid-arm
-        x, y = _to_case(arm, arm.sense * arm.length / 2,
-                        (_slot_v0(arm) - arm.thickness) / 2.0)
-        assert _probe(bottom, x, y, z, d=0.3) < 1e-9, f"{arm.name}: inboard relief leg not cut"
-        # outboard leg, through the rim at the free end
-        x, y = _to_case(arm, cut_u(arm), -C.SEAM_RIM_THK / 2)
-        assert _probe(bottom, x, y, z, d=0.3) < 1e-9, (
-            f"{arm.name}: outboard leg not cut — the arm is fixed-fixed, not a cantilever")
+        for z in _FREED_Z:
+            # inboard leg, mid-arm
+            x, y = _to_case(arm, arm.sense * arm.length / 2,
+                            (_slot_v0(arm) - arm.thickness) / 2.0)
+            assert _probe(bottom, x, y, z, d=0.3) < 1e-9, (
+                f"{arm.name}: inboard relief leg not cut at Z={z}")
+            # outboard leg, through the rim at the free end
+            x, y = _to_case(arm, cut_u(arm), -C.SEAM_RIM_THK / 2)
+            assert _probe(bottom, x, y, z, d=0.3) < 1e-9, (
+                f"{arm.name}: outboard leg not cut at Z={z} — fixed-fixed, not a cantilever")
+
+
+def test_the_root_relief_is_open_through_its_full_height(bottom):
+    """The drilled root relief is a stress-relief radius at the ONE station where the cantilever
+    formula puts peak strain. Anything that refills it — even partially, even at mid-height —
+    replaces that radius with a sharp inside corner exactly where it costs most.
+
+    Probed inside the r=SNAP_ROOT_FILLET cylinder rather than at its centre, so it catches a
+    partial plug as well as a total one."""
+    for arm in C.SNAP_ARMS:
+        v = (_slot_v0(arm) - arm.thickness) / 2.0        # the drill's own centre in v
+        x, y = _to_case(arm, arm.sense * 0.5, v)         # 0.5 mm along u, still inside r=1.0
+        for z in _FREED_Z:
+            assert _probe(bottom, x, y, z, d=0.2) < 1e-9, (
+                f"{arm.name}: root relief is plugged at Z={z} — the radius the strain model "
+                f"assumes is not there")
+
+
+def test_nothing_narrows_the_relief_slot_below_the_nozzle_floor(bottom):
+    """The slot must stay SNAP_TAB_SLOT_W wide over its whole height.
+
+    A feature that leaves a sub-nozzle sliver of air (0.2 mm at a 0.4 mm nozzle) does not print as
+    a gap — the two faces weld, and the arm silently becomes fixed-fixed. The model happily shows
+    clearance that the printer cannot produce, so the gate is the NOZZLE, not zero."""
+    nozzle = 0.4
+    assert C.SNAP_TAB_SLOT_W >= nozzle, "the relief slot is narrower than one extrusion"
+    for arm in C.SNAP_ARMS:
+        # sample across the slot's full width; offsets measured from its inboard edge
+        for frac in (0.2, 0.6, 1.0):
+            x, y = _to_case(arm, arm.sense * arm.length / 2, _slot_v0(arm) + frac)
+            for z in _FREED_Z:
+                assert _probe(bottom, x, y, z, d=0.1) < 1e-9, (
+                    f"{arm.name}: slot obstructed {frac} mm off its inboard edge at Z={z} — "
+                    f"less than {nozzle} mm of air will weld shut on an FDM print")
 
 
 def test_arm_root_stays_attached(bottom):
@@ -206,39 +252,88 @@ def test_seated_interference_is_zero(bottom, top):
     assert (bottom & top).volume < 1e-6
 
 
-def test_closing_force_stays_hand_assemblable():
-    """SCREWLESS design: the snaps are the sole closure. AGGRESSIVE-HOLD retune (2026-08-26)
-    deliberately raised closing force for a firmer seat and louder click: thicker arms (2.35 mm long
-    arms) x deeper deflect (0.40) put the deflection total at ~69 N, insertion ~78 N at mu=0.5 and
-    ~106 N at mu=0.7. That is a firm, two-handed close by design — NOT a light one-hand snap.
+def test_closing_force_stays_in_band():
+    """SCREWLESS design: the snaps are the sole closure. THIS IS A BAND, NOT A CEILING, AND THE
+    REASON IS THE FLAT BOTTOM.
 
-    The HOLD still comes from the 90 deg self-locking undercut, not deflection force, so this gate
-    is NOT a hold check — it is the runaway-insertion guard: it stops a future edit from pushing
-    closing force past what two hands can seat (the 2.55 mm / deflect 0.42 experiment hit ~160 N and
-    was rejected as un-closeable for zero retention gain). Ceiling set at 72 N deflection (~110 N at
-    mu=0.7) — just above the intended ~69 N, so any further creep trips it and forces a re-decision.
+    It used to be a runaway-insertion guard alone — a 72 N ceiling set "just above the intended
+    ~69 N", from a era when arm_wall_height ran 9.4 mm south to ~20 mm north over the tent wedge
+    and the 2.55 mm / deflect 0.42 experiment hit ~160 N. Removing the wedge pinned b at 6.60 mm
+    on every arm and took the whole design down to ~34 N. The ceiling now has 50 % headroom, so it
+    guards nothing, and the risk has FLIPPED: what threatens this case is a latch too soft to seat
+    and click, not one too stiff to close.
+
+    So both ends are asserted. The floor is the new half. Neither end is a HOLD check — hold comes
+    from the 90 deg self-locking undercut, not from deflection force — they bound the closing
+    ACTION: enough force to snap over positively, not so much that two hands cannot seat it.
 
     The sum includes corner_force() — it once omitted the N2 corner entirely, a real gap that
     hid 2.57-3.91 N of the true total from every historical closing-force check."""
     total = (sum(C.snap_force(a.thickness, arm_wall_height(a), a.length) for a in C.SNAP_ARMS)
              + corner_force())
-    assert total <= 72.0, f"total deflection force {total:.1f} N; worst-case insertion would be "\
-                          f"{C.snap_insertion_force(total, 0.7):.1f} N at mu=0.7"
+    assert total <= 55.0, (
+        f"total deflection force {total:.1f} N; worst-case insertion would be "
+        f"{C.snap_insertion_force(total, 0.7):.1f} N at mu=0.7 — past a two-hand seat")
+    assert total >= 25.0, (
+        f"total deflection force {total:.1f} N is below the 25 N floor — the shell would close "
+        f"with no positive snap-over. Buy it back with arm THICKNESS (force goes as h^3, strain "
+        f"only as h), not with SNAP_BARB_PROUD, which spends fatigue margin and hidden band")
 
 
 def test_fatigue_strain_has_margin_for_a_screwless_shell():
     """SCREWLESS binds on CYCLIC FATIGUE, not force: the snaps flex every time the (rare-open)
-    shell is opened, and PLA fatigues near its strain limit. The AGGRESSIVE-HOLD retune (2026-08-26)
-    deliberately spent some of the old fatigue margin — deflect 0.25 -> 0.40 — for a firmer seat and
-    louder click, and raised the PLA cap 0.005 -> 0.006 to match. T1-thumb-gulf is the bottleneck
-    (L=13 pinned by GULF_A, h at the 1.5 mm print floor); its strain is SNAP_DEFLECT alone and now
-    sits 0.533 % (89 % of the 0.6 % cap). SW1 is the next bottleneck at 0.469 %, every other arm
-    <= 0.35 %. Gate at 0.55 % — it holds
-    the worst arm just under the cap with a thin, intentional margin; going higher needs a real
-    re-decision (a frequently-opened shell should walk deflect back toward the old 0.005 margin)."""
+    shell is opened, and PLA fatigues near its strain limit. T1-thumb-gulf is the bottleneck
+    (L=13 pinned by GULF_A, h at the 1.5 mm print floor); its strain is SNAP_DEFLECT alone.
+
+    THE GATE IS NOT THE CAP, AND THAT DISTINCTION IS THE WHOLE POINT. SNAP_PLA_STRAIN_MAX (0.60 %)
+    is a statement about the material; this gate (0.55 %) is a statement about the design; the
+    actual worst arm sits at 0.493 %. Three separate numbers, each with room between it and the
+    next. A retune once raised BOTH the barb depth and this gate until the gate equalled the cap
+    and the worst arm sat at 99.8 % of both — at which point the gate could never fire again and
+    a nominal 1.50 mm arm printing at 1.60 (routine at a 0.4 mm nozzle) was already over. If a
+    future tune needs this gate raised, that is the signal to lengthen or thin an arm instead."""
     strains = [C.snap_strain(a.thickness, a.length) for a in C.SNAP_ARMS] + [corner_strain()]
     worst = max(strains)
-    assert worst <= 0.0055, f"worst root strain {worst*100:.3f}% exceeds the 0.55% fatigue-margin gate"
+    assert worst <= 0.0055, (
+        f"worst root strain {worst*100:.3f}% exceeds the 0.55% design gate (material cap is "
+        f"{C.SNAP_PLA_STRAIN_MAX*100:.1f}%) — lengthen or thin an arm, or shrink SNAP_BARB_PROUD")
+
+
+def test_lift_window_respects_keycap_headroom():
+    """SNAP_Z_PLAY IS TUB LIFT, AND TUB LIFT IS SPENT OUT OF THE KEYCAP GAP.
+
+    The tub carries the cover membrane, so every mm the tub can rise before a barb bites is a mm
+    the membrane rises toward a fully-pressed keycap skirt. The budget is
+    KEYCAP_SKIRT_CLEAR_AT_FULL_PRESS minus the membrane's own COVER_THICKNESS — 0.50 mm — and
+    nothing modelled it: test_top_cover.test_keycap_headroom compares two STATIC heights and has
+    no term for lift at all.
+
+    This is the ceiling that makes the screwless spec's 0.6-0.8 mm "preload window" (spec 7)
+    unreachable, quite apart from whether a window preloads anything."""
+    room = C.KEYCAP_SKIRT_CLEAR_AT_FULL_PRESS - C.COVER_THICKNESS
+    assert C.SNAP_Z_PLAY <= room, (
+        f"SNAP_Z_PLAY {C.SNAP_Z_PLAY} exceeds the {room:.2f} mm of keycap headroom "
+        f"(KEYCAP_SKIRT_CLEAR_AT_FULL_PRESS {C.KEYCAP_SKIRT_CLEAR_AT_FULL_PRESS} - "
+        f"COVER_THICKNESS {C.COVER_THICKNESS}) — a lifted tub domes the membrane into the caps")
+
+
+def test_a_sub_90_return_face_can_actually_cam():
+    """A return face shallower than 90 deg is only worth its Z if it can SLIDE.
+
+    Self-locking runs both ways: the same friction cone that stops the barb camming OUT under
+    pull-off stops it camming IN to preload. The face slides only when tan(90 - return) exceeds
+    mu, i.e. 1/tan(return) > mu, and this file's own design point is the grippy end of printed
+    PLA-on-PLA (see snap_insertion_force). 82 deg gives 0.141 against mu 0.4-0.7 — nowhere near —
+    while costing proud/tan(82) of extra barb height out of the hidden band. Either the angle
+    earns its height or it should be a flat 90 deg undercut, which costs no Z at all."""
+    if C.SNAP_RETURN_DEG >= 90.0:
+        return
+    mu_design = 0.7
+    cam = 1.0 / math.tan(math.radians(C.SNAP_RETURN_DEG))
+    assert cam > mu_design, (
+        f"SNAP_RETURN_DEG {C.SNAP_RETURN_DEG} gives a cam ratio of {cam:.3f} against mu "
+        f"{mu_design} — it is inside the friction cone, so it cannot preload, and it still "
+        f"spends {C.SNAP_BARB_PROUD / math.tan(math.radians(C.SNAP_RETURN_DEG)):.3f} mm of band")
 
 
 def test_undercut_overlap_retains():
@@ -410,11 +505,17 @@ def test_every_barb_sits_at_one_height():
     # the PHYSICAL fact directly, per arm at its own barb y — robust to the barb height either way.
     all_barbs = ([(a.name, barb_center(a)[1], a.barb_lo_z) for a in C.SNAP_ARMS]
                  + [("N2-sw3-lobe", corner_barb_center()[1], C.SNAP_CORNER_BARB_LO_Z)])
+    # MEASURED FROM THE POCKET FLOOR, NOT THE BARB. The pocket floor is barb_lo_z - SNAP_Z_PLAY
+    # (snaps._catch_local), so it is the pocket — not the barb — that reaches down toward the
+    # seam. Using blo here made the whole check blind to SNAP_Z_PLAY: the constant could grow
+    # straight through the bottom of the tub skirt without a single test moving.
     for name, by, blo in all_barbs:
-        skirt_below = blo - (_seam_z_at(by) + C.SNAP_SKIRT_BELOW)
+        floor = blo - C.SNAP_Z_PLAY
+        skirt_below = floor - (_seam_z_at(by) + C.SNAP_SKIRT_BELOW)
         assert skirt_below >= 0.0, (
-            f"{name}: barb at z {blo:.2f} sits in a dead zone — seam floor {_seam_z_at(by):.2f} + "
-            f"SNAP_SKIRT_BELOW {C.SNAP_SKIRT_BELOW} leaves {skirt_below:.3f} mm of skirt below it")
+            f"{name}: pocket floor at z {floor:.2f} sits in a dead zone — seam floor "
+            f"{_seam_z_at(by):.2f} + SNAP_SKIRT_BELOW {C.SNAP_SKIRT_BELOW} leaves "
+            f"{skirt_below:.3f} mm of skirt below it")
     assert z + C.SNAP_BARB_H <= C.SNAP_BAND_CEIL, "the barb now runs into the rim's lead-in"
 
 

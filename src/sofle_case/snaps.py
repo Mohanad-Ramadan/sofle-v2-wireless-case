@@ -1,9 +1,14 @@
-"""Rabbet snap latches — hold-shut for the case ends the 5 screws cannot reach.
+"""Rabbet snap latches — THE SOLE CLOSURE. There are no screws.
 
-The screws span case Y 35.5-96.7 of a 126 mm case, so both ends are unclamped cantilevers held
-only by SEAM_FIT_CLEAR of rabbet friction. These latches hold those ends. They are NOT a second
-clamp: the screws remain the only precision Z reference, and a fatigued latch degrades this
-joint back to friction-only rather than letting the case open.
+These began as a hold-shut for the two case ends the 5 M2s could not reach, and that history is
+still visible in older comments. It is out of date: the screws are gone (see the SCREWLESS note
+at STANDOFF_PIN_RECESS), so these latches are the only thing holding the shell shut, and a
+fatigued latch now degrades the joint to rabbet friction ALONE. That is why the strain budget
+and not the closing force is what this design is tuned against.
+
+They are still not a Z reference. Closed height is set by the switch plate — a hardware datum —
+with the tub's cover membrane landing on it; the latches only stop the tub lifting off it, after
+SNAP_Z_PLAY of dead travel.
 
 **Every flexing part is on the BOTTOM plate's rim, and that is a print-orientation decision.**
 An FDM arm has to bend PARALLEL to the layer lines. A strip of the bottom's rim, freed by a slot
@@ -60,8 +65,8 @@ from build123d import (
 from . import constants as C
 
 # Radial (local +v) landmarks of the rabbet cross-section, measured from the rim's OUTER face:
-_RIM_INNER_V = -C.SEAM_RIM_THK              # -2.55; rim's inboard face
-_SKIRT_INNER_V = C.SEAM_FIT_CLEAR           # +0.20; tub skirt's inboard face
+_RIM_INNER_V = -C.SEAM_RIM_THK              # -2.60; rim's inboard face
+_SKIRT_INNER_V = C.SEAM_FIT_CLEAR           # +0.15; tub skirt's inboard face
 
 
 def _local_box(u0: float, u1: float, v0: float, v1: float, z0: float, z1: float) -> Part:
@@ -396,9 +401,12 @@ def corner_force() -> float:
 def arm_wall_height(arm: C.SnapArm) -> float:
     """Beam width ``b``: the local wall height the arm is freed out of, ground face to ledge.
 
-    Not SEAM_LEDGE_Z — the wedge is 1.0 mm thick at the front and 14.24 at the back, so this
-    runs 9.4 mm at the south front to ~20 mm at the north. Force goes as b, which is why arm
-    thickness is set per arm."""
+    THE FLAT BOTTOM MADE THIS UNIFORM. It used to run 9.4 mm at the south front to ~20 mm at the
+    north, because the wedge it was measured down to was 1.0 mm thick at the front and 14.24 at
+    the back; with the wedge gone ``tent_ground_z`` is 0 everywhere and this returns SEAM_LEDGE_Z
+    = 6.60 for every arm. Kept as a function because the parting line may vary it again — but
+    nothing should now justify a per-arm THICKNESS by appealing to b, which is what the old
+    ladder did."""
     from .case import tent_ground_z
     y0, y1 = arm.root[1], arm_free_end(arm)[1]
     return C.SEAM_LEDGE_Z - tent_ground_z((y0 + y1) / 2.0)

@@ -534,6 +534,11 @@ def test_slide_cavity_leaves_bottom_unchanged(side):
     # 205839.093 -> (flat, no skin) 68011.31 -> (FLOOR_THICKNESS 6.3->6.6, the JST-floor fix) 71012
     # -> (blind-port skin re-added, grown down a _skin_drop() to hide the snap ports) 88866.126
     # -> (flush _bottom_outer_shell band added — the visible swoosh that walks with the top) 90094.98
-    # -> (E1/W1 south 1mm to clear hidden-band dead zone, S-spline lens undershoot) 90920.76.
+    # -> (E1/W1 south 1mm to clear hidden-band dead zone, S-spline lens undershoot) 90920.76
+    # -> (flat-bottom premium retune: crest 4.0->3.75, north h 2.35->2.50/2.40, foot 142.0->141.75, Z_PLAY 0.25->0.18, LEDGE 0.30->0.25) 90826.94
+    # -> (hybrid 4: proud 0.55->0.60 deflect 0.45, return 90->82 preload, north T-rib 1.0×1.5 mid-height) 91032.63
+    # -> (hybrid 4 WALKED BACK: T-rib deleted, return 82->90, proud 0.60->0.52, Z_PLAY 0.18->0.25,
+    #     SEAM_LEDGE_CLEAR 0.25->0.30) 90823.77. The rib and the deeper/taller barb are what leave;
+    #     the north arm thicknesses (2.50/2.40), the crest at 3.75 and the foot at 141.75 all stay.
     # The test's point is unchanged — the slide cavity is a TOP feature and must not show up here.
-    assert abs(build_bottom_part(side).volume - 90920.76) < 5e-2
+    assert abs(build_bottom_part(side).volume - 90823.77) < 5e-2
