@@ -19,9 +19,15 @@ from build123d import Part, export_stl, export_step
 from sofle_case.case import build_top_part, build_bottom_part, build_case_half, Side
 
 
-def _export(part: Part, stem: Path) -> None:
+def _export(part: Part, stem: Path, tolerance: float = 1e-3, angular_tolerance: float = 0.05) -> None:
     stl, step = stem.with_suffix(".stl"), stem.with_suffix(".step")
-    if not export_stl(part, str(stl)):
+    # Tighter angular than build123d defaults (tol=1e-3, ang=0.1≈5.7°): the canopy
+    # ramp is a shallow cubic (≤35°) so 0.1 leaves ~6 facets across the whole S
+    # and shows as visible lines in the STL. 0.05≈2.9° doubles the facets and is
+    # visually smooth at 0.2 mm layer without detonating the mesh — the ramp is
+    # now an exact single cubic Bezier (not a 25-pt interpolating Spline), so
+    # curvature is minimal. STEP is exact regardless. Exposed as CLI flags.
+    if not export_stl(part, str(stl), tolerance=tolerance, angular_tolerance=angular_tolerance):
         raise RuntimeError(f"export_stl failed for {stl}")
     if not export_step(part, str(step)):
         raise RuntimeError(f"export_step failed for {step}")
@@ -42,18 +48,22 @@ def _export(part: Part, stem: Path) -> None:
 @click.option("--phantoms", "show_phantoms", is_flag=True, default=False,
               help="Also show the hardware phantoms (PCB, plate, switches, EC11, knob) in the "
                    "viewer. Phantoms are never exported and never fused — view only.")
+@click.option("--tolerance", type=float, default=1e-3, show_default=True,
+              help="STL linear deflection (mm). Lower = finer, larger file.")
+@click.option("--angular-tolerance", type=float, default=0.05, show_default=True,
+              help="STL angular deflection (rad). Lower = smoother ramp, larger file. Default 0.05≈2.9° vs build123d 0.1≈5.7°.")
 def main(side: str, out_dir: Path, show_viewer: bool, export_png: bool,
-         build_legacy: bool, show_phantoms: bool) -> None:
+         build_legacy: bool, show_phantoms: bool, tolerance: float, angular_tolerance: float) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     s = cast(Side, side)
 
-    click.echo(f"building {side} TOP part...")
+    click.echo(f"building {side} TOP part... (tol={tolerance} ang={angular_tolerance})")
     top = build_top_part(s)
-    _export(top, out_dir / f"sofle_{side}_top")
+    _export(top, out_dir / f"sofle_{side}_top", tolerance=tolerance, angular_tolerance=angular_tolerance)
 
     click.echo(f"building {side} BOTTOM part...")
     bottom = build_bottom_part(s)
-    _export(bottom, out_dir / f"sofle_{side}_bottom")
+    _export(bottom, out_dir / f"sofle_{side}_bottom", tolerance=tolerance, angular_tolerance=angular_tolerance)
 
     parts = [top, bottom]
     names = [f"{side}_top", f"{side}_bottom"]
@@ -61,7 +71,7 @@ def main(side: str, out_dir: Path, show_viewer: bool, export_png: bool,
     if build_legacy:
         click.echo(f"building {side} legacy single-piece tray...")
         legacy = build_case_half(s)
-        _export(legacy, out_dir / f"sofle_case_{side}")
+        _export(legacy, out_dir / f"sofle_case_{side}", tolerance=tolerance, angular_tolerance=angular_tolerance)
         parts.append(legacy)
         names.append(f"{side}_legacy")
 

@@ -166,13 +166,13 @@ def test_the_sampled_polyline_really_is_the_curve():
 def test_the_curve_stays_a_drawn_line_not_a_hook():
     """A 1.0 mm groove that turns too tightly stops reading as a drawn stroke. Pinned against
     ``PUZZLE_CURVE_MIN_R`` (25 mm), and separately against the amplitude that was actually approved:
-    at A = 4.75 the radii are 46.8 and 47.7 mm, so there is ~1.9× of headroom before the shape itself
-    is in question — and ~90× against the width, which is the fold-over limit ``_band_offsets``
-    guards."""
+    at A = 7 the radii are 38.6 and 39.3 mm (was 46.8 / 47.7 at 4.75), so there is ~1.5× of
+    headroom before the shape itself is in question — and ~75× against the width, which is the
+    fold-over limit ``_band_offsets`` guards."""
     for i in range(len(PZ.PUZZLE_LINES)):
         r = PZ.curve_min_radius(i)
         assert r >= PZ.PUZZLE_CURVE_MIN_R, f"line {i} bends to R={r:.1f} mm"
-        assert r >= 40.0, f"line {i}: R={r:.1f} mm — the approved mark measured 46.8 / 47.7"
+        assert r >= 35.0, f"line {i}: R={r:.1f} mm — the approved mark at A=7 measured 38.6 / 39.3"
 
 
 def test_the_parameterisation_still_comes_from_the_shipped_straight_layout(segs):
@@ -465,7 +465,8 @@ def test_no_stroke_but_the_upper_one_leaves_through_the_east_wall(side, segs):
 
 def test_the_pair_keeps_exactly_one_east_break_and_the_amplitude_is_what_cost_the_other(segs):
     """The straight mark notched the east arris ONCE PER HALF. The approved curve notches it once in
-    the PAIR, on the right half, and the left half's upper stroke stops 3.2 mm short in open roof.
+    the PAIR, on the right half, and the left half's upper stroke stops ~4.7 mm short in open roof
+    (was 3.2 at A=4.75, now 4.7 at A=7) — still the bow lifting it off the wall.
 
     That was a deliberate trade when ``PUZZLE_CURVE_A`` was chosen — A ≈ 2.10 keeps both — so it is
     pinned here rather than left to be rediscovered as a regression. Attributed, too: the same stroke
@@ -477,8 +478,8 @@ def test_the_pair_keeps_exactly_one_east_break_and_the_amplitude_is_what_cost_th
     assert east == [("right", 1)], f"the pair's east breaks are {east}, expected only right line 1"
 
     short = CAN.CANOPY_EAST_X - max(p[0] for p in segs["left"][0])
-    assert 2.5 < short < 4.0, \
-        f"the left half's upper stroke now stops {short:.2f} mm short of the east wall, not ~3.2"
+    assert 4.0 < short < 5.5, \
+        f"the left half's upper stroke now stops {short:.2f} mm short of the east wall, not ~4.7 (A=7)"
 
     saved = PZ.PUZZLE_CURVE_A
     try:
@@ -838,7 +839,13 @@ def test_the_east_arris_is_broken_at_most_once_per_half(side, bare, cut, segs):
     wall — so this test derives what it expects from the strokes instead of assuming one. An
     UNCUT arris where a stroke does reach it, and a cut one where none does, both fail; which half
     is which is pinned separately, in
-    ``test_the_pair_keeps_exactly_one_east_break_and_the_amplitude_is_what_cost_the_other``."""
+    ``test_the_pair_keeps_exactly_one_east_break_and_the_amplitude_is_what_cost_the_other``.
+
+    EAST is now chamfered like the west (``_chamfer_east_top``), so a stroke that runs past the
+    east wall FADES over the 1.2 mm × 2.4 mm facet rather than notching a sharp arris. The flat
+    roof just inboard of the facet top line is still cut, but the chamfer face itself is not —
+    which is the same terminus the west strokes have. The probe therefore sits on the chamfer
+    slope (``EAST_X - 0.4``) where a sharp notch would show and a fade shows nothing."""
     probe_x = CAN.CANOPY_EAST_X - 0.4
     z_ridge = CAN.canopy_ridge_top_z(side)
     breakers = [i for i, seg in enumerate(segs[side])
@@ -863,17 +870,15 @@ def test_the_east_arris_is_broken_at_most_once_per_half(side, bare, cut, segs):
             runs[-1].append(y)
         else:
             runs.append([y])
-    assert len(runs) == len(breakers), (
-        f"{side}: the east arris is cut in {len(runs)} places "
-        f"({[(r[0], r[-1]) for r in runs]}), but {len(breakers)} stroke(s) reach it"
+    # East now carries the same drafted facet as the west, so the chamfer face itself is NOT
+    # notched — a stroke past the wall fades over it like the west strokes do. The flat roof
+    # just inboard of the top line is still cut, but this probe sits on the slope to verify
+    # the facade stays intact.
+    assert len(runs) == 0, (
+        f"{side}: the east chamfer face is notched in {len(runs)} place(s) "
+        f"({[(r[0], r[-1]) for r in runs]}); with the east facet the groove should fade, "
+        f"not cut the chamfer (stroke(s) past the wall: {breakers})"
     )
-
-    # ...and it is the stroke that reaches the wall which did it, at the Y where it crosses.
-    for i, run in zip(breakers, runs):
-        y_expect = _y_at_x(segs[side][i], CAN.CANOPY_EAST_X)
-        y_mid = (run[0] + run[-1]) / 2
-        assert abs(y_mid - y_expect) < 2 * CAN.CANOPY_PUZZLE_W, \
-            f"{side}: the notch sits at y≈{y_mid:.2f}, line {i} crosses at {y_expect:.2f}"
 
 
 def test_strokes_do_not_detonate_the_mesh():

@@ -19,7 +19,7 @@ def test_knob_takes_16_of_the_20mm_shaft():
     mound was the only cover there was. A cover-side restyle then broke a test about the KNOB."""
     assert K.KNOB_BORE_DEPTH == 16.0
     assert E.SHAFT_TOP_Z - K.knob_hem_z_if_bottomed() == 16.0, "knob should cover 16 mm of shaft"
-    assert K.knob_hem_z_if_bottomed() - E.BODY_TOP_Z == 4.0, (
+    assert abs(K.knob_hem_z_if_bottomed() - E.BODY_TOP_Z - 4.0) < 1e-9, (
         "4 mm of shaft should show above the mounting face")
 
 
