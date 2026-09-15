@@ -684,8 +684,6 @@ def build_tray(rim_z: float = C.MAIN_RIM_Z, bottom_chamfer: bool = True) -> Part
     shell  = _outer_shell(rim_z)
     cavity = _cavity_solid(rim_z)
     hollow = cast(Part, shell - cavity)
-    hollow = cast(Part, hollow + _mcu_y_relief_bump(rim_z))
-    hollow = cast(Part, hollow - _mcu_y_relief_widen(rim_z))
     # The printable case applies the slide-switch access cut after the tray is built.
     hollow = _fillet_bump_neg_x_corner(hollow)
     faceted = _apply_rim_facets(hollow, rim_z)

@@ -76,16 +76,58 @@ def _pcb_plate() -> Part:
 
 
 def _mcu_block() -> Part:
-    """nice!nano + socket stack block above the main PCB plate, up to the board top."""
+    """nice!nano on long headers — board-only box plus thin pin rails (tall-header split).
+
+    Reality: MCU sits on ~11 mm headers, bottom at C.MCU_PCB_BOT_Z (20.1) well
+    above MAIN_RIM_Z (15.7) — 4.4 mm air. Between PCB and MCU there are only
+    thin pin columns in open air, no full-width block at wall height. The old
+    solid block (PCB_TOP_Z → MCU_PCB_TOP_Z, 11 mm, full footprint) over-claimed
+    wall-level volume and falsely intersected the strict PCB-frame wall.
+
+    Split: board box [MCU_PCB_BOT_Z → MCU_PCB_TOP_Z] (1.6 mm thick, full
+    MCU_WIDTH × BODY_L footprint) plus two thin pin rails (~0.64 mm square,
+    2.54 mm pitch rows approx.) from PCB_TOP_Z → MCU_PCB_BOT_Z at the MCU
+    east/west edges, clipped inside the inner cavity so they never intersect
+    the strict wall. USB stub stays above rim and is unchanged.
+    """
     cx, _ = C.pcb_to_case(*C.MCU_POS)
-    block_h  = C.MCU_PCB_TOP_Z - C.PCB_TOP_Z   # 11.0 mm: sockets + nano board
-    center_z = C.PCB_TOP_Z + block_h / 2
     # Anchored at the pin array (MCU_BODY_N_Y), not centred on MCU_POS — the board's extra
     # length over a Pro Micro is at the SOUTH end. See constants.MCU_BODY_N_Y.
     center_y = (C.MCU_BODY_N_Y + C.MCU_BODY_S_Y) / 2
 
-    with BuildPart() as bp, Locations((cx, center_y, center_z)):
-        Box(C.MCU_WIDTH, C.MCU_BODY_L, block_h)
+    # Board-only box — the actual PCB, above the rim.
+    board_h = C.MCU_PCB_TOP_Z - C.MCU_PCB_BOT_Z  # 1.6 mm
+    board_center_z = (C.MCU_PCB_BOT_Z + C.MCU_PCB_TOP_Z) / 2
+
+    # Pin rails — thin columns in open air below the board. Must stay inside
+    # the strict inner cavity, so clipped south of the north wall's inner face.
+    # Using two continuous rails at the east/west edges as an approximation for
+    # the two 2.54 mm pitch pin rows (≈0.64 mm square each).
+    pin_h = C.MCU_PCB_BOT_Z - C.PCB_TOP_Z
+    pin_center_z = (C.PCB_TOP_Z + C.MCU_PCB_BOT_Z) / 2
+    pin_w = 0.64  # ~0.64 mm square pin
+    # East/west X at MCU edges, inset by half pin width so rail stays inside MCU footprint
+    # and well inside PCB polygon's cavity.
+    east_x = cx + C.MCU_WIDTH / 2 - pin_w / 2 - 0.1
+    west_x = cx - C.MCU_WIDTH / 2 + pin_w / 2 + 0.1
+    # Clip Y to stay inside strict wall inner face — north wall inner is
+    # pcb_to_case(0,0)[1] + CLEARANCE. Keep 0.3 mm clearance inside cavity.
+    inner_north = C.pcb_to_case(0, 0)[1] + C.PCB_XY_CLEARANCE - 0.3
+    rail_y0 = C.MCU_BODY_S_Y
+    rail_y1 = min(C.MCU_BODY_N_Y, inner_north)
+    rail_len = rail_y1 - rail_y0
+    rail_center_y = (rail_y0 + rail_y1) / 2
+
+    with BuildPart() as bp:
+        # Board
+        with Locations((cx, center_y, board_center_z)):
+            Box(C.MCU_WIDTH, C.MCU_BODY_L, board_h)
+        # Pin rails — only if there is positive length inside cavity
+        if rail_len > 0 and pin_h > 0:
+            with Locations((west_x, rail_center_y, pin_center_z)):
+                Box(pin_w, rail_len, pin_h)
+            with Locations((east_x, rail_center_y, pin_center_z)):
+                Box(pin_w, rail_len, pin_h)
 
     assert bp.part is not None
     return bp.part
