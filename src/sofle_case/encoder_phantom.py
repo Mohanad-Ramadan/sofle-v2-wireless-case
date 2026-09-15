@@ -1,7 +1,6 @@
 """PHANTOM of the EC11 encoder hardware — body, bushing, shaft, pins.
 
-Never printed and never fused: it exists so renders show what the bezel actually surrounds, and so
-the build can check the cover against the real part instead of against a bbox.
+Never printed or fused; it provides the physical envelope for renders and clash checks.
 
 Part in use: EC11 rotary encoder, 5-pin, "20 mm" shaft, push switch
 (https://www.ram-e-shop.com/shop/pot-ec11-rotary-5pin-20mm-ec11-rotary-encoder-with-push-button-switch-5pin-20mm-silver-9624).
@@ -21,6 +20,7 @@ arithmetic (it is the knob's bore and height that force the cut), which is why t
 function-local: ``knob`` reads THIS module for the untrimmed length.
 """
 from __future__ import annotations
+
 from typing import cast
 
 from build123d import Part, Solid
@@ -47,7 +47,7 @@ BUSHING_H = 0.0        # mm; ABSENT on this part. Was 5.0, assumed off the ALPS 
                        #   shaft base, but that drawing is the panel-mount variant and already
                        #   disagrees with this clone on body height (4.5 vs ~6.5), so it does not
                        #   describe this part. 0.0 draws no collar at all; anything up to 3.5 would
-                       #   not change the seating anyway (the plateau top is the taller floor).
+                       #   not change the seating anyway (the encoder body is the floor).
 SHAFT_DIA = 6.0        # mm; knurled
 SHAFT_LEN = 20.0       # mm; from the mounting face (= body top), per the listing's "20 mm"
 PIN_LEN = 3.5          # mm; below the PCB
@@ -59,9 +59,7 @@ PIN_W = 0.8
 # cosmetic accuracy for the phantom.
 LEG_W = 1.0            # mm; square post, tiny — no listing/datasheet reference, just calipers
 LEG_H = C.ENCODER_LEG_H   # mm; above the body top. Single-sourced from constants because it is a
-                          # CLEARANCE datum, not just a phantom detail: a sealed bezel's roof is
-                          # sized off it. When it lived only here, the ring was sized off the box
-                          # top instead and buried the leg by 0.7 mm.
+                          # clearance datum, not just a phantom detail.
 
 SHAFT_TOP_Z = BODY_TOP_Z + SHAFT_LEN       # 37.0 with the assumed 20 mm
 BUSHING_TOP_Z = BODY_TOP_Z + BUSHING_H     # 22.0
@@ -113,9 +111,8 @@ def build_ec11(trimmed: bool = True) -> Part:
 def build_encoder_phantom(with_knob: bool = True, trimmed: bool = True) -> Part:
     """The whole encoder ASSEMBLY: EC11 plus the knob pressed onto its shaft.
 
-    The knob comes along by default because that is how the part exists on the desk — an EC11
-    without its knob is never what you are checking the cover against. ``with_knob=False`` gives
-    the bare hardware (for a scene that draws the knob itself, e.g. one showing both seatings).
+    The knob comes along by default because that is the assembled hardware envelope.
+    ``with_knob=False`` gives the bare encoder for scenes that draw the knob separately.
 
     Imported inside the function: ``knob`` reads this module for the shaft length, so a top-level
     import back into it would be circular."""
@@ -132,6 +129,7 @@ def build_encoder_phantom(with_knob: bool = True, trimmed: bool = True) -> Part:
 
 if __name__ == "__main__":
     from ocp_vscode import show
+
     from .knob import knob_seating_report
     print(knob_seating_report())
     show(build_encoder_phantom(), names=["encoder+knob"])

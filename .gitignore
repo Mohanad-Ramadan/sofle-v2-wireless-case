@@ -6,7 +6,6 @@ __pycache__/
 output/
 !output/.gitkeep
 *.stl
-*.step
 .coverage
 *.egg-info/
 .omc/

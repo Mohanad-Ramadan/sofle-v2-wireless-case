@@ -6,12 +6,25 @@ the tray subtracts them rather than modelling them. They are one system — a ce
 that feeds it, and the leads joining the two — which is why they live together.
 """
 from __future__ import annotations
+
 from itertools import pairwise
 from typing import cast
+
 from build123d import (
-    Axis, BuildPart, BuildSketch, Part, Plane, Pos, Rectangle, Solid, extrude, fillet,
+    Axis,
+    BuildPart,
+    BuildSketch,
+    Part,
+    Plane,
+    Pos,
+    Rectangle,
+    Solid,
+    extrude,
+    fillet,
 )
+
 from . import constants as C
+from .pcb_geometry import slide_switch_south_y
 
 # Both ends of the wire channel reach INTO the pockets they join. A channel that merely abutted
 # them would meet at a zero-width face, which OCC is entitled to treat as a non-intersection —
@@ -66,20 +79,6 @@ def jst_body_center(mount: str = "east") -> tuple[float, float]:
     return cx, pin_row_y + C.JST_BODY_D / 2
 
 
-def _slide_switch_south_y() -> float:
-    """Case Y of the slide switch phantom's south face — the JST pocket's south edge lines up
-    with it, by the owner's eye.
-
-    Derived live rather than frozen as a literal. A copied number here is precisely the bug this
-    project keeps hitting: ``switch_phantom._LOWER_H`` sat as a stale copy of ``MX_BODY_CLEAR``
-    through two revisions of the value it claimed to be. The cost is that a structural cutter now
-    reads a phantom module, which is normally the wrong direction — but the alignment target IS
-    the phantom's face, so deriving anything else would be describing a different edge.
-    """
-    from .pcb_phantom import _slide_switch_body
-    return _slide_switch_body().bounding_box().min.Y
-
-
 def _jst_pocket_bounds() -> tuple[float, float, float, float]:
     """(x_lo, x_hi, y_lo, y_hi) of the JST pocket in case coords.
 
@@ -97,7 +96,7 @@ def _jst_pocket_bounds() -> tuple[float, float, float, float]:
     west_x, by = jst_body_center("west")
     east_x, _ = jst_body_center("east")
     half_w = C.JST_BODY_W / 2 + C.JST_POCKET_PAD
-    y_lo = _slide_switch_south_y()
+    y_lo = slide_switch_south_y()
     y_hi = by + C.JST_BODY_D / 2 + C.JST_PLUG_RUN + C.JST_WIRE_BEND + C.JST_POCKET_PAD
     return west_x - half_w, east_x + half_w, y_lo, y_hi
 
@@ -105,9 +104,8 @@ def _jst_pocket_bounds() -> tuple[float, float, float, float]:
 def jst_pocket() -> Part:
     """Cutter part: blind recess in the floor for the battery JST hung UNDER the PCB.
 
-    The connector used to stand on top of the board, where it fouled the cover by 34.2 mm^3 and
-    held the case open — the only piece of hardware that did. Mounting it underneath, like the
-    hotswap sockets, removes the collision instead of reshaping the canopy around it.
+    The connector mounts underneath the PCB, like the hotswap sockets, so its body needs a floor
+    recess rather than clearance above the plate.
 
     Spans ``JST_POCKET_FLOOR_Z`` -> ``FLOOR_THICKNESS``, cut down from the floor's top face
     exactly as ``battery_pocket`` is. It looks alarmingly deep against the 6.3 mm nominal floor

@@ -1,19 +1,19 @@
 """Slide-switch bowl fit and flat-wall (no-hill) guarantees."""
 from build123d import Axis, Solid
+
 from sofle_case import constants as C
-from tests.shared_builds import build_tray
+from tests.shared_builds import build_case_half, build_tray
 
 
 def test_slide_scoop_opens_at_switch():
     """The finger scoop must open the −X wall at the actuator nub: material is gone at the wall
-    centre at nub height, yet the wall stays solid below the scoop floor. Uses build_top_part —
-    the scoop is a TOP-only, above-seam feature now (not in the shared build_tray).
+    centre at nub height, yet the wall stays solid below the scoop floor. Uses the final monolithic
+    case; the scoop is not part of the shared tray builder.
 
     Probes the real wall centre (polygon PCB X=0 edge, case X ≈ 10.5) — not the PCB_X_MIN
     line (case X 0), which is air in front of the wall and passes even when the scoop is
     mislocated and removes nothing (the bug this guards against)."""
-    from tests.shared_builds import build_top_part
-    top = build_top_part("right")
+    top = build_case_half("right")
     _, cy = C.pcb_to_case(*C.SW_SLIDE_POS)
     wall_cx = C.pcb_to_case(0, 0)[0] - (C.WALL_THICKNESS + C.PCB_XY_CLEARANCE) / 2
     gone = Solid.make_box(1.0, 1.0, 1.0).translate(
@@ -42,14 +42,14 @@ def test_neg_x_wall_flat_at_mcu():
     )
     vol = (tray & probe).volume
     assert vol > 0.01, (
-        f"−X wall has no material at MCU Y just below rim — wall may not reach MAIN_RIM_Z"
+        "−X wall has no material at MCU Y just below rim — wall may not reach MAIN_RIM_Z"
     )
     above_probe = Solid.make_box(2.0, 2.0, 0.3).translate(
         (wall_center_x - 1.0, mcu_cy - 1.0, C.MAIN_RIM_Z + 0.2)
     )
     above_vol = (tray & above_probe).volume
     assert above_vol < 0.01, (
-        f"−X wall over MCU has material above rim — wall is not flat at MAIN_RIM_Z"
+        "−X wall over MCU has material above rim — wall is not flat at MAIN_RIM_Z"
     )
 
 

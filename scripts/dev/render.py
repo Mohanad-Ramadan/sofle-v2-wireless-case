@@ -1,7 +1,10 @@
-"""Offline shaded render of an STL from a few angles (no interactive viewer)."""
-import sys, struct
-import numpy as np
+"""Offline shaded render of a case STL from a few angles."""
+import struct
+import sys
+
 import matplotlib
+import numpy as np
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -15,11 +18,13 @@ def load_stl(path):
     tris = np.zeros((n, 3, 3), np.float32)
     for i in range(3):
         for j in range(3):
-            tris[:, i, j] = data[:, 12 + i * 12 + j * 4: 16 + i * 12 + j * 4].copy().view("<f4").ravel()
+            tris[:, i, j] = data[:, 12 + i * 12 + j * 4:16 + i * 12 + j * 4].copy().view("<f4").ravel()
     return tris
 
 
-def shade(tris, light=np.array([0.4, -0.7, 0.6])):
+def shade(tris, light=None):
+    if light is None:
+        light = np.array([0.4, -0.7, 0.6])
     n = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
     ln = np.linalg.norm(n, axis=1, keepdims=True)
     ln[ln == 0] = 1

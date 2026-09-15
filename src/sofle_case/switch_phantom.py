@@ -1,11 +1,21 @@
-"""MX switch phantom for visual fit-check in the OCP viewer. Gate with SHOW_SWITCH_PHANTOM."""
+"""MX switch phantom for visual fit-check in the OCP viewer.
+
+Select it with ``scripts/build.py --phantoms``.
+"""
 from __future__ import annotations
+
 import json
 from pathlib import Path
 
 from build123d import (
-    Part, BuildPart, Locations, Location, Box, Cylinder,
+    Box,
+    BuildPart,
+    Cylinder,
+    Location,
+    Locations,
+    Part,
 )
+
 from . import constants as C
 
 _DATA = Path(__file__).resolve().parents[2] / "data"
@@ -47,7 +57,7 @@ def _keycap_solid(cx: float, cy: float) -> Part:
     no-op — and taking the argument would imply the caps are oriented when they are not."""
     base_z = C.PLATE_TOP_Z + _UPPER_H + _CAP_GAP
     # taper by lofting base → top square
-    from build123d import loft, BuildSketch, Rectangle, Location
+    from build123d import BuildSketch, Location, Rectangle, loft
     with BuildSketch() as lo:
         Rectangle(_CAP_BASE_W, _CAP_BASE_W)
     with BuildSketch() as hi:

@@ -1,10 +1,11 @@
 """Load cached PCB outline polygon and translate into case coords."""
 from __future__ import annotations
+
 import json
 import math
 from pathlib import Path
-from . import constants as C
 
+from . import constants as C
 
 _DATA = Path(__file__).resolve().parents[2] / "data"
 
@@ -25,6 +26,25 @@ def slide_switch_placement() -> tuple[float, float, float]:
     sw = raw["SW31"]
     cx, cy = C.pcb_to_case(sw["x"], sw["y"])
     return cx, cy, sw["rotation"]
+
+
+def slide_switch_south_y() -> float:
+    """Southmost case-Y of the retained slide-switch hardware envelope."""
+    _, cy, rot = slide_switch_placement()
+    rectangles = (
+        (C.SLIDE_ACTUATOR_PIN_CENTER_X, 0.0,
+         C.SLIDE_ACTUATOR_BODY_L, C.SLIDE_ACTUATOR_BODY_W),
+        (C.SLIDE_ACTUATOR_PIN_CENTER_X,
+         -(C.SLIDE_ACTUATOR_BODY_W / 2 + C.SLIDE_ACTUATOR_NUB_D / 2),
+         C.SLIDE_ACTUATOR_NUB_L, C.SLIDE_ACTUATOR_NUB_D),
+    )
+    ys = []
+    for lx, ly, width, depth in rectangles:
+        for x, y in ((-width / 2, -depth / 2), (-width / 2, depth / 2),
+                     (width / 2, -depth / 2), (width / 2, depth / 2)):
+            _, oy = rotate_2d(lx + x, ly + y, rot)
+            ys.append(cy + oy)
+    return min(ys)
 
 
 def thumb_switch_midpoint_x() -> float:

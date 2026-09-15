@@ -5,7 +5,7 @@ connect into a ``CommsWarning`` and returns normally, so any caller that prints 
 viewer" afterwards prints it whether or not anything arrived.
 
 That cost real time once: three sends were reported as successful against a dead viewer while the
-panel kept showing a months-old encoder plateau, and the stale image was read as the build being
+panel kept showing a months-old encoder view, and the stale image was read as the build being
 wrong rather than the send having failed.
 
 ``~/.ocpvscode`` lists ports the extension has *registered*. Those entries outlive the session that

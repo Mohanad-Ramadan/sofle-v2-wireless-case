@@ -4,12 +4,13 @@ Usage:
     python scripts/parse_gerber.py <edgecuts.gbr> <pth.drl> [--out data/]
 """
 from __future__ import annotations
+
 import json
 import re
-from pathlib import Path
 from collections import defaultdict
-import click
+from pathlib import Path
 
+import click
 
 # ---------- GERBER ----------
 

@@ -3,23 +3,40 @@ switch plate). The MCU corner is a plain flat wall — no hill; the nice!nano an
 its USB-C jack sit open above the rim. The slide-switch bowl scoop on the −X
 wall and the +Y wall's B+/B- relief bump are the only local wall features."""
 from __future__ import annotations
+
 import math
 from functools import cache
 from typing import cast
+
 from build123d import (
-    Part, Wire, Face, Pos, Polyline, make_face, extrude, offset, Kind, Solid,
-    Plane, BuildPart, BuildSketch, BuildLine, Axis, fillet, chamfer, loft,
+    Axis,
+    BuildLine,
+    BuildPart,
+    BuildSketch,
+    Face,
+    Kind,
+    Part,
+    Plane,
+    Polyline,
+    Pos,
+    Solid,
+    Wire,
+    chamfer,
+    extrude,
+    fillet,
+    make_face,
+    offset,
 )
 from OCP.LocOpe import LocOpe_DPrism
 from OCP.Standard import Standard_Failure
 from OCP.TopoDS import TopoDS
+
 from . import constants as C
 from .pcb_geometry import polygon_in_case_coords, thumb_switch_midpoint_x
 
-
 # ---------------------------------------------------------------------------
-# Shared 2D faces — used by shell, cavity, AND hill ring so all share the
-# same outer/inner XY profile. This is what guarantees the hill is flush.
+# Shared 2D faces keep shell, cavity, and local relief geometry on the same
+# outer/inner XY profile.
 # ---------------------------------------------------------------------------
 
 def _polygon_wire() -> Wire:
@@ -90,8 +107,8 @@ def _outer_poly_pts() -> list[tuple[float, float]]:
     """`_poly_pts()` with the SW reflex kink dropped AND the southern runs grown outward.
 
     Two departures from the sharp polygon, both OUTER-ONLY — `_reflex_vertex_points` /
-    `_rounded_wire` / the rim facets consume this, while the cavity and the sandwich plate/pocket
-    keep the full sharp `_poly_pts()`, so PCB clearance and rabbet fit are unchanged:
+    `_rounded_wire` / the rim facets consume this, while the cavity and plate-fit band
+    keep the full sharp `_poly_pts()`, so PCB clearance remains unchanged:
 
       * pts[3], the barely-1 mm reflex kink, is DROPPED so the thumb ramp pts[2]->pts[4] is ONE
         straight segment and the West crease rides a clean ramp like the East on E4. That only
@@ -135,8 +152,8 @@ def _rounded_wire() -> Wire:
 
     Used for the OUTER wall and the rim-facet profiles only, so the drafted
     chamfer flows continuously around the jogs/notches instead of creasing at
-    each reflex corner. The CAVITY (and the sandwich plate/pocket offsets in
-    case.py) keep the sharp polygon — PCB clearance and rabbet fit unchanged;
+    each reflex corner. The CAVITY and plate offsets in case.py keep the sharp
+    polygon — PCB clearance unchanged;
     rounding a reflex corner only ADDS outer material (fills the notch), so the
     wall gets locally thicker there, never thinner. Per-vertex radius fallback
     so one tight corner can't abort the profile."""
@@ -178,8 +195,8 @@ def offset_extruded(amount: float, z_lo: float, z_hi: float, kind: Kind = Kind.A
                     rounded: bool = False) -> Part:
     """PCB polygon offset OUTWARD by ``amount``, extruded ``z_lo → z_hi``.
 
-    Public helper shared with the sandwich split (case.py): the inset floor plate
-    and the tub's plate-pocket cutter are both concentric offsets of the same
+    Public helper shared with the monolithic case (case.py): fit-band support
+    geometry is a concentric offset of the same
     polygon, so they nest with a uniform radial gap. ``amount`` between the cavity
     offset (``PCB_XY_CLEARANCE``) and the outer-skin offset
     (``WALL_THICKNESS + PCB_XY_CLEARANCE``) lands inside the wall. ``Kind.ARC``
@@ -195,38 +212,12 @@ def offset_extruded(amount: float, z_lo: float, z_hi: float, kind: Kind = Kind.A
     return cast(Part, Pos(0, 0, z_lo) * bp.part)
 
 
-def offset_lofted(levels, kind: Kind = Kind.ARC, rounded: bool = False) -> Part:
-    """PCB polygon offset by a DIFFERENT amount at each Z, lofted between them.
-
-    ``levels`` is a sequence of ``(z, amount)``, south to north in Z. Where
-    ``offset_extruded`` gives a prism with vertical walls, this gives a wall whose
-    draft varies with height — which is what the bottom case's outward flare is.
-
-    RULED, not smooth. A smooth loft through this outline is a BSpline through
-    ~90 vertices per section and OCC is slow and brittle on it; ruled segments are
-    exact cones between neighbouring sections and never fail. Pass enough levels
-    that the faceting is under the print's own resolution — the caller samples the
-    flare curve, so the error is a chord against that curve, not against a plane.
-    """
-    wire = _rounded_wire() if rounded else _polygon_wire()
-    sections = []
-    for z, amount in levels:
-        with BuildSketch(Plane.XY.offset(z)) as sk:
-            face = make_face(wire)  # type: ignore[arg-type]
-            offset(face, amount=amount, kind=kind)
-        sections.append(sk.sketch)
-    with BuildPart() as bp:
-        loft(sections, ruled=True)
-    assert bp.part is not None
-    return cast(Part, bp.part)
-
-
 @cache
 def outer_south_overhang() -> float:
     """How far SOUTH of Y=0 the outer skin reaches, in mm (0 before the south wall was grown).
 
-    ``OUTER_DEPTH`` is the outer skin's own bounding depth and the datum the seam wave's fractions
-    and the tent plane are stated in, so ``SOUTH_WALL_EXTRA`` was deliberately NOT folded back
+    ``OUTER_DEPTH`` is the outer skin's own bounding depth and the footprint datum, so
+    ``SOUTH_WALL_EXTRA`` was deliberately NOT folded back
     into it — the case simply reaches below Y=0 now. This reports by how much, measured off the
     real offset profile rather than predicted, because the southmost point is the thumb tip's
     offset ARC and its dip is set by where the grown corner landed, not by the growth directly.
@@ -270,7 +261,7 @@ def _axis_box(x0: float, x1: float, y0: float, y1: float, z0: float, z1: float) 
 def _mcu_y_relief_x_range() -> tuple[float, float]:
     """X span of the +Y relief, as (x_lo, x_full_hi).
 
-    x_lo reaches the −X wall's OUTER face so the pushed-out cover face joins
+    x_lo reaches the −X wall's OUTER face so the pushed-out wall face joins
     the corner with no notch — but this is add-only (the widen below starts
     inboard), so the −X wall itself is never cut.
 
@@ -285,7 +276,7 @@ def _mcu_y_relief_x_range() -> tuple[float, float]:
 
 
 def _mcu_y_relief_bump(rim_z: float = C.MAIN_RIM_Z) -> Part:
-    """Push the MCU cover's +Y OUTER wall out to the index-column line (+Y wall
+    """Push the MCU bay's +Y OUTER wall out to the index-column line (+Y wall
     only — see MCU_Y_RELIEF_* comment in constants.py). Paired with
     _mcu_y_relief_widen() so wall thickness is preserved — the wall shifts
     outward, it doesn't thin out.
@@ -330,20 +321,19 @@ def _mcu_y_relief_widen(rim_z: float = C.MAIN_RIM_Z) -> Part:
     coincident face and no residual ledge. x_hi overlaps the base box so there
     is no gap between the two cuts.
 
-    Ceiling band (sandwich TOP only, rim_z > MAIN_RIM_Z): below the plate top the
+    Ceiling band (for callers requesting rim_z > MAIN_RIM_Z): below the plate top the
     full X-span is hollowed as before (clearance for the nice!nano + B+/B- wires).
-    Above the plate top — the band that becomes the TOP part's ceiling — the hollow
-    is bounded on X only: X ≤ bay_x keeps the switch-column side (east of the bay)
-    solid, so it still reads as ceiling rather than being open to air. bay_x is the
+    Above the plate top, the optional band is bounded on X only: X ≤ bay_x keeps
+    the switch-column side (east of the bay) solid. bay_x is the
     plate's own switch/bay boundary (MCU_Y_RELIEF_CEILING_X), which also clears the
     nice!nano's right edge.
 
     On Y the band runs all the way out to ``BAY_NORTH_INNER_Y``, same as the base
     box. It used to stop at ``MCU_BODY_N_Y`` — "the ceiling starts exactly where the
     board ends" — on the grounds that the +Y strip out toward the jack needed closing.
-    It does not: everything above that strip is canopy interior under the canopy's own
-    roof, so leaving it solid closed nothing and opening it exposes nothing. What it
-    DID do was stand a 1 mm-tall ledge (MAIN_RIM_Z→COVER_TOP_Z) across the full width
+    It does not: everything above that strip is open hardware clearance, so leaving it solid
+    closed nothing and opening it exposes nothing. What it DID do was stand a raised ledge
+    across the full width
     of the bay, its face on exactly the board's north face — zero clearance by
     construction, right under the USB funnel, precisely where the MCU has to pass on
     the way in. Bounding a cavity by a component's own face is not a fit, it is a
@@ -573,9 +563,8 @@ def _sw_ramp_offset_pt_at_x(off: float, x: float) -> tuple[float, float]:
     return x, p0y + uy * (x - p0x) / ux
 
 
-def _front_slash_crossings() -> tuple[tuple[float, float, float], ...]:
-    """Rim & toe of the two front creases (right-half case coords); rim at Z=COVER_TOP_Z, toe at
-    Z=COVER_TOP_Z−FRONT_FACET_DROP. Returns ``(east_rim, east_toe, west_rim, west_toe)``.
+def _front_slash_crossings(rim_z: float = C.MAIN_RIM_Z) -> tuple[tuple[float, float, float], ...]:
+    """Rim & toe of the two front creases in right-half case coords.
       • EAST '\\' — the cap y=FRONT_FACET_Y_MASK crossing ramp E4's offset lines (rim = outer−RUN, toe
         = full outer).
       • WEST '/'  — a DERIVED exact mirror twin of the East: the East's X-run mirrored (rim east of
@@ -584,7 +573,7 @@ def _front_slash_crossings() -> tuple[tuple[float, float, float], ...]:
         is otherwise CLAMPED east onto the ramp — see the block over the clamp below."""
     pts = _outer_poly_pts()                   # GROWN outline — the wall the facet actually rides
     outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
-    z_rim, z_toe = C.COVER_TOP_Z, C.COVER_TOP_Z - C.FRONT_FACET_DROP
+    z_rim, z_toe = rim_z, rim_z - C.FRONT_FACET_DROP
     off_rim, off_toe = outer - C.FRONT_FACET_RUN, outer
     # East '\': the cap crossing ramp E4 — index 4 of the grown list (sharp pts[5]→pts[6]).
     a, b = pts[4], pts[5]
@@ -644,7 +633,7 @@ def _front_slash_crossings() -> tuple[tuple[float, float, float], ...]:
     return east_rim, east_toe, west_rim, west_toe
 
 
-def _front_facet_mask() -> Part:
+def _front_facet_mask(rim_z: float = C.MAIN_RIM_Z) -> Part:
     """Plan REGION (extruded prism) selecting where the deep south facet applies.
 
     Bounded NORTH/EAST by the flat cap y=FRONT_FACET_Y_MASK — whose crossing of ramp E4 is the East
@@ -654,7 +643,7 @@ def _front_facet_mask() -> Part:
     two read as exact twins; forcing the East's run makes this cut oblique enough to reach the '/'
     lean while staying clear of the flat-front corner. The ramp is straightened in `_outer_poly_pts`.
     Deep = thumb ramp → flat front → E4; thumb tip + side/back walls stay shallow."""
-    _e_rim, _e_toe, w_rim, w_toe = _front_slash_crossings()
+    _e_rim, _e_toe, w_rim, w_toe = _front_slash_crossings(rim_z)
     y_n = C.FRONT_FACET_Y_MASK
     BIG = 220.0
     dx, dy = w_rim[0] - w_toe[0], w_rim[1] - w_toe[1]   # west boundary = plan line through toe→rim
@@ -662,7 +651,7 @@ def _front_facet_mask() -> Part:
     def _wx(y: float) -> float:
         return w_toe[0] + dx * (y - w_toe[1]) / dy
 
-    z0, z1 = -1.0, C.COVER_TOP_Z + 2.0
+    z0, z1 = -1.0, rim_z + 2.0
     with BuildPart() as bp:
         with BuildSketch(Plane.XY):
             with BuildLine():
@@ -679,7 +668,7 @@ def _apply_rim_facets(part: Part, rim_z: float) -> Part:
     perim = cast(Part, _rim_facet_cutter(C.RIM_FACET_DROP, C.RIM_FACET_RUN, rim_z)
                  - _mcu_bump_exclusion(rim_z))
     front = cast(Part, _rim_facet_cutter(C.FRONT_FACET_DROP, C.FRONT_FACET_RUN, rim_z)
-                 & _front_facet_mask())
+                 & _front_facet_mask(rim_z))
     return cast(Part, part - perim - front - _bump_face_facets(rim_z))
 
 
@@ -690,24 +679,18 @@ def _apply_rim_facets(part: Part, rim_z: float) -> Part:
 def build_tray(rim_z: float = C.MAIN_RIM_Z, bottom_chamfer: bool = True) -> Part:
     """Outer shell + inner cavity, walls flat at ``rim_z``.
 
-    ``rim_z`` defaults to ``MAIN_RIM_Z`` (15.0, flush with the switch plate) — the
-    single-tray case. The sandwich TOP part raises it to ``COVER_TOP_Z`` (16.0) so
-    the upper walls run high enough to carry the membrane ceiling; the outer-top
-    chamfer, +Y relief and slide-switch valley all track the rim automatically."""
+    ``rim_z`` defaults to ``MAIN_RIM_Z`` (flush with the switch plate); the outer facet,
+    +Y relief and slide-switch access all track the rim automatically."""
     shell  = _outer_shell(rim_z)
     cavity = _cavity_solid(rim_z)
     hollow = cast(Part, shell - cavity)
     hollow = cast(Part, hollow + _mcu_y_relief_bump(rim_z))
     hollow = cast(Part, hollow - _mcu_y_relief_widen(rim_z))
-    # NB: the slide-switch finger scoop is NOT cut here — it is a TOP-only, above-seam feature
-    # that also lowers the fused canopy, so case.build_top_part applies it (see case._slide_scoop).
+    # The printable case applies the slide-switch access cut after the tray is built.
     hollow = _fillet_bump_neg_x_corner(hollow)
     faceted = _apply_rim_facets(hollow, rim_z)
-    # The sandwich TOP passes bottom_chamfer=False. Its skin no longer ENDS at Z=0 — over the
-    # southern stretch case.skirt_extension carries it on down to the desk — so a counter-
-    # chamfer there is not an outer bottom edge at all, it is a 0.5 mm V-groove ploughed
-    # through the middle of a continuous wall. It bought nothing anyway: the tub prints
-    # rim-down, so its Z=0 edge is at the TOP of the print, nowhere near an elephant foot.
+    # A caller may disable the bottom counter-chamfer for another print orientation. The
+    # monolithic CLI keeps the default flat underside.
     chamfered = _chamfer_bottom_edges(faceted) if bottom_chamfer else faceted
     if isinstance(chamfered, Part):
         return chamfered
@@ -718,5 +701,6 @@ def build_tray(rim_z: float = C.MAIN_RIM_Z, bottom_chamfer: bool = True) -> Part
 # %%
 if __name__ == "__main__":
     from ocp_vscode import show
+
     from sofle_case.tray import build_tray
     show(build_tray())

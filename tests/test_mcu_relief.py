@@ -1,7 +1,8 @@
-"""Tests for the MCU +Y cover relief (B+/B- pin clearance): the MCU cover's +Y
+"""Tests for the MCU +Y wall relief (B+/B- pin clearance): the bay's +Y
 wall is pushed out to the index-column line. ONLY the +Y wall moves — the −X
 wall is left exactly as-is."""
 from build123d import Solid
+
 from sofle_case import constants as C
 from tests.shared_builds import build_tray
 
@@ -45,13 +46,13 @@ def test_relief_reaches_rim():
     t = build_tray()
     x_mid = C.pcb_to_case(C.MCU_POS[0], 0)[0]
     target_y = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
-    z_full = C.MAIN_RIM_Z - C.OUTER_TOP_CHAMFER - 0.5   # below the 45° chamfer, full thickness
+    z_full = C.MAIN_RIM_Z - C.RIM_FACET_DROP - 0.5   # below the perimeter facet, full thickness
     probe = Solid.make_box(2.0, 1.0, 1.0).translate((x_mid, target_y - 1.0, z_full))
     assert (t & probe).volume > 0, "relief does not reach the top of the wall"
 
 
 def test_minus_x_wall_untouched():
-    """The −X wall must remain solid along its whole hill strip — the relief
+    """The −X wall must remain solid along its whole bay strip — the relief
     only touches the +Y wall (regression guard for the corner-relief bug that
     punched a hole through the −X wall)."""
     t = build_tray()

@@ -1,5 +1,6 @@
 """Switch plate phantom geometry checks."""
 from build123d import Part
+
 from sofle_case import constants as C
 from sofle_case.plate_phantom import build_plate_phantom
 

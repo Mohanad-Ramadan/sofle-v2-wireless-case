@@ -4,10 +4,12 @@ Usage:
     python scripts/parse_kicad_plate.py <top_plate.kicad_pcb> [--out data/]
 """
 from __future__ import annotations
+
 import json
 import re
-from pathlib import Path
 from collections import defaultdict
+from pathlib import Path
+
 import click
 
 _LINE_RE = re.compile(

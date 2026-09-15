@@ -13,18 +13,8 @@ so negative tests are unaffected.
 """
 from functools import cache
 
-from sofle_case.canopy import build_canopy as _build_canopy
-from sofle_case.case import (
-    build_bottom_part as _build_bottom_part,
-    build_case_half as _build_case_half,
-    build_top_part as _build_top_part,
-)
-from sofle_case.top_cover import build_top_cover as _build_top_cover
+from sofle_case.case import build_case_half as _build_case_half
 from sofle_case.tray import build_tray as _build_tray
 
-build_top_part = cache(_build_top_part)
-build_bottom_part = cache(_build_bottom_part)
 build_case_half = cache(_build_case_half)
-build_canopy = cache(_build_canopy)
 build_tray = cache(_build_tray)
-build_top_cover = cache(_build_top_cover)

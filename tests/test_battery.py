@@ -1,5 +1,6 @@
 """Tests for the battery pocket geometry (deep pocket for a real 405070 cell)."""
 from build123d import Part
+
 from sofle_case import constants as C
 from sofle_case.battery import battery_pocket
 

@@ -1,8 +1,10 @@
 """Parse JLCPCB CPL (pick-and-place) CSV → JSON keyed by designator."""
 from __future__ import annotations
+
 import csv
 import json
 from pathlib import Path
+
 import click
 
 

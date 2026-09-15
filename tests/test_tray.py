@@ -1,5 +1,6 @@
 """Tray (shell + cavity) tests."""
 from build123d import Part
+
 from sofle_case import constants as C
 from sofle_case.tray import outer_south_overhang
 from tests.shared_builds import build_tray
@@ -14,9 +15,8 @@ def test_outer_bbox():
     t = build_tray()
     bb = t.bounding_box()
     assert abs((bb.max.X - bb.min.X) - C.OUTER_WIDTH) < 0.01
-    # DEEPER than OUTER_DEPTH now: the three southern runs are grown outward by SOUTH_WALL_EXTRA
-    # to give the deep facet something to rake into, and OUTER_DEPTH was left as the datum the
-    # seam wave and tent plane are stated in rather than moved to absorb it.
+    # DEEPER than OUTER_DEPTH: the southern runs grow outward by SOUTH_WALL_EXTRA
+    # while OUTER_DEPTH remains the footprint datum.
     over = outer_south_overhang()
     assert 0.0 < over <= C.SOUTH_WALL_EXTRA + 0.01, \
         "south skin cannot reach further south than the growth that pushed it"

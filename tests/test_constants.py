@@ -50,8 +50,7 @@ def test_five_mounting_holes():
 def test_mcu_stack_order():
     """MCU stack Z values must be monotonically increasing.
 
-    The jack bands exceed MAIN_RIM_Z by design — the port punches through the canopy's
-    north wall, which stands above the rim.
+    The jack bands exceed MAIN_RIM_Z by design — the port hardware is taller than the rim.
     """
     assert C.PCB_TOP_Z < C.MCU_PCB_TOP_Z < C.USB_JACK_NEUTRAL_HI_Z
 
@@ -94,7 +93,7 @@ def test_mcu_board_is_anchored_to_its_SOUTH_pin():
     to derive the USB-end face from the NORTHMOST pin, spending the SuperMini's extra 1.1 mm
     at the far/south end where nothing is in the way. Backwards: a Pro-Micro-footprint board
     is 33.02 = 27.94 + 2 x 2.54, so the pin row fixes the FAR edge and a longer board grows
-    north, out over the USB end and into the canopy's north wall. Anchoring north hid a real
+    north, out over the USB end and into the case's north wall. Anchoring north hid a real
     collision by putting the growth somewhere harmless.
     """
     south_pin = C.pcb_to_case(*C.MCU_POS)[1] - C.MCU_PIN_SPAN_Y / 2
@@ -122,7 +121,7 @@ def test_usb_jack_z_rejects_bad_side():
 def test_usb_port_z_is_jack_band_plus_clears():
     """The printed port band is the measured jack band grown by the USB_PORT_CLEAR_*
     design margins — and nothing else. Guards the constants.py single-source split
-    (canopy.canopy_usb_z delegates here)."""
+    (the hardware port phantom delegates here)."""
     for side in ("left", "right"):
         jlo, jhi = C.usb_jack_z(side)
         plo, phi = C.usb_port_z(side)

@@ -1,7 +1,10 @@
-"""Zoomed shaded render of a corner region of the STL, multiple angles."""
-import sys, struct
-import numpy as np
+"""Zoomed shaded render of a case corner, from multiple angles."""
+import struct
+import sys
+
 import matplotlib
+import numpy as np
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -18,7 +21,9 @@ def load_stl(path):
     return tris
 
 
-def shade(tris, light=np.array([0.5, -0.6, 0.6])):
+def shade(tris, light=None):
+    if light is None:
+        light = np.array([0.5, -0.6, 0.6])
     n = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
     ln = np.linalg.norm(n, axis=1, keepdims=True); ln[ln == 0] = 1
     n = n / ln; light = light / np.linalg.norm(light)

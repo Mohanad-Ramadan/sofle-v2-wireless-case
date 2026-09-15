@@ -18,6 +18,7 @@ Usage:
     python scripts/parse_plate_gerber.py <top_plate-Edge_Cuts.gbr> [--out data/]
 """
 from __future__ import annotations
+
 import json
 import re
 from collections import defaultdict
