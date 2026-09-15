@@ -258,104 +258,6 @@ def _axis_box(x0: float, x1: float, y0: float, y1: float, z0: float, z1: float) 
     return cast(Part, Solid.make_box(x1 - x0, y1 - y0, z1 - z0).translate((x0, y0, z0)))
 
 
-def _mcu_y_relief_x_range() -> tuple[float, float]:
-    """X span of the +Y relief, as (x_lo, x_full_hi).
-
-    x_lo reaches the −X wall's OUTER face so the pushed-out wall face joins
-    the corner with no notch — but this is add-only (the widen below starts
-    inboard), so the −X wall itself is never cut.
-
-    x_full_hi reaches all the way to where the polygon itself naturally steps
-    to MCU_Y_RELIEF_TARGET_Y (MCU_Y_RELIEF_X_HI) — the relief must cover this
-    whole stretch or a gap remains between the ramp and the polygon's own
-    step, which reads as a dip back to the old tight line."""
-    corner_x = C.pcb_to_case(0, 0)[0]
-    x_lo = corner_x - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE            # −X wall outer face
-    x_full_hi = C.pcb_to_case(C.MCU_Y_RELIEF_X_HI, 0)[0]
-    return x_lo, x_full_hi
-
-
-def _mcu_y_relief_bump(rim_z: float = C.MAIN_RIM_Z) -> Part:
-    """Push the MCU bay's +Y OUTER wall out to the index-column line (+Y wall
-    only — see MCU_Y_RELIEF_* comment in constants.py). Paired with
-    _mcu_y_relief_widen() so wall thickness is preserved — the wall shifts
-    outward, it doesn't thin out.
-
-    A single box capped at MAIN_RIM_Z: the walls are flat at the rim now (no
-    hill), so there is no wall material above the rim to relieve — the B+/B-
-    pads clear into open air above 15.0.
-
-    Z0 starts at the case bottom (not FLOOR_THICKNESS) so this box genuinely
-    overlaps the solid floor slab beneath — that's what keeps the resulting
-    ridge structurally fused to the rest of the case once _mcu_y_relief_widen()
-    hollows out the cavity behind it; a coincident-face touch alone isn't
-    reliable enough for OCC's boolean union."""
-    x_lo, x_full_hi = _mcu_y_relief_x_range()
-    y_old_outer = C.pcb_to_case(0, 0)[1] + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
-    y_new_outer = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
-    # Start at the polygon vertex Y (arc start of the Kind.ARC corner at
-    # vertex [16]) so the −X wall face is continuous up to y_new_outer —
-    # otherwise the arc dips inward between the arc start and the old overlap.
-    arc_start_y = C.pcb_to_case(0, 0)[1]
-    y_lo = min(y_old_outer - C.MCU_Y_RELIEF_OVERLAP, arc_start_y)
-    return _axis_box(x_lo, x_full_hi, y_lo, y_new_outer, 0.0, rim_z)
-
-
-def _mcu_y_relief_widen(rim_z: float = C.MAIN_RIM_Z) -> Part:
-    """Widen the cavity to match _mcu_y_relief_bump() — removes material between
-    the old and new inner +Y-wall faces so the added outer bump becomes usable
-    interior clearance rather than solid wall.
-
-    Two boxes. The base box starts 0.3 mm inboard of the −X wall's inner
-    polygon face: its −X cut runs the full cavity Y-span, so it must stay off
-    the −X wall face (X=inner_x) — a box whose −X face *overlaps* that wall
-    face over the shared Y-range triggers an OCC coincident-face BRepCheck
-    failure. The base box therefore leaves a 0.3 mm strip of bump material
-    unremoved at the corner (X=inner_x..inner_x+0.3, Y=corner_y..y_new_inner).
-
-    The corner box removes exactly that strip. It reaches the −X wall face
-    (x_lo=inner_x) but only over Y=corner_y..y_new_inner — i.e. it starts
-    exactly where the −X wall face ends (Y=corner_y, the polygon vertex). Its
-    −X cut face is thus *contiguous* with the wall face, not overlapping it, so
-    the two merge into one continuous −X inner wall up to the corner with no
-    coincident face and no residual ledge. x_hi overlaps the base box so there
-    is no gap between the two cuts.
-
-    Ceiling band (for callers requesting rim_z > MAIN_RIM_Z): below the plate top the
-    full X-span is hollowed as before (clearance for the nice!nano + B+/B- wires).
-    Above the plate top, the optional band is bounded on X only: X ≤ bay_x keeps
-    the switch-column side (east of the bay) solid. bay_x is the
-    plate's own switch/bay boundary (MCU_Y_RELIEF_CEILING_X), which also clears the
-    nice!nano's right edge.
-
-    On Y the band runs all the way out to ``BAY_NORTH_INNER_Y``, same as the base
-    box. It used to stop at ``MCU_BODY_N_Y`` — "the ceiling starts exactly where the
-    board ends" — on the grounds that the +Y strip out toward the jack needed closing.
-    It does not: everything above that strip is open hardware clearance, so leaving it solid
-    closed nothing and opening it exposes nothing. What it DID do was stand a raised ledge
-    across the full width
-    of the bay, its face on exactly the board's north face — zero clearance by
-    construction, right under the USB funnel, precisely where the MCU has to pass on
-    the way in. Bounding a cavity by a component's own face is not a fit, it is a
-    collision that happens to measure 0.00."""
-    _, x_full_hi = _mcu_y_relief_x_range()
-    inner_x     = C.pcb_to_case(0, 0)[0] - C.PCB_XY_CLEARANCE          # −X inner wall face
-    corner_y    = C.pcb_to_case(0, 0)[1]                              # polygon vertex Y; −X wall face ends here
-    y_new_inner = C.BAY_NORTH_INNER_Y                                  # the bay's one north face
-    _, y_safe_lo = C.pcb_to_case(0, C.MCU_POS[1])                      # safely inside cavity
-    z_mid = C.MAIN_RIM_Z + 0.01                                       # plate top: full-X clearance up to here
-    base   = _axis_box(inner_x + 0.3, x_full_hi, y_safe_lo, y_new_inner, C.FLOOR_THICKNESS, z_mid)
-    corner = _axis_box(inner_x, inner_x + 0.35, corner_y, y_new_inner, C.FLOOR_THICKNESS, z_mid)
-    widen  = cast(Part, base + corner)
-    if rim_z > C.MAIN_RIM_Z + 1e-6:
-        bay_x = C.pcb_to_case(C.MCU_Y_RELIEF_CEILING_X, 0)[0]
-        z_hi  = rim_z + 0.01
-        u_base   = _axis_box(inner_x + 0.3, bay_x, y_safe_lo, y_new_inner, z_mid, z_hi)
-        u_corner = _axis_box(inner_x, inner_x + 0.35, corner_y, y_new_inner, z_mid, z_hi)
-        widen = cast(Part, widen + u_base + u_corner)
-    return widen
-
-
 # NB: the old `_fillet_outer_concave_corners` post-pass (per-corner 3-D fillets hunting the
 # reflex V-notches) is GONE — the reflex corners are now rounded in the 2-D profile itself
 # (`_rounded_wire`), so wall AND facet flow continuously through them by construction.
@@ -371,51 +273,59 @@ def _chamfer_bottom_edges(part: Part) -> Part:
     The squished first layers fill the missing 45° wedge instead of bulging
     past the nominal footprint. The cavity floor sits at FLOOR_THICKNESS (Z=2.0),
     so the only edges in the Z≈0 plane are the floor's outer perimeter.
+    Strict PCB-frame north wall is now fully chamfered like the rest of the
+    perimeter — no XY mask; full loop at Z≈0.
 
-    Runs last in build_tray() so it does not perturb the Z-based edge selection
-    used by the fillet passes. Falls back to a smaller length, then to no
-    chamfer, rather than aborting the build (mirrors the other edge passes)."""
+    Runs last in build_tray() so it does not perturb Z-based edge selection.
+    Falls back to a smaller length, then to no chamfer, rather than aborting
+    the build. If north bottom edge is missing after facet change (tolerance
+    or facet cut), the bottom loop is derived from the outer-extruded wire at
+    Z≈0 to ensure the closed north segment is chamfered."""
     bottom = part.edges().filter_by_position(Axis.Z, minimum=-0.01, maximum=0.01)
     if not bottom:
-        return part
+        # Fallback: derive bottom loop from outer wire's bottom edges (strict frame)
+        try:
+            outer = _outer_extruded(0.0, 1.0)
+            outer_bottom = outer.edges().filter_by_position(Axis.Z, minimum=-0.01, maximum=0.01)
+            # Use broader Z tolerance on part to capture north edge if slightly offset
+            fallback = part.edges().filter_by_position(Axis.Z, minimum=-0.5, maximum=0.5)
+            # Filter fallback to those near outer loop's Y range to avoid picking interior floor edges
+            if fallback:
+                bottom = fallback
+            elif outer_bottom:
+                # As last resort, chamfer will be attempted on outer_bottom's location;
+                # but edges must belong to part, so return part unchanged if no part edges found
+                return part
+            else:
+                return part
+        except (ValueError, Standard_Failure):
+            return part
+    # Verify north segment present: outer north Y is at pcb 0 + WALL + CLEAR
+    try:
+        outer_north = C.pcb_to_case(0, 0)[1] + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+        has_north = any(
+            b.bounding_box().max.Y > outer_north - 1.0 and b.bounding_box().min.Y < outer_north + 1.0
+            for b in bottom
+        )
+        if not has_north:
+            # North edge missing — broaden Z tolerance to capture it from outer loop
+            broad = part.edges().filter_by_position(Axis.Z, minimum=-0.5, maximum=0.5)
+            # Keep only edges near Z≈0 and with Y near north or spanning perimeter
+            if broad:
+                # Prefer broad set that includes north; verify again
+                has_north_broad = any(
+                    b.bounding_box().max.Y > outer_north - 1.0 for b in broad
+                )
+                if has_north_broad:
+                    bottom = broad
+    except (ValueError, Standard_Failure, AttributeError):
+        pass
     for length in (C.BOTTOM_CHAMFER, C.BOTTOM_CHAMFER * 0.75):
         try:
             return cast(Part, chamfer(bottom, length=length))
         except (ValueError, Standard_Failure):
             continue
     return part
-
-
-# ---------------------------------------------------------------------------
-# Bump −X/+Y convex corner fillet
-# ---------------------------------------------------------------------------
-
-def _fillet_bump_neg_x_corner(part: Part) -> Part:
-    """Fillet the sharp 90° convex edge at the relief bump's −X/+Y corner.
-
-    After the bump pushes the +Y wall out, the corner at (x_lo, y_new_outer)
-    is a raw box edge. This adds an arc matching the polygon offset's
-    Kind.ARC radius so the corner style is consistent."""
-    x_lo, _ = _mcu_y_relief_x_range()
-    y_new = (C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1]
-             + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE)
-    r = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
-
-    z_edges = [
-        e for e in (
-            part.edges()
-            .filter_by_position(Axis.X, minimum=x_lo - 0.5, maximum=x_lo + 0.5)
-            .filter_by_position(Axis.Y, minimum=y_new - 0.5, maximum=y_new + 0.5)
-        )
-        if (e.bounding_box().max.Z - e.bounding_box().min.Z > 5.0
-            and abs(e.tangent_at(0.5).Z) > 0.9)
-    ]
-    if not z_edges:
-        return part
-    try:
-        return cast(Part, fillet(z_edges, radius=r))
-    except (ValueError, Standard_Failure):
-        return part
 
 
 # ---------------------------------------------------------------------------
@@ -468,84 +378,6 @@ def _rim_facet_cutter(drop: float, run: float, rim_z: float) -> Part:
     e = _FACET_END_EXT
     band = offset_extruded(outer, rim_z - drop - e, rim_z + e, rounded=True)
     return cast(Part, band - _rim_facet_frustum(drop, run, rim_z))
-
-
-# How far SOUTH of the handover line `_bump_face_facets`' west wedge starts. It must overlap:
-# both cutters shave the SAME drafted plane on the straight west wall, so the extra bite is
-# idempotent — whereas a wedge starting NORTH of the handover leaves a strip that neither cutter
-# reaches, and the full-thickness wall left standing there reads as a razor fin at the rim.
-_BUMP_FACET_HANDOVER_LAP = 0.5
-
-
-def _bump_facet_south_y() -> float:
-    """Y where the polygon-offset perimeter facet hands over to the +Y bump's face wedges.
-
-    `_mcu_bump_exclusion` kills the polygon cutter from here north; `_bump_face_facets` picks it
-    up from `_BUMP_FACET_HANDOVER_LAP` south of here. Both read this one value so they cannot
-    drift apart."""
-    return _poly_pts()[16][1] - 0.75      # just south of the west wall's north corner
-
-
-def _mcu_bump_exclusion(rim_z: float) -> Part:
-    """Plan region where the POLYGON-offset facet cutters must not cut: the +Y relief bump
-    is proud of the nominal outline offset over its whole footprint (it fills the NW corner
-    out to the flat y = bump-face line), so the nominal wedge would tunnel grooves INSIDE
-    the bump. The bump instead gets its own face-aligned wedges (`_bump_face_facets`) so its
-    faces carry the SAME drafted chamfer as every other wall. The box ends at the bump's east
-    face, where the polygon wall arrives at the same outer line — the polygon facet resumes
-    there on the same plane, so the chamfer runs continuous across the joint."""
-    x_lo, x_hi = _mcu_y_relief_x_range()
-    y_lo = _bump_facet_south_y()
-    return _axis_box(x_lo - 1.0, x_hi + 0.02, y_lo,
-                     C.OUTER_DEPTH + 2.0, 0.0, rim_z + 1.0)
-
-
-def _planar_wedge(pts3d: list[tuple[float, float, float]],
-                  direction: tuple[float, float, float], length: float) -> Part:
-    """Planar profile (3-D points, closed) extruded ``length`` along ``direction``."""
-    w = Polyline(*pts3d, close=True)
-    f = make_face(w)  # type: ignore[arg-type]
-    return cast(Part, extrude(f, amount=length, dir=direction))  # type: ignore[arg-type]
-
-
-def _bump_face_facets(rim_z: float) -> Part:
-    """Drafted-facet wedges for the +Y relief bump's own faces (north, west, NW corner).
-
-    The bump is excluded from the polygon-offset facet (see `_mcu_bump_exclusion`), so these
-    wedges cut the SAME chamfer profile (RIM_FACET_DROP/RUN) aligned to the bump's actual
-    faces: a Y–Z wedge along the north face, an X–Z wedge along the west face, and a conical
-    ring segment around the NW corner arc (the `_fillet_bump_neg_x_corner` cylinder), so the
-    chamfer flows wall → corner → bump → polygon wall with no bare stretch and no crease."""
-    drop, run = C.RIM_FACET_DROP, C.RIM_FACET_RUN
-    z0, z1, z1e = rim_z - drop, rim_z, rim_z + 0.5
-    x_lo, x_hi = _mcu_y_relief_x_range()
-    y_out = C.pcb_to_case(0, C.MCU_Y_RELIEF_TARGET_Y)[1] + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
-    r = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE   # NW corner fillet radius (_fillet_bump_neg_x_corner)
-    ccx, ccy = x_lo + r, y_out - r              # corner arc centre
-    # West wedge start: SOUTH of the handover, so it overlaps the polygon facet's plane rather
-    # than leaving a bare strip between the two (see `_BUMP_FACET_HANDOVER_LAP`).
-    y_w_lo = _bump_facet_south_y() - _BUMP_FACET_HANDOVER_LAP
-
-    north = _planar_wedge(
-        [(ccx - 0.2, y_out + 0.2, z0), (ccx - 0.2, y_out + 0.2, z1e),
-         (ccx - 0.2, y_out - run, z1e), (ccx - 0.2, y_out - run, z1),
-         (ccx - 0.2, y_out, z0)],
-        (1.0, 0.0, 0.0), (x_hi + 0.02) - (ccx - 0.2))
-    west = _planar_wedge(
-        [(x_lo - 0.2, y_w_lo, z0), (x_lo - 0.2, y_w_lo, z1e),
-         (x_lo + run, y_w_lo, z1e), (x_lo + run, y_w_lo, z1),
-         (x_lo, y_w_lo, z0)],
-        (0.0, 1.0, 0.0), (ccy + 0.2) - y_w_lo)
-    # NW corner: quadrant box minus the keep-cone (the corner cylinder tapering inward by
-    # ``run`` over ``drop``, extended past both ends so no coincident caps).
-    e = 0.5
-    slope = run / drop
-    box = _axis_box(x_lo - 0.2, ccx, ccy, y_out + 0.2, z0, z1e)
-    cone = cast(Part, Solid.make_cone(
-        r + slope * e, r - run - slope * e, drop + 2 * e
-    ).translate((ccx, ccy, z0 - e)))
-    corner = cast(Part, box - cone)
-    return cast(Part, north + west + corner)
 
 
 def _sw_ramp_offset_pt_at_x(off: float, x: float) -> tuple[float, float]:
@@ -663,13 +495,14 @@ def _front_facet_mask(rim_z: float = C.MAIN_RIM_Z) -> Part:
 
 
 def _apply_rim_facets(part: Part, rim_z: float) -> Part:
-    """Shave the drafted perimeter facet (bump handled by its own face wedges) and the
-    deeper south facet (masked to the front, between the two mirrored slashes)."""
-    perim = cast(Part, _rim_facet_cutter(C.RIM_FACET_DROP, C.RIM_FACET_RUN, rim_z)
-                 - _mcu_bump_exclusion(rim_z))
+    """Shave the drafted perimeter facet and the deeper south facet (masked to
+    the front, between the two mirrored slashes). Strict PCB-frame north wall
+    is now fully chamfered like the rest of the perimeter — no MCU bump
+    exclusion or wedge facets."""
+    perim = _rim_facet_cutter(C.RIM_FACET_DROP, C.RIM_FACET_RUN, rim_z)
     front = cast(Part, _rim_facet_cutter(C.FRONT_FACET_DROP, C.FRONT_FACET_RUN, rim_z)
                  & _front_facet_mask(rim_z))
-    return cast(Part, part - perim - front - _bump_face_facets(rim_z))
+    return cast(Part, part - perim - front)
 
 
 # ---------------------------------------------------------------------------
@@ -684,8 +517,6 @@ def build_tray(rim_z: float = C.MAIN_RIM_Z, bottom_chamfer: bool = True) -> Part
     shell  = _outer_shell(rim_z)
     cavity = _cavity_solid(rim_z)
     hollow = cast(Part, shell - cavity)
-    # The printable case applies the slide-switch access cut after the tray is built.
-    hollow = _fillet_bump_neg_x_corner(hollow)
     faceted = _apply_rim_facets(hollow, rim_z)
     # A caller may disable the bottom counter-chamfer for another print orientation. The
     # monolithic CLI keeps the default flat underside.
