@@ -4,13 +4,13 @@
 # scripts/
 
 ## Purpose
-Standalone CLI utilities. Two categories: the main build script (runs every time you want STL/STEP output) and the one-off PCB parsers (only needed when PCB sources change).
+Standalone CLI utilities. Two categories: the main build script (runs every time you want STL output) and the one-off PCB parsers (only needed when PCB sources change).
 
 ## Key Files
 
 | File | Description |
 |------|-------------|
-| `build.py` | **Main build CLI.** Builds the sandwich clamshell — `build_top_part(side)` + `build_bottom_part(side)` — and exports STL + STEP for each part to `output/`. Accepts `--show` (OCP viewer), `--png` (screenshot), and `--legacy` (also export the single-piece `build_case_half`). |
+| `build.py` | **Main build CLI.** Builds `build_case_half(side)` and exports one STL to `output/`. `--show` opens the viewer; `--phantoms` adds view-only hardware. |
 | `parse_gerber.py` | One-off: parses KiCad Gerber edge-cuts + PTH drill file → writes `data/pcb_outline.json` and `data/mounting_holes.json`. |
 | `parse_cpl.py` | One-off: parses KiCad CPL (component placement) CSV → writes `data/components.json`. |
 | `parse_kicad_plate.py` | One-off: parses KiCad plate `.kicad_pcb` → `data/plate_outline.json` + `data/plate_cutouts.json`. **Superseded by `parse_plate_gerber.py`** for the real hardware. |
@@ -28,9 +28,10 @@ Standalone CLI utilities. Two categories: the main build script (runs every time
 - Parse scripts are **one-off**. Do not run them unless PCB hardware changes.
 - `build.py` uses `click` for argument parsing. Add new options with `@click.option`.
 - Output directory defaults to `output/` and is created automatically.
+- STEP export is unsupported and removed. Before each build, `build.py` removes only the requested side's exact known legacy monolithic STEP and split top/bottom artifacts; unrelated output files are preserved.
 
 ### Testing Requirements
-- `test_build_cli.py` smoke-tests `build.py` by invoking it via subprocess and checking STL + STEP files are written with non-zero size.
+- `test_build_cli.py` smoke-tests `build.py` by invoking it via subprocess and checking exactly one non-empty STL is written per side.
 
 ### Common Patterns
 - All scripts use `from __future__ import annotations` and `pathlib.Path` (not `os.path`).
@@ -42,7 +43,7 @@ Standalone CLI utilities. Two categories: the main build script (runs every time
 
 ### External
 - `click ≥ 8.1` — CLI argument parsing
-- `build123d` — `export_stl`, `export_step`
+- `build123d` — `export_stl`
 - `ocp-vscode` (optional dev) — `show()`, `save_screenshot()`
 
 <!-- MANUAL: -->

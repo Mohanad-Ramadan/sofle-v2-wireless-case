@@ -3,15 +3,15 @@
 # sofle-case — Root
 
 ## Purpose
-Parametric tray case generator for the Sofle V2 Wireless (Alt_Switch) keyboard. Written in Python using build123d (code-CAD). Produces one STL + STEP per half (left / right).
+Parametric tray case generator for the Sofle V2 Wireless (Alt_Switch) keyboard. Written in Python using build123d (code-CAD). Produces one STL per half (left / right).
 
-The Sofle PCB is reversible, so the BOTTOM plate and the legacy single-piece tray are strict mirrors — one STL serves both halves. **The TOP part is not.** The two builds carry the nice!nano in opposite orientations (`C.MCU_ORIENTATION`: left flipped / components down, right neutral / components up), which puts the USB-C jack at a different Z on each, so the canopy's north-wall port band differs: left 16.84→21.5, right 19.6→24.26 (shell neck) with a 7 mm-tall overmold pocket around each. The canopy ridge is now derived **per half** (`canopy.canopy_ridge_top_z(side)`) rather than shared: left 24.22, right 26.98 — each half carries only as much roof material as its own port needs, so the TOP parts differ in HEIGHT by 2.76 mm as well as in window position. X/Y footprint still matches; Z does not. Print the matching TOP for each half.
+The PCB is reversible, so the two printable case halves are strict mirrors. Each export is one watertight monolithic tray with a flat rim coplanar with the switch plate.
 
 ## Key Files
 
 | File | Description |
 |------|-------------|
-| `AGENT.md` | AI agent instructions: hardware targets, layout, Z-stack, constants reference, build sequence, known risks |
+| `AGENTS.md` | AI agent instructions: hardware targets, layout, Z-stack, constants reference, build sequence, known risks |
 | `README.md` | Human-facing quick-start: build commands, test command, last-verified status |
 | `pyproject.toml` | Package metadata, dependencies (`build123d`, `numpy`, `click`), pytest config |
 
@@ -24,7 +24,7 @@ The Sofle PCB is reversible, so the BOTTOM plate and the legacy single-piece tra
 | `scripts/` | Build CLI and PCB-data parsers (see `scripts/AGENTS.md`) |
 | `docs/` | Z-stack reference and design docs (see `docs/AGENTS.md`) |
 | `data/` | Cached PCB geometry JSON — source of truth for polygon and hole positions (see `data/AGENTS.md`) |
-| `output/` | Generated STL + STEP files — do not edit manually (see `output/AGENTS.md`) |
+| `output/` | Generated STL files — do not edit manually (see `output/AGENTS.md`) |
 
 ## For AI Agents
 
@@ -32,7 +32,8 @@ The Sofle PCB is reversible, so the BOTTOM plate and the legacy single-piece tra
 - **Single source of truth for dimensions:** `src/sofle_case/constants.py`. Edit only there; all derived values recompute at import time.
 - **Never edit `data/` JSON by hand.** Re-run `scripts/parse_gerber.py` / `scripts/parse_cpl.py` if the PCB sources change.
 - **Always run `pytest` after any change.** All tests must pass before committing.
-- The build deliverables are the two sandwich parts per side — `build_top_part(side)` (deep TOP tub) and `build_bottom_part(side)` (inset BOTTOM plate) — joined by a rabbet and screwed through the standoffs. `build_case_half` is the legacy single-piece tray. Left and right are mirror images with the same volume and footprint; `side` mirrors the geometry (and sets the output filename).
+- The build deliverable is `build_case_half(side)`, exported as `sofle_case_{side}.stl`. Left and right are mirror images with the same volume and footprint.
+- STEP export is unsupported and removed. Rebuilding a side removes only its exact known legacy monolithic STEP and split top/bottom artifacts in the requested output directory; unrelated files are preserved.
 
 ### Testing Requirements
 ```bash
