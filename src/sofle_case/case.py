@@ -44,12 +44,8 @@ def _slide_scoop() -> Part:
     box = cast(Part, Solid.make_box(
         x1 - x0, C.SLIDE_SCOOP_W, z1 - z0).translate(
             (x0, sw_cy - C.SLIDE_SCOOP_W / 2, z0)))
-    vertical = [e for e in box.edges() if abs(e.tangent_at(0.5).Z) > 0.9]
-    if vertical:
-        try:
-            box = cast(Part, fillet(vertical, radius=C.SLIDE_SCOOP_SIDE_R))
-        except ValueError:
-            box = cast(Part, box)
+    # Keep the opening vertical to the rim.  Filleting these edges rounds the
+    # top of the cutter back into the case and leaves an actuator ceiling.
     floor = [e for e in box.edges() if e.bounding_box().max.Z < z0 + 0.05]
     if floor:
         try:

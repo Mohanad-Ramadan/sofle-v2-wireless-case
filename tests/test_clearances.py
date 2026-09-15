@@ -28,6 +28,19 @@ def test_slide_scoop_opens_at_switch():
     assert (top & solid).volume > 0.1, "wall missing below the scoop floor"
 
 
+def test_slide_scoop_has_no_ceiling_at_wall_opening():
+    """The actuator opening reaches the rim without a filleted overhead lip."""
+    case = build_case_half("right")
+    _, cy = C.pcb_to_case(*C.SW_SLIDE_POS)
+    inner_x = C.pcb_to_case(0, 0)[0] - C.PCB_XY_CLEARANCE
+    ceiling = Solid.make_box(0.4, 2.0, 0.3).translate(
+        (inner_x - 0.1, cy - 1.0, C.MAIN_RIM_Z - 0.4)
+    )
+    assert (case & ceiling).volume < 1e-3, (
+        "slide scoop leaves a ceiling over the actuator opening"
+    )
+
+
 def test_neg_x_wall_flat_at_mcu():
     """No hill: the −X wall over the MCU is flat at MAIN_RIM_Z, not raised."""
     tray = build_tray()

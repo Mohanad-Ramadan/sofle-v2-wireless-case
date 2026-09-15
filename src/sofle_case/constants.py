@@ -100,10 +100,11 @@ SLIDE_ACTUATOR_PAD = 0.5
 SLIDE_NUB_Z = PCB_TOP_Z + SLIDE_ACTUATOR_NUB_BASE + SLIDE_ACTUATOR_NUB_H / 2
 SLIDE_SCOOP_FLOOR_Z = SLIDE_NUB_Z - 1.4
 SLIDE_SCOOP_FLOOR_R = 2.0
-SLIDE_SCOOP_SIDE_R = 2.5
-SLIDE_SCOOP_W = 10.0
+SLIDE_SCOOP_W = 8.0
 SLIDE_SCOOP_X_SHIFT = 0.4
-SLIDE_SCOOP_INNER_MARGIN = 0.25
+# Extend the scoop just past the wall's inner face so it opens cleanly to the
+# rim instead of leaving a thin overhead lip on the actuator side.
+SLIDE_SCOOP_INNER_MARGIN = 1
 
 # Battery and JST recesses.
 BATTERY_POCKET_POS = (69.5, -48.5)
