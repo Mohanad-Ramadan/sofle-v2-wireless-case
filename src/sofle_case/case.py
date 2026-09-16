@@ -19,7 +19,6 @@ from build123d import (
 from . import constants as C
 from .battery import battery_pocket, jst_pocket, jst_wire_channel
 from .pcb_geometry import rotate_2d, slide_switch_placement
-from .plate_geometry import mcu_notch_cutter
 from .standoffs import stepped_standoff
 from .tray import build_tray
 
@@ -76,18 +75,6 @@ def _slide_actuator_cavity() -> Part:
     return bp.part
 
 
-def _mcu_bay_cavity() -> Part:
-    """Keep the plate's north MCU notch open through the fit band."""
-    cx, _ = C.pcb_to_case(*C.MCU_POS)
-    x0 = cx - 0.5 * C.MCU_WIDTH - C.PCB_XY_CLEARANCE
-    x1 = cx + 0.5 * C.MCU_WIDTH + C.PCB_XY_CLEARANCE
-    y0 = C.MCU_BODY_S_Y - C.PCB_XY_CLEARANCE
-    y1 = C.MCU_BODY_N_Y + C.PCB_XY_CLEARANCE
-    return cast(Part, Solid.make_box(
-        x1 - x0, y1 - y0, C.PLATE_TOP_Z - C.PLATE_SEAT_Z
-    ).translate((x0, y0, C.PLATE_SEAT_Z)))
-
-
 def _foot_recesses() -> Part:
     """Four 0.6 mm-deep underside seats opening at Z=0."""
     seats = None
@@ -107,9 +94,8 @@ def build_case_half(side: Side) -> Part:
     case = build_tray(rim_z=C.MAIN_RIM_Z)
 
     # Straight PCB-frame bore: inner wall follows PCB outline + 0.2 clearance
-    # full height above floor (6.6..rim 15.7). Keep MCU notch opening
-    # (switch-plate vs PCB difference) at plate band height; no press-fit lip.
-    case = cast(Part, case - mcu_notch_cutter() - _mcu_bay_cavity())
+    # full height 6.6..rim 15.7, north wall solid — no MCU bay notch/cavity
+    # (MCU on tall headers clears in open air above rim).
     for hx, hy in C.MOUNTING_HOLES:
         case = cast(Part, case + stepped_standoff(C.pcb_to_case(hx, hy)))
 

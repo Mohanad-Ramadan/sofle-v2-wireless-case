@@ -269,22 +269,39 @@ def test_plate_fit_band_tracks_raw_outline_without_local_wall_gaps(side: str):
 
 
 @pytest.mark.parametrize("side", ["right", "left"])
-def test_complete_authoritative_mcu_notch_is_open_at_each_fit_band_height(side: str):
+def test_complete_authoritative_mcu_notch_is_closed_solid_at_each_fit_band_height(side: str):
+    """North wall solid: tall-header + straight bore — no MCU bay opening.
+
+    Wall follows PCB+0.2 bore full height 6.6..rim; MCU on tall headers clears
+    in open air above rim. The former notch band (14.1..15.7) is now solid wall.
+    Probe the wall-band portion of the notch (X 12..34, Y standard_inner..outer)
+    — inner wall strip avoids outer rim chamfer — and assert it is solid.
+    """
     case = build_case_half(side)
+    standard_inner = C.pcb_to_case(0, 0)[1] + C.PCB_XY_CLEARANCE
     for z in (C.PLATE_SEAT_Z, (C.PLATE_SEAT_Z + C.PLATE_TOP_Z) / 2,
               C.PLATE_TOP_Z - 0.01):
-        notch = _authoritative_mcu_notch_cutter(z, z + 0.01, side)
-        assert (case & notch).volume < 1e-3
+        # Inner wall strip at the former notch location (north wall, PCB+0.2 bore)
+        # Use inner 0.9mm of wall to avoid outer rim chamfer at top slices
+        wall_band = Solid.make_box(22.0, 0.9, 0.01).translate(
+            (12.0, standard_inner + 0.1, z)
+        )
+        if side == "left":
+            wall_band = Pos(C.OUTER_WIDTH / 2, 0, 0) * mirror(
+                Pos(-C.OUTER_WIDTH / 2, 0, 0) * wall_band, about=Plane.YZ
+            )
+        assert (case & wall_band).volume > 0.9 * wall_band.volume, f"notch wall band not solid at z {z} side {side}"
 
 
 def test_mcu_notch_opening_does_not_cut_below_plate_seat():
     case = build_case_half("right")
-    below_notch = _authoritative_mcu_notch_cutter(
-        C.PLATE_SEAT_Z - 1.0, C.PLATE_SEAT_Z
+    standard_inner = C.pcb_to_case(0, 0)[1] + C.PCB_XY_CLEARANCE
+    # Below-band wall strip at former notch X, inner wall to avoid outer chamfer
+    wall_band = Solid.make_box(22.0, 0.9, 1.0).translate(
+        (12.0, standard_inner + 0.1, C.PLATE_SEAT_Z - 1.0)
     )
-    assert (case & below_notch).volume < 1e-3
-    # The adjacent lower west wall remains present, guarding against a broad
-    # through-bottom notch cutter rather than a fit-band-only subtraction.
+    assert (case & wall_band).volume > 0.9 * wall_band.volume
+    # The adjacent lower west wall remains present
     wall_probe = Solid.make_box(0.1, 0.1, 0.1).translate(
         (13.0, 80.0, C.PLATE_SEAT_Z - 0.1)
     )
