@@ -6,7 +6,6 @@ from typing import Literal, cast
 from build123d import (
     Box,
     BuildPart,
-    Kind,
     Location,
     Locations,
     Part,
@@ -20,9 +19,9 @@ from build123d import (
 from . import constants as C
 from .battery import battery_pocket, jst_pocket, jst_wire_channel
 from .pcb_geometry import rotate_2d, slide_switch_placement
-from .plate_geometry import mcu_notch_cutter, plate_fit_cutter
+from .plate_geometry import mcu_notch_cutter
 from .standoffs import stepped_standoff
-from .tray import build_tray, offset_extruded
+from .tray import build_tray
 
 Side = Literal["left", "right"]
 
@@ -107,17 +106,10 @@ def build_case_half(side: Side) -> Part:
 
     case = build_tray(rim_z=C.MAIN_RIM_Z)
 
-    # The fit band follows the real switch plate, not the PCB cavity.  Restore
-    # the annulus between the existing +0.5 PCB clearance and the plate edge;
-    # the nominal plate then has zero clearance while the PCB cavity below is
-    # unchanged.
-    pcb_band = offset_extruded(C.PCB_XY_CLEARANCE, C.PLATE_SEAT_Z, C.PLATE_TOP_Z,
-                               kind=Kind.INTERSECTION)
-    # The plate outline has a west-side MCU notch larger than the hardware's
-    # component envelope.  Cut the complete authoritative opening in this
-    # band; retain the envelope cavity as an additional clearance volume.
-    case = cast(Part, case + (pcb_band - plate_fit_cutter()
-                              - mcu_notch_cutter() - _mcu_bay_cavity()))
+    # Straight PCB-frame bore: inner wall follows PCB outline + 0.2 clearance
+    # full height above floor (6.6..rim 15.7). Keep MCU notch opening
+    # (switch-plate vs PCB difference) at plate band height; no press-fit lip.
+    case = cast(Part, case - mcu_notch_cutter() - _mcu_bay_cavity())
     for hx, hy in C.MOUNTING_HOLES:
         case = cast(Part, case + stepped_standoff(C.pcb_to_case(hx, hy)))
 

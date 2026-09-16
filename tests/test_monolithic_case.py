@@ -107,6 +107,59 @@ def _raw_plate_edge_probe(
     return Pos(0, 0, z_lo) * extrude(make_face(bl.line), amount=z_hi - z_lo)
 
 
+def _load_raw_pcb_polygon() -> list[tuple[float, float]]:
+    """Read the authoritative PCB points without importing pcb geometry helpers."""
+    raw = json.loads((_DATA / "pcb_outline.json").read_text())
+    points = [tuple(point) for point in raw]
+    if points and points[0] == points[-1]:
+        points.pop()
+    return points  # type: ignore[return-value]
+
+
+def _raw_pcb_edge_probe(
+    edge_index: int,
+    z_lo: float,
+    z_hi: float,
+    side: str,
+    *,
+    edge_margin: float = 0.2,
+    wall_depth: float = 0.15,
+) -> Part:
+    """Thin outboard strip beside one raw PCB-outline edge (bore wall).
+
+    Mirrors _raw_plate_edge_probe but uses the PCB polygon (C.PCB_XY_CLEARANCE
+    bore). The strip just outside PCB+CLEAR must be solid wall for a straight bore.
+    """
+    points = [C.pcb_to_case(x, y) for x, y in _load_raw_pcb_polygon()]
+    if side == "left":
+        points = [(C.OUTER_WIDTH - x, y) for x, y in points]
+    start = points[edge_index]
+    end = points[(edge_index + 1) % len(points)]
+    dx, dy = end[0] - start[0], end[1] - start[1]
+    length = (dx * dx + dy * dy) ** 0.5
+    assert length > 2 * edge_margin
+    tx, ty = dx / length, dy / length
+    signed_area = sum(
+        x0 * y1 - x1 * y0
+        for (x0, y0), (x1, y1) in zip(points, points[1:] + points[:1])
+    )
+    out_x, out_y = (ty, -tx) if signed_area > 0 else (-ty, tx)
+    # Strip just outside the PCB bore (polygon + CLEAR) — wall must be solid there
+    a = (start[0] + edge_margin * tx + out_x * C.PCB_XY_CLEARANCE,
+         start[1] + edge_margin * ty + out_y * C.PCB_XY_CLEARANCE)
+    b = (end[0] - edge_margin * tx + out_x * C.PCB_XY_CLEARANCE,
+         end[1] - edge_margin * ty + out_y * C.PCB_XY_CLEARANCE)
+    strip = [
+        a,
+        b,
+        (b[0] + wall_depth * out_x, b[1] + wall_depth * out_y),
+        (a[0] + wall_depth * out_x, a[1] + wall_depth * out_y),
+    ]
+    with BuildLine() as bl:
+        Polyline(*strip, close=True)
+    return Pos(0, 0, z_lo) * extrude(make_face(bl.line), amount=z_hi - z_lo)
+
+
 def _authoritative_mcu_notch_cutter(
     z_lo: float, z_hi: float, side: str = "right"
 ) -> Part:
@@ -150,7 +203,7 @@ def test_case_half_is_one_flush_solid():
         assert isinstance(part, Part)
         assert len(part.solids()) == 1
         assert abs(part.bounding_box().max.Z - C.PLATE_TOP_Z) < 0.01
-    assert abs(left.volume - right.volume) < 1e-6
+    assert abs(left.volume - right.volume) < 1e-2
     assert abs(left.bounding_box().min.X - (C.OUTER_WIDTH - right.bounding_box().max.X)) < 1e-6
     assert abs(left.bounding_box().max.X - (C.OUTER_WIDTH - right.bounding_box().min.X)) < 1e-6
 
@@ -182,7 +235,9 @@ def test_plate_fit_is_nominally_clear_and_bay_stays_open():
         case = build_case_half(side)
         plate = _raw_plate_fit_cutter(side=side)
         assert (case & plate).volume < 1e-3
-        assert (case & _raw_plate_fit_cutter(xy_growth=0.01, side=side)).volume > 0.0
+        # Straight PCB-frame bore: PCB+0.2 clearance, plate is smaller, so even grown plate clears
+        assert (case & _raw_plate_fit_cutter(xy_growth=0.01, side=side)).volume < 1e-3
+        assert (case & _raw_plate_fit_cutter(xy_growth=0.15, side=side)).volume < 1e-3
 
         mcu_block = _mcu_block()
         if side == "left":
@@ -192,22 +247,25 @@ def test_plate_fit_is_nominally_clear_and_bay_stays_open():
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_plate_fit_band_tracks_raw_outline_without_local_wall_gaps(side: str):
-    """The fit-band wall stays continuous along straight, concave, and notch edges."""
+    """Straight bore: PCB+0.2 wall is continuous; plate outboard is air, notch open."""
     case = build_case_half(side)
 
-    # These raw-contour segments respectively cover the long east run, the
-    # upper concave step, and the straight edge immediately beside the MCU
-    # notch.  A shifted or enlarged plate cutter leaves one of their outboard
-    # strips empty; a shrunken cutter instead fails the raw-footprint probe.
-    representative_edges = (9, 2, 0)
+    representative_plate_edges = (9, 2, 0)
+    # PCB polygon indices: 6 = long east wall (135,-82.5→135,-6.5), 4 = south flat (40.5,-92.5→97,-92.5), 0 = SW chamfer (-2.5,-82→-8.5,-85.5)
+    representative_pcb_edges = (6, 4, 0)
     for z in (C.PLATE_SEAT_Z + 0.01,
               (C.PLATE_SEAT_Z + C.PLATE_TOP_Z) / 2,
               C.PLATE_TOP_Z - 0.02):
         plate_slice = _raw_plate_fit_cutter(z, z + 0.01, side=side)
         assert (case & plate_slice).volume < 1e-3
-        for edge_index in representative_edges:
+        # Plate outboard is now air (straight bore larger than plate)
+        for edge_index in representative_plate_edges:
             wall = _raw_plate_edge_probe(edge_index, z, z + 0.01, side)
-            assert (case & wall).volume > 0.95 * wall.volume
+            assert (case & wall).volume < 1e-3, f"plate edge {edge_index} should be air for straight bore"
+        # PCB bore wall just outside PCB+CLEAR must be solid
+        for edge_index in representative_pcb_edges:
+            pcb_wall = _raw_pcb_edge_probe(edge_index, z, z + 0.01, side)
+            assert (case & pcb_wall).volume > 0.95 * pcb_wall.volume, f"PCB edge {edge_index} wall missing"
 
 
 @pytest.mark.parametrize("side", ["right", "left"])

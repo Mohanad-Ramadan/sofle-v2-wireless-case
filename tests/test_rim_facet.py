@@ -22,10 +22,10 @@ def test_south_facet_datums_are_pinned():
     # the final coordinates as well as the construction helper so a mask retune
     # cannot silently move either crease while preserving its mirrored run.
     expected = (
-        (114.841097, 22.0, 15.7),
-        (138.417356, 22.0, 6.9),
-        (49.261390, 18.109419, 15.7),
-        (25.685131, -0.958780, 6.9),
+        (114.502284, 22.0, 15.7),
+        (138.078543, 22.0, 6.9),
+        (48.822620, 18.075394, 15.7),
+        (25.246361, -0.992805, 6.9),
     )
     for actual, target in zip((east_rim, east_toe, west_rim, west_toe), expected):
         assert all(abs(value - wanted) < 1e-4 for value, wanted in zip(actual, target))
