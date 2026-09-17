@@ -506,6 +506,68 @@ def _apply_rim_facets(part: Part, rim_z: float) -> Part:
 
 
 # ---------------------------------------------------------------------------
+# Drafted bottom "boat" facet — mirrored bottom chamfer leaving a straight
+# full-size middle band.
+# ---------------------------------------------------------------------------
+
+def _bottom_facet_frustum(drop: float, run: float) -> Solid:
+    """Keep frustum for the bottom facet — mirrored version of _rim_facet_frustum.
+
+    Wide at Z=0? Actually NARROW at Z=0 (outer−run) and WIDER at the toe
+    Z=drop (exactly outer), so that (band − frustum) is a wedge that is
+    ``run`` wide at the bottom face and zero at the toe. Leaves a straight
+    full-size middle band between the top and bottom facets.
+
+    The frustum is a drafted prism (LocOpe_DPrism) with the profile taken at
+    Z=−e and drafted outward (negative angle) so it grows by ``slope`` per mm
+    of rise.
+    """
+    outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+    slope = run / drop
+    e = _FACET_END_EXT
+    z0, z1 = -e, drop + e
+    # Narrowest section below the bottom, grows to outer+ slope*e above toe.
+    amt0 = outer - run - slope * e
+    wire = _rounded_wire()
+    with BuildSketch(Plane(origin=(0, 0, z0))) as sk:
+        face = make_face(wire)  # type: ignore[arg-type]
+        face = offset(face, amount=amt0, kind=Kind.ARC)
+    profile = cast(Face, sk.sketch.faces()[0])  # type: ignore[union-attr]
+    angle = -math.atan(slope)  # negative = expand outward with height
+    prism = LocOpe_DPrism(profile.wrapped, (z1 - z0) / math.cos(angle), angle)
+    return Solid(TopoDS.Solid_s(prism.Shape()))
+
+
+def _bottom_facet_cutter(drop: float, run: float) -> Part:
+    """Wedge ring shaved from the outer-bottom edge: band minus keep frustum.
+
+    Band is the full outer prism from −e to drop+e; keep frustum is narrow at
+    Z=0 (outer−run) and exactly outer at Z=drop. Subtraction is therefore
+    ``run`` wide at Z=0 and zero at the toe.
+    """
+    outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+    e = _FACET_END_EXT
+    band = offset_extruded(outer, -e, drop + e, rounded=True)
+    return cast(Part, band - _bottom_facet_frustum(drop, run))
+
+
+def _apply_bottom_facets(part: Part) -> Part:
+    """Shave the drafted bottom perimeter facet and the deeper south bottom
+    facet (masked to the front, between the two mirrored slashes).
+
+    Mirrors _apply_rim_facets: shallow 2×4 everywhere, deep 6×4 at the south
+    front inside the same FRONT_FACET_Y_MASK region (including the
+    SOUTH_WALL_EXTRA growth via _rounded_wire / _front_facet_mask).
+    """
+    perim = _bottom_facet_cutter(C.BOTTOM_FACET_DROP, C.BOTTOM_FACET_RUN)
+    # Reuse the same south mask as the top (Y_MASK=22) — it covers the bottom
+    # Z range as well (prism from −1 to rim_z+2).
+    front = cast(Part, _bottom_facet_cutter(C.FRONT_BOTTOM_DROP, C.FRONT_BOTTOM_RUN)
+                 & _front_facet_mask())
+    return cast(Part, part - perim - front)
+
+
+# ---------------------------------------------------------------------------
 # Public entry
 # ---------------------------------------------------------------------------
 
@@ -518,9 +580,11 @@ def build_tray(rim_z: float = C.MAIN_RIM_Z, bottom_chamfer: bool = True) -> Part
     cavity = _cavity_solid(rim_z)
     hollow = cast(Part, shell - cavity)
     faceted = _apply_rim_facets(hollow, rim_z)
+    bottom_faceted = _apply_bottom_facets(faceted)
     # A caller may disable the bottom counter-chamfer for another print orientation. The
-    # monolithic CLI keeps the default flat underside.
-    chamfered = _chamfer_bottom_edges(faceted) if bottom_chamfer else faceted
+    # monolithic CLI keeps the default flat underside. Must run AFTER bottom facets so
+    # the tiny 0.5 mm relief applies to the new Z=0 bottom edge.
+    chamfered = _chamfer_bottom_edges(bottom_faceted) if bottom_chamfer else bottom_faceted
     if isinstance(chamfered, Part):
         return chamfered
     solids = chamfered.solids()

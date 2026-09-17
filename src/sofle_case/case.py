@@ -110,4 +110,24 @@ def build_case_half(side: Side) -> Part:
 
 if __name__ == "__main__":
     from ocp_vscode import show
-    show(build_case_half("right"), names=["case"])
+
+    from .knob import place_knob
+    from .pcb_phantom import build_pcb_phantom
+    from .plate_phantom import build_plate_phantom
+    from .switch_phantom import build_switch_phantom
+
+    _side = "right"
+    show(
+        build_case_half(_side),
+        build_pcb_phantom(_side),
+        build_plate_phantom(),
+        build_switch_phantom(),
+        place_knob(bottomed=True),
+        names=[
+            "case",
+            "pcb+encoder+knob",
+            "plate",
+            "switches",
+            "knob_on_untrimmed_shaft",
+        ],
+    )

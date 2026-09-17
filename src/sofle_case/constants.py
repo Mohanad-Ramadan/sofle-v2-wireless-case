@@ -158,6 +158,12 @@ FRONT_CORNER_ROUND_R = 3.0
 RIM_FACET_RUN = 2.0
 RIM_FACET_DROP = 4.0
 
+# Bottom "boat" facets — mirror of top language at Z=0.
+BOTTOM_FACET_RUN = 2.0
+BOTTOM_FACET_DROP = 4.0
+FRONT_BOTTOM_RUN = 6.0
+FRONT_BOTTOM_DROP = 4.0
+
 # Historical M2 bosses.
 STANDOFF_OD_LOWER = 5.5
 STANDOFF_OD_UPPER = 3.9
