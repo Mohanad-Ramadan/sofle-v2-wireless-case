@@ -4,8 +4,10 @@ These pin a MEASUREMENT, not a preference: the real knob takes 16 mm of the 20 m
 4 mm showing. Every number here has been wrong at least once, and the arithmetic feeds a one-way
 cut to a metal shaft, so the invariant that matters most is the last test in this file.
 """
+from sofle_case import constants as C
 from sofle_case import encoder_phantom as E
 from sofle_case import knob as K
+from sofle_case.mcu_encoder_cover import build_mcu_encoder_cover
 
 
 def test_knob_takes_16_of_the_20mm_shaft():
@@ -33,10 +35,20 @@ def test_the_knob_bottoms_on_the_shaft_not_on_a_collar():
 
 def test_hem_clears_the_tallest_hardware_feature():
     """The design and physical seating positions both clear the tallest hardware."""
-    floor_z = max(E.BODY_TOP_Z, E.BUSHING_TOP_Z)
+    floor_z = max(E.BODY_TOP_Z, E.BUSHING_TOP_Z, K.cover_feature_top_z())
     assert K.knob_hem_z() == floor_z + K.KNOB_HEM_CLEAR
     assert K.knob_hem_z_if_bottomed() >= floor_z, (
         "the knob as actually assembled would sit inside hardware")
+
+
+def test_design_and_bottomed_knob_clear_the_cover_roof():
+    feature = K.cover_feature_top_z()
+    assert feature == C.COVER_FOOT_Z
+    assert K.knob_hem_z() >= feature + K.KNOB_HEM_CLEAR
+    assert K.knob_hem_z_if_bottomed() >= feature + K.KNOB_HEM_CLEAR
+    cover = build_mcu_encoder_cover("right")
+    assert (cover & K.place_knob()).volume < 1e-5
+    assert (cover & K.place_knob(bottomed=True)).volume < 1e-5
 
 
 def test_never_ask_for_a_shaft_shorter_than_the_bore():

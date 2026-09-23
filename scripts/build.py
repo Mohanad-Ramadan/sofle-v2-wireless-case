@@ -14,6 +14,7 @@ import click
 from build123d import Part, export_stl
 
 from sofle_case.case import Side, build_case_half
+from sofle_case.mcu_encoder_cover import build_mcu_encoder_cover
 
 
 def _remove_legacy_outputs(out_dir: Path, side: str) -> None:
@@ -63,8 +64,12 @@ def main(side: str, out_dir: Path, show_viewer: bool, show_phantoms: bool,
     case = build_case_half(s)
     _export(case, out_dir / f"sofle_case_{side}", tolerance=tolerance, angular_tolerance=angular_tolerance)
 
-    parts = [case]
-    names = [f"{side}_case"]
+    click.echo(f"building {side} MCU-encoder cover...")
+    cover = build_mcu_encoder_cover(s)
+    _export(cover, out_dir / f"sofle_cover_{side}", tolerance=tolerance, angular_tolerance=angular_tolerance)
+
+    parts = [case, cover]
+    names = [f"{side}_case", f"{side}_cover"]
 
     if show_phantoms:
         # View-only hardware. Built here rather than inside the case builders so nothing can

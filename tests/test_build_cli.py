@@ -38,7 +38,9 @@ def test_build_sides_clean_legacy_outputs_and_preserve_unrelated_files(tmp_path)
             assert all((out / name).exists() for name in stale_by_side["right"])
         assert unrelated.exists()
         assert unrelated.read_text() == "user file"
+        cover = out / f"sofle_cover_{side}.stl"
+        assert cover.stat().st_size > 1000
 
     assert sorted(path.name for path in out.iterdir()) == sorted(
-        ("sofle_case_left.stl", "sofle_case_right.stl", unrelated.name)
+        ("sofle_case_left.stl", "sofle_case_right.stl", "sofle_cover_left.stl", "sofle_cover_right.stl", unrelated.name)
     )

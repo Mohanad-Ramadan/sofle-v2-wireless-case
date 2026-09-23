@@ -170,3 +170,55 @@ STANDOFF_OD_UPPER = 3.9
 STANDOFF_TAP_DIA = 1.8
 STANDOFF_BORE_DEPTH = 4.0
 STANDOFF_BORE_CHAMFER = 0.3
+
+# Removable-cover fasteners, from data/components.json TH1/TH2.
+COVER_MOUNT_HOLES_PCB: tuple[tuple[float, float], ...] = (
+    (5.4, -52.8),
+    (15.4, -52.784),
+)
+
+# Separated MCU-to-encoder canopy — open at the coplanar plate/rim landing.
+COVER_WALL_THICKNESS = 2.0
+COVER_WEST_WALL = 4.0
+COVER_WEST_OUTSET = 1.5
+COVER_NORTH_WALL = 2.75
+COVER_EAST_WALL = 1.5
+COVER_TOP_THICKNESS = 1.5
+COVER_XY_CLEARANCE = 0.2
+COVER_ROOF_CLEARANCE = 0.6
+# Uniform boss OD 5.5 straight (no 3.9 neck), bore Ø1.8 x 4.0 +0.3 chamfer
+COVER_BOSS_OD = STANDOFF_OD_LOWER  # 5.5 straight
+COVER_BOSS_TAP_DIA = STANDOFF_TAP_DIA  # 1.8
+COVER_BOSS_BORE_DEPTH = STANDOFF_BORE_DEPTH  # 4.0
+COVER_BOSS_BORE_CHAMFER = STANDOFF_BORE_CHAMFER  # 0.3
+COVER_SHAFT_CUTOUT_DIA = 8.0
+COVER_NUB_PAD = 0.4
+# The removable shell needs usable air beneath its south knife; unlike the old
+# fused membrane, its roof cannot collapse onto the rim datum.
+COVER_FOOT_Z = ENCODER_BODY_TOP_Z + 2.5
+COVER_RAMP_FOOT_Y = pcb_to_case(*SW_ENCODER_POS)[1] + 10.0 - 1.0
+# Historical canopy ridge begins just south of the OLED pin row.
+COVER_RAMP_TOP_Y = 81.6
+COVER_CHAMFER_GAP = COVER_XY_CLEARANCE
+COVER_WALL_LANDING_OFFSET = WALL_THICKNESS + PCB_XY_CLEARANCE - RIM_FACET_RUN
+COVER_CORNER_R = COVER_WALL_LANDING_OFFSET
+COVER_SOUTH_CORNER_R = 2.0
+COVER_USB_PORT_W = USB_C_W + 2 * 0.5
+COVER_USB_PORT_R = 0.5
+
+
+def cover_usb_port_z(side: Literal["left", "right"] | str) -> tuple[float, float]:
+    lo, hi = usb_jack_z(side)
+    return lo - 0.5, hi + 0.5
+
+
+def cover_ridge_top_z(side: Literal["left", "right"] | str) -> float:
+    """Per-half ridge above the MCU board and jack."""
+    stack = max(usb_jack_z(side)[1], MCU_PCB_TOP_Z) + COVER_ROOF_CLEARANCE + COVER_TOP_THICKNESS
+    return stack
+
+
+COVER_ENCODER_CAVITY_CLEAR = 0.5
+COVER_SLIDE_SLOT_LENGTH = SLIDE_ACTUATOR_BODY_L + 2 * COVER_NUB_PAD
+COVER_SLIDE_SLOT_WIDTH = 4.0
+COVER_SLIDE_SLOT_RADIUS = 0.5

@@ -21,10 +21,16 @@ KNOB_BORE_DEPTH = 16.0
 KNOB_HEM_CLEAR = 0.5
 
 
+def cover_feature_top_z() -> float:
+    """Low canopy roof over the encoder and beneath the seated knob."""
+    return C.COVER_FOOT_Z
+
+
 def _seating_floor() -> tuple[str, float]:
     """Name and Z of the tallest encoder feature beneath the knob hem."""
     return max(
-        (("encoder body", C.ENCODER_BODY_TOP_Z), ("bushing top", E.BUSHING_TOP_Z)),
+        (("encoder body", C.ENCODER_BODY_TOP_Z), ("bushing top", E.BUSHING_TOP_Z),
+         ("cover roof", cover_feature_top_z())),
         key=lambda feature: feature[1],
     )
 
