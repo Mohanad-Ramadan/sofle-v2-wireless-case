@@ -1,9 +1,8 @@
 """Removable canopy over the MCU, slide switch, and encoder.
 
-The shell starts at the coplanar switch-plate/case-rim datum. Two PCB screw
-bosses and a short north lip extend below it; the lip follows the tray's
-drafted rim with a calibrated seam. Geometry is built in right-half coordinates
-and mirrored only after all side-specific openings have been cut.
+The shell starts at the coplanar switch-plate/case-rim datum. Only the two PCB
+screw bosses extend below it. Geometry is built in right-half
+coordinates and mirrored after all side-specific openings have been cut.
 """
 from __future__ import annotations
 
@@ -44,9 +43,14 @@ Side = Literal["left", "right"]
 
 @cache
 def _north_landing_y() -> float:
-    """The actual tray north rim, with a calibrated gap onto its draft."""
-    outer_y = Tray._outer_extruded(0, 1).bounding_box().max.Y
-    return outer_y - C.RIM_FACET_RUN + C.COVER_CHAMFER_GAP
+    """Local straight MCU-wall rim, clear of the more northerly relief bump."""
+    mcu_x = C.pcb_to_case(*C.MCU_POS)[0]
+    points = Tray._outer_poly_pts()
+    segments = zip(points, points[1:] + points[:1])
+    local_y = max(a[1] for a, b in segments
+                  if abs(a[1]-b[1]) < 1e-6 and min(a[0], b[0]) <= mcu_x <= max(a[0], b[0]))
+    return (local_y + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+            - C.RIM_FACET_RUN)
 
 
 def _mirror_left(part: Part) -> Part:
@@ -85,7 +89,8 @@ def _cover_outer_polygon() -> list[tuple[float, float]]:
     slope = _knife_slope()
     south_w = south_at_encoder + slope * (west - enc_x)
     south_e = south_at_encoder + slope * (east - enc_x)
-    return [(west, north), (east, north), (east, south_e), (west, south_w)]
+    return [(west, north), (east, north),
+            (east, south_e), (west, south_w)]
 
 
 def _cover_inner_polygon() -> list[tuple[float, float]]:
@@ -93,7 +98,7 @@ def _cover_inner_polygon() -> list[tuple[float, float]]:
     enc_x = C.pcb_to_case(*C.SW_ENCODER_POS)[0]
     slope = _knife_slope()
     iw, ie = west + C.COVER_WEST_WALL, east - C.COVER_EAST_WALL
-    inward_y = C.COVER_WALL_THICKNESS * math.sqrt(1 + slope*slope)
+    inward_y = C.COVER_SOUTH_WALL_THICKNESS * math.sqrt(1 + slope*slope)
     sw = south_at_encoder + slope * (iw - enc_x) + inward_y
     se = south_at_encoder + slope * (ie - enc_x) + inward_y
     return [(iw, north-C.COVER_NORTH_WALL),
@@ -241,31 +246,11 @@ def _shell(side: Side) -> Part:
     outer = cast(Part, outer-_side_shoulder_cutter(side, x_span[0], False)
                  - _side_shoulder_cutter(side, x_span[1], True))
     inner = cast(Part, Pos(0, 0, C.MAIN_RIM_Z-0.2) *
-                 extrude(_face(inner_pts, max(0.2, C.COVER_CORNER_R-C.COVER_NORTH_WALL),
-                               max(0.2, C.COVER_SOUTH_CORNER_R-C.COVER_WALL_THICKNESS)),
+                 extrude(_face(inner_pts, 0.2,
+                               max(0.2, C.COVER_SOUTH_CORNER_R-C.COVER_SOUTH_WALL_THICKNESS)),
                          amount=h+0.4))
     inner = cast(Part, inner - _roof_above_cutter(side, True, x_span, y_span))
     return cast(Part, outer-inner)
-
-
-def _north_chamfer_lip() -> Part:
-    """Seat on the tray's 2:1 north draft, with a 0.2 mm printed seam."""
-    west, east, north, _ = _cover_wall_x_y()
-    z = C.MAIN_RIM_Z
-    drop = 1.7
-    run = drop * C.RIM_FACET_RUN / C.RIM_FACET_DROP
-    # The inboard edge follows the real facet. The upper tip overlaps the
-    # canopy north wall so the result remains one printable solid.
-    with BuildPart() as lip:
-        with BuildSketch(Plane.YZ):
-            with BuildLine():
-                Polyline((north-0.25, z+0.5), (north+0.65, z+0.5),
-                         (north+run+0.65, z-drop),
-                         (north+run, z-drop), close=True)
-            make_face()
-        extrude(amount=east-west-2.0)
-    assert lip.part is not None
-    return cast(Part, Pos(west+1.0, 0, 0) * lip.part)
 
 
 def _boss(at: tuple[float, float], side: Side) -> Part:
@@ -345,7 +330,7 @@ def _slide_cutter(side: Side) -> Part:
 def build_mcu_encoder_cover(side: Side = "right") -> Part:
     if side not in ("left", "right"):
         raise ValueError(f"side must be 'left' or 'right', got {side!r}")
-    cover = cast(Part, _shell(side) + _north_chamfer_lip())
+    cover = _shell(side)
     for point in _th_positions("right"):
         cover = cast(Part, cover+_boss(point, side))
     cover = cast(Part, cover-_usb_cutter(side)-_slide_cutter(side))

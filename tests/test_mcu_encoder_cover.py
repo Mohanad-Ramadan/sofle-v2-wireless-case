@@ -32,7 +32,7 @@ def _probe(x: float, y: float, z: float, size: float = 0.3) -> Solid:
     return Solid.make_box(size, size, size).translate((x-size/2, y-size/2, z-size/2))
 
 
-def test_cover_is_one_valid_solid_with_open_bottom_and_north_landing(covers):
+def test_cover_is_one_valid_solid_with_open_bottom_and_bosses(covers):
     for side, cover in covers.items():
         assert cover.is_valid and len(cover.solids()) == 1
         assert cover.bounding_box().min.Z == pytest.approx(C.PCB_TOP_Z, abs=0.05)
@@ -43,9 +43,6 @@ def test_cover_is_one_valid_solid_with_open_bottom_and_north_landing(covers):
         for bx, by in MEC._th_positions(side):
             assert (cover & _probe(bx + C.COVER_BOSS_OD/2 - 0.15, by,
                                    C.PCB_TOP_Z + 1.0)).volume > 0.005
-        north_x = cx
-        assert (cover & _probe(north_x, MEC._north_landing_y()+0.5,
-                               C.MAIN_RIM_Z-0.7)).volume > 0.005
 
 
 def test_roof_uses_exact_tangent_smoothstep_and_flat_side_specific_ridge():
@@ -73,8 +70,16 @@ def test_south_edge_follows_tray_sw_flare_and_clears_encoder():
     enc_x, enc_y = C.pcb_to_case(*C.SW_ENCODER_POS)
     knife_y = west[1] + (enc_x-west[0])*math.tan(knife_angle)
     _, _, bbox_w, _ = MEC._encoder_bbox()
-    required = bbox_w/2+C.COVER_ENCODER_CAVITY_CLEAR+C.COVER_WALL_THICKNESS
+    required = bbox_w/2+C.COVER_ENCODER_CAVITY_CLEAR+C.COVER_SOUTH_WALL_THICKNESS
     assert enc_y-knife_y >= required
+    _, _, _, bbox_h = MEC._encoder_bbox()
+    inner = MEC._cover_inner_polygon()
+    inner_west, inner_east = inner[-1], inner[-2]
+    encoder_right = enc_x+bbox_w/2
+    inner_y_at_right = inner_west[1] + (inner_east[1]-inner_west[1]) * (
+        encoder_right-inner_west[0])/(inner_east[0]-inner_west[0])
+    assert enc_y-bbox_h/2-inner_y_at_right >= C.COVER_ENCODER_CAVITY_CLEAR
+    assert C.COVER_SOUTH_WALL_THICKNESS >= 1.5
     assert max(x for x, _ in (west, east)) < 36.0
     assert all(math.dist(p, (48.8226199825, 18.0753941254)) > 10 for p in poly)
 
@@ -85,8 +90,8 @@ def test_full_knife_footprint_is_hollow_above_the_landing(covers):
     x = (west[0] + east[0]) / 2
     y_edge = west[1] + (east[1]-west[1])*(x-west[0])/(east[0]-west[0])
     z = C.MAIN_RIM_Z + 0.8
-    assert (right & _probe(x, y_edge + C.COVER_WALL_THICKNESS + 0.8, z)).volume < 1e-5
-    assert (right & _probe(x, y_edge + C.COVER_WALL_THICKNESS/2, z)).volume > 0.005
+    assert (right & _probe(x, y_edge + C.COVER_SOUTH_WALL_THICKNESS + 0.8, z)).volume < 1e-5
+    assert (right & _probe(x, y_edge + C.COVER_SOUTH_WALL_THICKNESS/2, z)).volume > 0.005
 
 
 def test_bosses_align_to_th1_th2_and_have_blind_pilots(covers):
@@ -132,11 +137,45 @@ def test_usb_is_rounded_and_side_registered_with_half_millimetre_clearance(cover
         assert (cover & _probe(corner_x, neck_y, corner_z, 0.12)).volume > 1e-4
 
 
-def test_north_landing_tracks_tray_rim_facet_with_calibrated_seam():
-    outer_north = Tray._outer_extruded(0, 1).bounding_box().max.Y
-    expected = outer_north - C.RIM_FACET_RUN + C.COVER_CHAMFER_GAP
-    assert C.COVER_CHAMFER_GAP == pytest.approx(0.2)
+def test_north_wall_is_flush_with_local_tray_rim(covers):
+    local_outer = Tray._outer_poly_pts()[14][1]
+    expected = (local_outer + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
+                - C.RIM_FACET_RUN)
     assert MEC._north_landing_y() == pytest.approx(expected, abs=0.01)
+    assert MEC._north_landing_y() == pytest.approx(118.4, abs=0.01)
+    assert MEC._north_landing_y() < Tray._outer_extruded(0, 1).bounding_box().max.Y - 6
+    assert max(y for _, y in MEC._cover_outer_polygon()) == pytest.approx(expected)
+    for cover in covers.values():
+        assert cover.bounding_box().max.Y == pytest.approx(expected, abs=0.01)
+
+
+def test_west_edge_follows_local_tray_rim_and_keeps_mcu_clearance():
+    west = min(x for x, _ in _cover_outer_polygon())
+    local_tray_rim = (Tray._outer_poly_pts()[15][0] - C.WALL_THICKNESS
+                      - C.PCB_XY_CLEARANCE + C.RIM_FACET_RUN)
+    assert west == pytest.approx(local_tray_rim + C.COVER_WEST_OUTSET, abs=0.01)
+    assert west == pytest.approx(10.45, abs=0.1)
+    inner_west = min(x for x, _ in MEC._cover_inner_polygon())
+    tray_inner_rim = Tray._outer_poly_pts()[15][0] - C.PCB_XY_CLEARANCE
+    assert inner_west == pytest.approx(tray_inner_rim, abs=0.01)
+    assert inner_west - west == pytest.approx(C.WALL_THICKNESS - C.RIM_FACET_RUN)
+    mcu_west = C.pcb_to_case(*C.MCU_POS)[0] - C.MCU_WIDTH/2
+    assert mcu_west - inner_west >= C.COVER_XY_CLEARANCE
+    inner_north = max(y for _, y in MEC._cover_inner_polygon())
+    assert inner_north - C.MCU_BODY_N_Y >= C.COVER_XY_CLEARANCE
+
+
+def test_north_wall_has_no_installation_stop_below_rim(covers):
+    north = MEC._north_landing_y()
+    west = min(x for x, _ in _cover_outer_polygon())
+    east = max(x for x, _ in _cover_outer_polygon())
+    z0 = C.PCB_TOP_Z-0.1
+    for side, cover in covers.items():
+        left = west-1 if side == "right" else C.OUTER_WIDTH-east-1
+        below_rim = Solid.make_box(east-west+2, 5, C.MAIN_RIM_Z-z0-0.01).translate(
+            (left, north-3, z0))
+        assert (cover & below_rim).volume < 1e-5
+        assert cover.bounding_box().min.Z == pytest.approx(C.PCB_TOP_Z, abs=0.05)
 
 
 def test_north_top_shoulder_has_case_style_two_to_one_draft(covers):
@@ -187,7 +226,7 @@ def test_slide_slot_is_open_from_top_and_clears_registered_actuator(covers):
     assert (right & _probe(nx, ny, C.SLIDE_NUB_Z)).volume < 1e-5
     assert (right & _probe(nx, ny, C.cover_ridge_top_z("right")-0.2)).volume < 1e-5
     west = min(x for x, _ in _cover_outer_polygon())
-    assert (right & _probe(west+0.5, cy, C.MAIN_RIM_Z+1.0)).volume > 0.005
+    assert (right & _probe(west+0.1, cy, C.MAIN_RIM_Z+1.0, 0.1)).volume > 1e-4
 
 
 def test_slide_access_is_compact_and_tracks_rotated_actuator():
