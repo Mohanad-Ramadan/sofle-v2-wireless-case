@@ -14,7 +14,11 @@ so negative tests are unaffected.
 from functools import cache
 
 from sofle_case.case import build_case_half as _build_case_half
+from sofle_case.mcu_encoder_cover import (
+    build_mcu_encoder_cover as _build_mcu_encoder_cover,
+)
 from sofle_case.tray import build_tray as _build_tray
 
 build_case_half = cache(_build_case_half)
+build_mcu_encoder_cover = cache(_build_mcu_encoder_cover)
 build_tray = cache(_build_tray)

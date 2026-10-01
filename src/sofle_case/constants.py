@@ -98,13 +98,17 @@ SLIDE_ACTUATOR_NUB_H = 2.0
 SLIDE_ACTUATOR_PIN_CENTER_X = 2.0
 SLIDE_ACTUATOR_PAD = 0.5
 SLIDE_NUB_Z = PCB_TOP_Z + SLIDE_ACTUATOR_NUB_BASE + SLIDE_ACTUATOR_NUB_H / 2
-SLIDE_SCOOP_FLOOR_Z = SLIDE_NUB_Z - 1.4
-SLIDE_SCOOP_FLOOR_R = 2.0
-SLIDE_SCOOP_W = 8.0
-SLIDE_SCOOP_X_SHIFT = 0.4
-# Extend the scoop just past the wall's inner face so it opens cleanly to the
-# rim instead of leaving a thin overhead lip on the actuator side.
-SLIDE_SCOOP_INNER_MARGIN = 1
+# The nub block already represents the complete actuator travel envelope.
+# One concave jack-like port: roomy at the control, returning smoothly behind it.
+SLIDE_ACCESS_W = 12.0
+SLIDE_ACCESS_H = 7.2
+SLIDE_ACCESS_RADIUS = 1.0
+SLIDE_ACCESS_CONTROL_W = 10.0
+SLIDE_ACCESS_CONTROL_H = 6.4
+SLIDE_ACCESS_CENTER_Z = SLIDE_NUB_Z + 0.8
+SLIDE_ACCESS_REAR_BLEND_D = 2.5
+SLIDE_ACCESS_CLEARANCE = 0.4
+SLIDE_ACCESS_OUTER_REACH = 4.0
 
 # Battery and JST recesses.
 BATTERY_POCKET_POS = (69.5, -48.5)
@@ -193,7 +197,6 @@ COVER_BOSS_TAP_DIA = STANDOFF_TAP_DIA  # 1.8
 COVER_BOSS_BORE_DEPTH = STANDOFF_BORE_DEPTH  # 4.0
 COVER_BOSS_BORE_CHAMFER = STANDOFF_BORE_CHAMFER  # 0.3
 COVER_SHAFT_CUTOUT_DIA = 8.0
-COVER_NUB_PAD = 0.4
 # The removable shell needs usable air beneath its south knife; unlike the old
 # fused membrane, its roof cannot collapse onto the rim datum.
 COVER_FOOT_Z = ENCODER_BODY_TOP_Z + 2.5
@@ -219,6 +222,3 @@ def cover_ridge_top_z(side: Literal["left", "right"] | str) -> float:
 
 
 COVER_ENCODER_CAVITY_CLEAR = 0.5
-COVER_SLIDE_SLOT_LENGTH = SLIDE_ACTUATOR_BODY_L + 2 * COVER_NUB_PAD
-COVER_SLIDE_SLOT_WIDTH = 4.0
-COVER_SLIDE_SLOT_RADIUS = 0.5

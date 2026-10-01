@@ -18,9 +18,10 @@ from build123d import (
 from sofle_case import constants as C
 from sofle_case import mcu_encoder_cover as MEC
 from sofle_case import tray as Tray
+from tests.shared_builds import build_mcu_encoder_cover
+from tests.test_clearances import _sided
 
 _cover_outer_polygon = MEC._cover_outer_polygon
-build_mcu_encoder_cover = MEC.build_mcu_encoder_cover
 
 
 @pytest.fixture(scope="module")
@@ -216,52 +217,56 @@ def test_side_shoulder_facets_fade_to_zero_at_bezier_foot(covers):
         assert (right & _probe(x+0.1*inward, y, roof-0.2, 0.1)).volume > 1e-4
 
 
-def test_slide_slot_is_open_from_top_and_clears_registered_actuator(covers):
-    from sofle_case.pcb_geometry import rotate_2d, slide_switch_placement
-    right = covers["right"]
-    cx, cy, rot = slide_switch_placement()
-    ndx, ndy = rotate_2d(C.SLIDE_ACTUATOR_PIN_CENTER_X,
-                         -(C.SLIDE_ACTUATOR_BODY_W/2 + C.SLIDE_ACTUATOR_NUB_D/2), rot)
-    nx, ny = cx+ndx, cy+ndy
-    assert (right & _probe(nx, ny, C.SLIDE_NUB_Z)).volume < 1e-5
-    assert (right & _probe(nx, ny, C.cover_ridge_top_z("right")-0.2)).volume < 1e-5
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_cover_retains_continuous_roof_over_actuator_access(covers, side):
+    from sofle_case.slide_access import slide_finger_cutout
+
+    cutter = slide_finger_cutout()
+    bb = cutter.bounding_box()
     west = min(x for x, _ in _cover_outer_polygon())
-    assert (right & _probe(west+0.1, cy, C.MAIN_RIM_Z+1.0, 0.1)).volume > 1e-4
+    inner_west = min(x for x, _ in MEC._cover_inner_polygon())
+    wall_end = min(bb.max.X, inner_west)
+    mouth = Solid.make_box(
+        wall_end - west, bb.size.Y,
+        C.cover_ridge_top_z(side) + 2.0 - (C.MAIN_RIM_Z + 1.0),
+    ).translate((west, bb.min.Y, C.MAIN_RIM_Z + 1.0))
+    # Guard the actual post-shoulder top millimetre across the mounted pocket,
+    # including its rounded southern edge, rather than a centerline datum.
+    shell = MEC._shell(side)
+    roof_web = (shell - shell.translate((0, 0, -1.0))) & mouth
+    assert roof_web.volume > 1.0
+    missing = (_sided(roof_web, side) - covers[side]).volume
+    assert missing <= 1e-5, (
+        f"{side} access removes roof material: {missing:.6f} mm³"
+    )
 
 
-def test_slide_access_is_compact_and_tracks_rotated_actuator():
-    from sofle_case.pcb_geometry import rotate_2d, slide_switch_placement
-    cx, cy, rot = slide_switch_placement()
-    nx, ny = rotate_2d(C.SLIDE_ACTUATOR_PIN_CENTER_X,
-                       -(C.SLIDE_ACTUATOR_BODY_W/2+C.SLIDE_ACTUATOR_NUB_D/2), rot)
-    slot = MEC._slide_slot("right")
-    bb = slot.bounding_box()
-    assert bb.size.X < 10.0 and bb.size.Y < 12.0
-    assert bb.min.X < cx+nx < bb.max.X
-    assert bb.min.Y < cy+ny < bb.max.Y
-    travel = (C.SLIDE_ACTUATOR_BODY_L-C.SLIDE_ACTUATOR_NUB_L)/2
-    cover = build_mcu_encoder_cover("right")
-    for end in (-travel, travel):
-        tx, ty = rotate_2d(C.SLIDE_ACTUATOR_PIN_CENTER_X+end,
-                           -(C.SLIDE_ACTUATOR_BODY_W/2+C.SLIDE_ACTUATOR_NUB_D/2), rot)
-        assert (cover & _probe(cx+tx, cy+ty, C.SLIDE_NUB_Z)).volume < 1e-5
-        for y_sign in (-1, 1):
-            corner_x = C.SLIDE_ACTUATOR_PIN_CENTER_X + end + math.copysign(
-                C.SLIDE_ACTUATOR_NUB_L/2+0.2, end)
-            corner_y = -(C.SLIDE_ACTUATOR_BODY_W/2+C.SLIDE_ACTUATOR_NUB_D/2) + y_sign*(
-                C.SLIDE_ACTUATOR_NUB_D/2+0.2)
-            px, py = rotate_2d(corner_x, corner_y, rot)
-            assert (cover & _probe(cx+px, cy+py, C.SLIDE_NUB_Z, 0.1)).volume < 1e-5
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_finger_access_preserves_bosses_outside_existing_can_relief(covers, side):
+    from tests.test_clearances import _switch_can
+
+    # The south boss already has a tiny can-clearance relief at its foot.
+    # Exclude that independent hardware envelope, not the production cutter.
+    can = _switch_can().bounding_box()
+    relief = Solid.make_box(
+        can.size.X + 1.0, can.size.Y + 1.0,
+        C.MAIN_RIM_Z + 0.3 - (C.PCB_TOP_Z - 0.3),
+    ).translate((can.min.X - 0.5, can.min.Y - 0.5, C.PCB_TOP_Z - 0.3))
+    for point in MEC._th_positions("right"):
+        protected = _sided(MEC._boss(point, side) - relief, side)
+        assert (protected - covers[side]).volume <= 1e-5, (
+            f"{side} access removes mounting-boss material at {point}"
+        )
 
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_complete_cover_clears_hardware_plate_case_and_nearby_switches(covers, side):
-    from sofle_case.case import build_case_half
     from sofle_case.encoder_phantom import build_ec11
     from sofle_case.knob import place_knob
     from sofle_case.pcb_phantom import _mcu_block, _slide_switch_body, _usb_c_stub
     from sofle_case.plate_phantom import build_plate_phantom
     from sofle_case.switch_phantom import build_switch_phantom
+    from tests.shared_builds import build_case_half
     def sided(part: Part) -> Part:
         return part if side == "right" else MEC._mirror_left(part)
     envelopes = {

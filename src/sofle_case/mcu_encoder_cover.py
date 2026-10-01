@@ -12,14 +12,11 @@ from typing import Literal, cast
 
 from build123d import (
     Bezier,
-    Box,
     BuildLine,
     BuildPart,
     BuildSketch,
     Face,
     Line,
-    Location,
-    Locations,
     Part,
     Plane,
     Polyline,
@@ -35,8 +32,8 @@ from OCP.Standard import Standard_Failure
 
 from . import constants as C
 from . import tray as Tray
-from .pcb_geometry import rotate_2d, slide_switch_placement
 from .plate_geometry import load_plate_cutouts
+from .slide_access import slide_body_cavity, slide_finger_cutout
 
 Side = Literal["left", "right"]
 
@@ -284,56 +281,14 @@ def _usb_cutter(side: Side) -> Part:
                          north-C.COVER_NORTH_WALL-1.0, north+2.0)
 
 
-def _slide_actuator_cavity() -> Part:
-    """Registered rotated can+nub footprint, grown by the structural pad."""
-    cx, cy, rot = slide_switch_placement()
-    offsets = [
-        (C.SLIDE_ACTUATOR_PIN_CENTER_X, 0.0,
-         C.SLIDE_ACTUATOR_BODY_L, C.SLIDE_ACTUATOR_BODY_W),
-        (C.SLIDE_ACTUATOR_PIN_CENTER_X,
-         -(C.SLIDE_ACTUATOR_BODY_W/2+C.SLIDE_ACTUATOR_NUB_D/2),
-         C.SLIDE_ACTUATOR_NUB_L, C.SLIDE_ACTUATOR_NUB_D),
-    ]
-    z0 = C.PCB_TOP_Z-0.3
-    z1 = C.MAIN_RIM_Z + 0.3
-    pad = C.SLIDE_ACTUATOR_PAD
-    with BuildPart() as cavity:
-        for lx, ly, dx, dy in offsets:
-            ox, oy = rotate_2d(lx, ly, rot)
-            with Locations(Location((cx+ox, cy+oy, (z0+z1)/2), (0, 0, rot))):
-                Box(dx+2*pad, dy+2*pad, z1-z0)
-    assert cavity.part is not None
-    return cast(Part, cavity.part)
-
-
-def _slide_slot(side: Side) -> Part:
-    """Small rounded access slot following the switch's rotated travel axis."""
-    cx, cy, rot = slide_switch_placement()
-    dx, dy = rotate_2d(
-        C.SLIDE_ACTUATOR_PIN_CENTER_X,
-        -(C.SLIDE_ACTUATOR_BODY_W / 2 + C.SLIDE_ACTUATOR_NUB_D / 2), rot)
-    z0 = C.SLIDE_NUB_Z - C.SLIDE_ACTUATOR_NUB_H / 2 - C.COVER_NUB_PAD
-    z1 = C.cover_ridge_top_z(side) + 2.0
-    slot = cast(Part, Solid.make_box(C.COVER_SLIDE_SLOT_LENGTH,
-                                    C.COVER_SLIDE_SLOT_WIDTH, z1-z0).translate(
-                                        (-C.COVER_SLIDE_SLOT_LENGTH/2,
-                                         -C.COVER_SLIDE_SLOT_WIDTH/2, z0)))
-    vertical = [e for e in slot.edges() if abs(e.tangent_at(0.5).Z) > 0.9]
-    slot = cast(Part, fillet(vertical, radius=C.COVER_SLIDE_SLOT_RADIUS))
-    return cast(Part, Location((cx+dx, cy+dy, 0), (0, 0, rot)) * slot)
-
-
-def _slide_cutter(side: Side) -> Part:
-    return cast(Part, _slide_slot(side) + _slide_actuator_cavity())
-
-
 def build_mcu_encoder_cover(side: Side = "right") -> Part:
     if side not in ("left", "right"):
         raise ValueError(f"side must be 'left' or 'right', got {side!r}")
     cover = _shell(side)
     for point in _th_positions("right"):
         cover = cast(Part, cover+_boss(point, side))
-    cover = cast(Part, cover-_usb_cutter(side)-_slide_cutter(side))
+    cover = cast(Part, cover-_usb_cutter(side)-slide_finger_cutout()
+                 - slide_body_cavity(C.MAIN_RIM_Z + 0.3))
     x, y, _, _ = _encoder_bbox()
     shaft = Solid.make_cylinder(C.COVER_SHAFT_CUTOUT_DIA/2, 10.0).translate(
         (x, y, C.COVER_FOOT_Z-C.COVER_TOP_THICKNESS-1.0))

@@ -1,7 +1,7 @@
 """Outer shell + inner cavity, all walls flat at MAIN_RIM_Z (flush with the
 switch plate). The MCU corner is a plain flat wall — no hill; the nice!nano and
-its USB-C jack sit open above the rim. The slide-switch bowl scoop on the −X
-wall and the +Y wall's B+/B- relief bump are the only local wall features."""
+its USB-C jack sit open above the rim. The +Y wall has a B+/B- relief bump;
+the final case builder subtracts the shared outer-side slide-switch recess."""
 from __future__ import annotations
 
 import math

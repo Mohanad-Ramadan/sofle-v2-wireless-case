@@ -24,16 +24,33 @@ Five bosses use a Ø5.5 mm lower shoulder and Ø3.9 mm upper boss. Each reaches
 `PLATE_SEAT_Z` and has a blind Ø1.8 mm M2 pilot bore, 4.0 mm deep, with a 0.3 mm
 conical entry chamfer. Screws pass through the plate's existing Ø4.1 mm holes.
 
-The slide actuator clearance starts at `PCB_TOP_Z - 0.3` and ends at the
-measured switch-can top plus 0.3 mm. Four rubber-foot recesses open from Z=0
-and are `FOOT_DEPTH` deep.
+The internal slide-switch body cavities start at `PCB_TOP_Z - 0.3`. The tray
+cavity ends at the modeled can top plus 0.3 mm (15.3 mm); the cover cavity ends
+at `MAIN_RIM_Z + 0.3` (16.0 mm). Only the can receives this rectangular internal
+clearance. Access comes from one continuous concave port shared by both parts.
+
+The nominal outer rim spans Z=10.4–17.6 mm. At the actuator contact face it
+spans Z=10.8–17.2 mm, crossing the tray/cover seam at Z=15.7 mm. Behind the
+contact face, the surfaces return smoothly toward the hardware envelope,
+screening the can's silhouette without a separate back plate or ledge.
+The original nub phantom is the full travel envelope; no additional hardware
+sweep is applied.
+
+The cover retains its existing 1.5 mm vertical roof-profile offset. Tests
+preserve its actual top millimetre over the access region, the tray's continuous
+2 mm floor web, and mounting bosses outside their existing can relief.
+Digital phantom clearance does not establish physical pad-only actuation;
+check operation on a printed assembly with the roof fitted.
+
+Four rubber-foot recesses open from Z=0 and are `FOOT_DEPTH` deep.
 
 ## Build artifacts
 
-The supported deliverable is one STL per side: `sofle_case_left.stl` and
-`sofle_case_right.stl`. STEP export is unsupported and removed. Rebuilding a
-side removes only its exact known legacy monolithic STEP and split top/bottom
-artifacts from the requested output directory; unrelated files are preserved.
+Each side exports a monolithic tray STL (`sofle_case_{side}.stl`) and a separate
+removable cover STL (`sofle_cover_{side}.stl`). STEP export is unsupported and
+removed. Rebuilding a side removes only its exact known legacy monolithic STEP
+and split top/bottom artifacts from the requested output directory; unrelated
+files are preserved.
 
 ## Protected south facet
 

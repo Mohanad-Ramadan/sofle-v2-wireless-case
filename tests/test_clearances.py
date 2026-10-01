@@ -1,44 +1,128 @@
-"""Slide-switch bowl fit and flat-wall (no-hill) guarantees."""
-from build123d import Axis, Solid
+"""Assembled slide-switch finger access and flat-wall guarantees."""
+from functools import cache
+
+import pytest
+from build123d import (
+    Axis,
+    Box,
+    BuildPart,
+    BuildSketch,
+    Ellipse,
+    Location,
+    Locations,
+    Plane,
+    Pos,
+    Solid,
+    extrude,
+    mirror,
+)
 
 from sofle_case import constants as C
-from tests.shared_builds import build_case_half, build_tray
+from sofle_case.pcb_geometry import rotate_2d, slide_switch_placement
+from tests.shared_builds import build_case_half, build_mcu_encoder_cover, build_tray
+
+# The unchanged hardware phantom already contains the complete travel block.
+_COLLISION_TOL = 1e-5
 
 
-def test_slide_scoop_opens_at_switch():
-    """The finger scoop must open the −X wall at the actuator nub: material is gone at the wall
-    centre at nub height, yet the wall stays solid below the scoop floor. Uses the final monolithic
-    case; the scoop is not part of the shared tray builder.
-
-    Probes the real wall centre (polygon PCB X=0 edge, case X ≈ 10.5) — not the PCB_X_MIN
-    line (case X 0), which is air in front of the wall and passes even when the scoop is
-    mislocated and removes nothing (the bug this guards against)."""
-    top = build_case_half("right")
-    _, cy = C.pcb_to_case(*C.SW_SLIDE_POS)
-    wall_cx = C.pcb_to_case(0, 0)[0] - (C.WALL_THICKNESS + C.PCB_XY_CLEARANCE) / 2
-    gone = Solid.make_box(1.0, 1.0, 1.0).translate(
-        (wall_cx - 0.5, cy - 0.5, C.SLIDE_NUB_Z - 0.5)
+def _sided(part, side):
+    if side == "right":
+        return part
+    return Pos(C.OUTER_WIDTH / 2, 0, 0) * mirror(
+        Pos(-C.OUTER_WIDTH / 2, 0, 0) * part, about=Plane.YZ
     )
-    assert (top & gone).volume < 0.01, (
-        "scoop did not open the −X wall at the switch — mislocated or too narrow"
-    )
-    solid = Solid.make_box(1.0, 1.0, 1.0).translate(
-        (wall_cx - 0.5, cy - 0.5, C.SLIDE_SCOOP_FLOOR_Z - 1.5)
-    )
-    assert (top & solid).volume > 0.1, "wall missing below the scoop floor"
 
 
-def test_slide_scoop_has_no_ceiling_at_wall_opening():
-    """The actuator opening reaches the rim without a filleted overhead lip."""
-    case = build_case_half("right")
-    _, cy = C.pcb_to_case(*C.SW_SLIDE_POS)
-    inner_x = C.pcb_to_case(0, 0)[0] - C.PCB_XY_CLEARANCE
-    ceiling = Solid.make_box(0.4, 2.0, 0.3).translate(
-        (inner_x - 0.1, cy - 1.0, C.MAIN_RIM_Z - 0.4)
+def _nub_center():
+    cx, cy, rot = slide_switch_placement()
+    dx, dy = rotate_2d(
+        C.SLIDE_ACTUATOR_PIN_CENTER_X,
+        -(C.SLIDE_ACTUATOR_BODY_W / 2 + C.SLIDE_ACTUATOR_NUB_D / 2),
+        rot,
     )
-    assert (case & ceiling).volume < 1e-3, (
-        "slide scoop leaves a ceiling over the actuator opening"
-    )
+    return cx + dx, cy + dy
+
+
+def _switch_can():
+    cx, cy, rot = slide_switch_placement()
+    dx, dy = rotate_2d(C.SLIDE_ACTUATOR_PIN_CENTER_X, 0.0, rot)
+    with BuildPart() as bp, Locations(Location(
+        (cx + dx, cy + dy, C.PCB_TOP_Z + C.SLIDE_ACTUATOR_BODY_H / 2),
+        (0, 0, rot),
+    )):
+        Box(C.SLIDE_ACTUATOR_BODY_L, C.SLIDE_ACTUATOR_BODY_W,
+            C.SLIDE_ACTUATOR_BODY_H)
+    return bp.part
+
+
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_complete_actuator_phantom_clears_printed_parts(side):
+    from sofle_case.pcb_phantom import _slide_switch_body
+
+    hardware = _sided(_slide_switch_body(), side)
+    for name, part in (("case", build_case_half(side)),
+                       ("cover", build_mcu_encoder_cover(side))):
+        assert (part & hardware).volume <= _COLLISION_TOL, (
+            f"{side} {name} collides with the unchanged full-travel phantom"
+        )
+        assert part.distance_to(hardware) >= 0.3 - 1e-5
+
+
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_concave_return_screens_switch_can_at_inner_wall(side):
+    can = _switch_can().bounding_box()
+    _, ny = _nub_center()
+    inner_wall = C.pcb_to_case(0, 0)[0] - C.PCB_XY_CLEARANCE
+    shield = Solid.make_box(0.1, can.size.Y, can.size.Z).translate(
+        (inner_wall - 0.2, can.min.Y, can.min.Z))
+    # Protect the can's outer silhouette behind the curved return, not a
+    # back plate or another actuator-sized hole at the finger contact face.
+    window = Solid.make_box(0.3, 6.5, 4.0).translate(
+        (inner_wall - 0.3, ny - 3.25, C.SLIDE_NUB_Z - 1.8))
+    assembled = build_case_half(side) + build_mcu_encoder_cover(side)
+    assert (_sided(shield - window, side) - assembled).volume <= _COLLISION_TOL
+
+
+@cache
+def _finger_approach_envelope():
+    """Localized 5 x 4 mm pad contact, not clearance for an entire finger.
+
+    Only contact shifts over the existing block's face; hardware is unchanged.
+    Homothety 1.15 encloses >=0.3 mm growth since the minimum pad radius is 2.
+    This is a geometric contact probe, not a claim about finger anatomy.
+    """
+    nx, ny = _nub_center()
+    half = C.SLIDE_ACTUATOR_NUB_L / 2
+    x0 = build_case_half("right").bounding_box().min.X - 10
+    x1 = nx - C.SLIDE_ACTUATOR_NUB_D / 2 + 0.3
+    with BuildPart() as ends:
+        with BuildSketch(Plane.YZ), Locations(
+            (ny - half, C.SLIDE_NUB_Z), (ny + half, C.SLIDE_NUB_Z)
+        ):
+            Ellipse(2.875, 2.3)
+        extrude(amount=x1 - x0)
+    middle = Solid.make_box(x1 - x0, 2 * half, 4.6).translate(
+        (x0, ny - half, C.SLIDE_NUB_Z - 2.3))
+    return Pos(x0, 0, 0) * ends.part + middle
+
+
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_localized_pad_reaches_travel_face_with_cover_installed(side):
+    envelope = _sided(_finger_approach_envelope(), side)
+    for part in (build_case_half(side), build_mcu_encoder_cover(side)):
+        assert (part & envelope).volume <= _COLLISION_TOL
+
+
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_mounted_cover_has_relief_above_the_actuator_approach(side):
+    from sofle_case.mcu_encoder_cover import _shell
+
+    nx, ny = _nub_center()
+    front = nx - C.SLIDE_ACTUATOR_NUB_D / 2
+    clearance = _sided(Solid.make_box(0.6, 6.0, 0.4).translate(
+        (front - 0.6, ny - 3.0, C.MAIN_RIM_Z + 0.2)), side)
+    assert (_sided(_shell(side), side) & clearance).volume > 1.0
+    assert (build_mcu_encoder_cover(side) & clearance).volume <= _COLLISION_TOL
 
 
 def test_neg_x_wall_flat_at_mcu():
@@ -73,8 +157,33 @@ def test_no_wall_above_rim():
     assert len(high) == 0, f"{len(high)} edges above the rim — walls are not flat"
 
 
-def test_slide_scoop_floor_above_pcb():
-    """Scoop floor sits above the PCB top (doesn't gouge to the PCB) yet below the nub."""
-    assert C.PCB_TOP_Z <= C.SLIDE_SCOOP_FLOOR_Z < C.SLIDE_NUB_Z, (
-        f"scoop floor {C.SLIDE_SCOOP_FLOOR_Z} not between PCB top {C.PCB_TOP_Z} and nub {C.SLIDE_NUB_Z}"
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_finger_recess_preserves_continuous_two_millimetre_floor(side):
+    from sofle_case.slide_access import slide_finger_cutout
+
+    bb = slide_finger_cutout().bounding_box()
+    outer_wall = C.pcb_to_case(0, 0)[0] - C.WALL_THICKNESS - C.PCB_XY_CLEARANCE
+    inner_wall = C.pcb_to_case(0, 0)[0] - C.PCB_XY_CLEARANCE
+    x0, x1 = max(outer_wall, bb.min.X), min(inner_wall, bb.max.X)
+    # A full 2 mm slab immediately below the lowest recess floor must remain
+    # solid over the entire material-bearing wall footprint, not a point probe
+    # or a floor-above-PCB datum. Higher rounded floor regions have more web.
+    floor = Solid.make_box(x1 - x0, bb.size.Y, 2.0).translate(
+        (x0, bb.min.Y, bb.min.Z - 2.0)
     )
+    assert (_sided(floor, side) - build_case_half(side)).volume <= _COLLISION_TOL
+
+
+@pytest.mark.parametrize("side", ["right", "left"])
+def test_finger_recess_preserves_base_above_actual_faceted_underside(side):
+    from sofle_case.slide_access import slide_finger_cutout
+
+    bb = slide_finger_cutout().bounding_box()
+    footprint = Solid.make_box(bb.size.X, bb.size.Y, C.MAIN_RIM_Z + 1).translate(
+        (bb.min.X, bb.min.Y, 0)
+    )
+    tray = build_tray()
+    # Translation difference measures the bottom 2 mm from the actual
+    # external underside, including boat facets, throughout the access area.
+    bottom_web = (tray - tray.translate((0, 0, 2.0))) & footprint
+    assert (_sided(bottom_web, side) - build_case_half(side)).volume <= _COLLISION_TOL
