@@ -205,14 +205,46 @@ def test_west_and_east_shoulders_are_swept_facets_on_ramp_and_ridge(covers):
             assert (right & _probe(x+0.1*inward, y, roof-2.35, 0.1)).volume > 1e-4
 
 
-def test_side_shoulder_facets_fade_to_zero_at_bezier_foot(covers):
-    right = covers["right"]
-    west = min(x for x, _ in _cover_outer_polygon())
-    east = max(x for x, _ in _cover_outer_polygon())
-    y = C.COVER_RAMP_FOOT_Y+0.5
-    roof = MEC._cover_roof_z(y, "right")
+def test_side_chamfer_rotates_gradually_without_an_overlap_ridge(covers):
+    west, east, _, _ = MEC._cover_wall_x_y()
+    for side, cover in covers.items():
+        for fraction in (0.1, 0.25, 0.5, 0.75, 0.9):
+            y = C.COVER_RAMP_FOOT_Y+fraction*(C.COVER_RAMP_TOP_Y-C.COVER_RAMP_FOOT_Y)
+            blend = fraction*fraction*(3-2*fraction)
+            run = C.COVER_SOUTH_BEVEL+(C.COVER_SIDE_CHAMFER_RUN-C.COVER_SOUTH_BEVEL)*blend
+            drop = C.COVER_SOUTH_BEVEL+(C.COVER_SIDE_CHAMFER_DROP-C.COVER_SOUTH_BEVEL)*blend
+            roof = MEC._cover_roof_z(y, side)
+            for wall, inward in ((west, 1), (east, -1)):
+                for across in (0.25, 0.65):
+                    x = wall+inward*run*across
+                    if side == "left":
+                        x = C.OUTER_WIDTH-x
+                    surface_z = roof-drop*(1-across)
+                    # One straight section across the bevel at each station; no second ridge.
+                    assert (cover & _probe(x, y, surface_z+0.04, 0.02)).volume < 1e-7
+                    assert (cover & _probe(x, y, surface_z-0.04, 0.02)).volume > 7.9e-6
+
+
+def test_south_bevel_wraps_corners_and_connects_to_ramp_sides(covers):
+    west, east, _, south = MEC._cover_wall_x_y()
+    bevel = C.COVER_SOUTH_BEVEL
+    foot = C.COVER_RAMP_FOOT_Y
+    stations = []
     for x, inward in ((west, 1), (east, -1)):
-        assert (right & _probe(x+0.1*inward, y, roof-0.2, 0.1)).volume > 1e-4
+        for y in (south+C.COVER_SOUTH_CORNER_CLIP+0.5,
+                  (south+foot)/2, foot-0.2, foot+0.2, foot+2):
+            stations.append((x+0.1*inward, y, MEC._cover_roof_z(y, "right")))
+        clip = C.COVER_SOUTH_CORNER_CLIP
+        stations.append((x+inward*(clip/2+0.1), south+clip/2+0.1, C.COVER_FOOT_Z))
+    for side, cover in covers.items():
+        for x, y, roof in stations:
+            if side == "left":
+                x = C.OUTER_WIDTH-x
+                roof = MEC._cover_roof_z(y, "left")
+            # The bevel removes the square top edge all the way through the junction.
+            assert (cover & _probe(x, y, roof-0.1, 0.05)).volume < 1e-6
+            # It remains a chamfer, not a slit through the side wall.
+            assert (cover & _probe(x, y, roof-bevel-0.15, 0.05)).volume > 0.00012
 
 
 @pytest.mark.parametrize("side", ["right", "left"])

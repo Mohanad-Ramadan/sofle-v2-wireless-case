@@ -194,43 +194,27 @@ def _north_shoulder_cutter(side: Side, x_span: tuple[float, float]) -> Part:
     return cast(Part, Pos(x_span[0]-1.0, 0, 0) * bp.part)
 
 
-def _shoulder_section(side: Side, scale: float, drop: float) -> Face:
-    """YZ cutter section following the exact roof Bezier."""
+def _side_shoulder_cutter(side: Side, x_wall: float, east: bool) -> Part:
+    """One ruled Bezier surface rotates from the south bevel into the side draft."""
     y0, y1 = C.COVER_RAMP_FOOT_Y, C.COVER_RAMP_TOP_Y
     z0, z1 = C.COVER_FOOT_Z, C.cover_ridge_top_z(side)
-    length = y1-y0
-
-    def lowered(y: float, z: float) -> tuple[float, float]:
-        effective = min(drop, max(0.0, z-C.COVER_FOOT_Z))
-        return y, z-scale*effective
-
-    poles = [lowered(*p) for p in (
-        (y0, z0), (y0+length/3, z0), (y1-length/3, z1), (y1, z1))]
-    north = max(y for _, y in _cover_outer_polygon())
-    ceiling = z1+4.0
-    with BuildSketch(Plane.YZ) as sketch:
-        with BuildLine():
-            Bezier(*poles)
-            Line(poles[-1], lowered(north, z1))
-            Line(lowered(north, z1), (north, ceiling))
-            Line((north, ceiling), (y0, ceiling))
-            Line((y0, ceiling), poles[0])
-        make_face()
-    return cast(Face, sketch.sketch.faces()[0])
-
-
-def _side_shoulder_cutter(side: Side, x_wall: float, east: bool) -> Part:
-    """Ruled swept cutter for a 1.2 run / 2.4 drop side shoulder."""
-    run, drop, pad = 1.2, 2.4, 1.0
-    outside = x_wall+pad if east else x_wall-pad
-    inside = x_wall-run if east else x_wall+run
-    scale = (pad+run)/run
-    sections = [Pos(outside, 0, 0)*_shoulder_section(side, scale, drop),
-                Pos(inside, 0, 0)*_shoulder_section(side, 0.0, drop)]
-    with BuildPart() as bp:
-        loft(sections, ruled=True)
-    assert bp.part is not None
-    return cast(Part, bp.part)
+    bevel = C.COVER_SOUTH_BEVEL
+    run, drop = C.COVER_SIDE_CHAMFER_RUN, C.COVER_SIDE_CHAMFER_DROP
+    inward = -1 if east else 1
+    # Repeated end values give zero longitudinal derivatives at both junctions.
+    ys = (y0, y0+(y1-y0)/3, y1-(y1-y0)/3, y1)
+    zs = (z0, z0, z1, z1)
+    runs, drops = (bevel, bevel, run, run), (bevel, bevel, drop, drop)
+    outer = [(x_wall, y, z-d) for y, z, d in zip(ys, zs, drops)]
+    inner = [(x_wall+inward*r, y, z) for y, z, r in zip(ys, zs, runs)]
+    ramp_face = Face.make_bezier_surface([outer, inner])
+    north = _north_landing_y()
+    ridge_face = Face.make_bezier_surface([
+        [outer[-1], (x_wall, north, z1-drop)],
+        [inner[-1], (x_wall+inward*run, north, z1)],
+    ])
+    direction = (0, 0, z1+4)
+    return cast(Part, Solid.extrude(ramp_face, direction)+Solid.extrude(ridge_face, direction))
 
 
 def _shell(side: Side) -> Part:
@@ -244,14 +228,17 @@ def _shell(side: Side) -> Part:
     outer = cast(Part, outer - _north_shoulder_cutter(side, x_span))
     outer = cast(Part, outer-_side_shoulder_cutter(side, x_span[0], False)
                  - _side_shoulder_cutter(side, x_span[1], True))
-    # A local loft avoids OCC chamfer propagation onto the tangent side/ramp edges.
+    # Wrap the bevel around the low canopy; the side cutters continue it up the ramp.
     bevel = C.COVER_SOUTH_BEVEL
-    top_face = _face(_cover_polygon(south_inset=bevel), C.COVER_CORNER_R)
+    top_face = _face(_cover_polygon(west_inset=bevel, east_inset=bevel,
+                                    south_inset=bevel), C.COVER_CORNER_R)
     bevel_z = C.COVER_FOOT_Z-bevel
     bevel_slice = Pos(0, 0, bevel_z) * extrude(outer_face, amount=bevel)
     retained = loft([Pos(0, 0, bevel_z)*outer_face,
                      Pos(0, 0, C.COVER_FOOT_Z)*top_face], ruled=True)
-    outer = cast(Part, outer-(bevel_slice-retained))
+    low_canopy = Solid.make_box(x_span[1]-x_span[0]+2, C.COVER_RAMP_FOOT_Y-y_span[0],
+                               bevel+2).translate((x_span[0]-1, y_span[0], bevel_z-1))
+    outer = cast(Part, outer-((bevel_slice-retained) & low_canopy))
     inner = cast(Part, Pos(0, 0, C.MAIN_RIM_Z-0.2) *
                  extrude(_face(inner_pts, 0.2), amount=h+0.4))
     inner = cast(Part, inner - _roof_above_cutter(side, True, x_span, y_span))
