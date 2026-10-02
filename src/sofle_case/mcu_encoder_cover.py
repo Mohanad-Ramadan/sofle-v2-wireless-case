@@ -22,7 +22,6 @@ from build123d import (
     Polyline,
     Pos,
     Solid,
-    ThreePointArc,
     extrude,
     fillet,
     loft,
@@ -70,40 +69,53 @@ def _cover_wall_x_y() -> tuple[float, float, float, float]:
     north = _north_landing_y()
     _, enc_y, _, bbox_h = _encoder_bbox()
     south = (enc_y - bbox_h/2 - C.COVER_ENCODER_CAVITY_CLEAR
-             - C.COVER_SOUTH_WALL_THICKNESS - C.COVER_SCALLOP_DEPTH)
+             - C.COVER_SOUTH_WALL_THICKNESS - C.COVER_RECESS_DEPTH)
     return west, east, north, south
 
 
-def _cover_outer_polygon() -> list[tuple[float, float]]:
-    """Footprint envelope; _face inserts the concave south arc."""
+def _cover_polygon(*, west_inset: float = 0.0, east_inset: float = 0.0,
+                   north_inset: float = 0.0, south_inset: float = 0.0
+                   ) -> list[tuple[float, float]]:
+    """Offset every south facet normally, preserving thickness through the recess."""
     west, east, north, south = _cover_wall_x_y()
-    return [(west, north), (east, north), (east, south), (west, south)]
+    west, east = west+west_inset, east-east_inset
+    north, south = north-north_inset, south+south_inset
+    enc_x = C.pcb_to_case(*C.SW_ENCODER_POS)[0]
+    depth = C.COVER_RECESS_DEPTH
+    half, flat = C.COVER_RECESS_HALF_WIDTH, C.COVER_RECESS_FLAT_HALF_WIDTH
+    slope = depth/(half-flat)
+    shift = south_inset*slope/(math.hypot(slope, 1)+1)
+    # A wider side wall can make its cavity corner clip redundant.
+    clip_e = max(0.0, C.COVER_SOUTH_CORNER_CLIP-east_inset
+                 + south_inset*(math.sqrt(2)-1))
+    clip_w = max(0.0, C.COVER_SOUTH_CORNER_CLIP-west_inset
+                 + south_inset*(math.sqrt(2)-1))
+    points = [(west, north), (east, north), (east, south+clip_e)]
+    if clip_e:
+        points.append((east-clip_e, south))
+    points.extend(((enc_x+half+shift, south), (enc_x+flat+shift, south+depth),
+                   (enc_x-flat-shift, south+depth), (enc_x-half-shift, south),
+                   (west+clip_w, south)))
+    if clip_w:
+        points.append((west, south+clip_w))
+    return points
+
+
+def _cover_outer_polygon() -> list[tuple[float, float]]:
+    return _cover_polygon()
 
 
 def _cover_inner_polygon() -> list[tuple[float, float]]:
-    west, east, north, south = _cover_wall_x_y()
-    iw, ie = west + C.COVER_WEST_WALL, east - C.COVER_EAST_WALL
-    inner_south = south + C.COVER_SOUTH_WALL_THICKNESS
-    return [(iw, north-C.COVER_NORTH_WALL),
-            (ie, north-C.COVER_NORTH_WALL), (ie, inner_south), (iw, inner_south)]
+    return _cover_polygon(west_inset=C.COVER_WEST_WALL, east_inset=C.COVER_EAST_WALL,
+                          north_inset=C.COVER_NORTH_WALL,
+                          south_inset=C.COVER_SOUTH_WALL_THICKNESS)
 
 
-def _face(points: list[tuple[float, float]], north_radius: float = 0.0,
-          south_radius: float = 0.0, *, south_inset: float = 0.0):
-    """Rounded shoulders joined by concentric arcs for constant south thickness."""
-    enc_x = C.pcb_to_case(*C.SW_ENCODER_POS)[0]
-    depth, half_width = C.COVER_SCALLOP_DEPTH, C.COVER_SCALLOP_HALF_WIDTH
-    radius = (half_width**2+depth**2)/(2*depth)
-    center_y = _cover_wall_x_y()[3]+depth-radius
-    radius += south_inset
-    south = points[-1][1]
-    arc_half = math.sqrt(radius**2-(south-center_y)**2)
-    arc_e, arc_w = (enc_x+arc_half, south), (enc_x-arc_half, south)
+def _face(points: list[tuple[float, float]], north_radius: float = 0.0):
+    """Faceted south outline with the existing rounded north corners."""
     with BuildSketch(Plane.XY) as sketch:
         with BuildLine():
-            Polyline(*points[:3], arc_e)
-            ThreePointArc(arc_e, (enc_x, center_y+radius), arc_w)
-            Polyline(arc_w, points[-1], points[0])
+            Polyline(*points, close=True)
         make_face()
         if north_radius:
             north = max(y for _, y in points)
@@ -112,14 +124,6 @@ def _face(points: list[tuple[float, float]], north_radius: float = 0.0,
                 fillet(verts, radius=north_radius)
             except (ValueError, Standard_Failure) as exc:
                 raise RuntimeError("required canopy north-corner rounds failed") from exc
-        if south_radius:
-            south = [v for v in sketch.vertices()
-                     if any(abs(v.X-x) < 0.05 and abs(v.Y-y) < 0.05
-                            for x, y in points[-2:])]
-            try:
-                fillet(south, radius=south_radius)
-            except (ValueError, Standard_Failure) as exc:
-                raise RuntimeError("required canopy south-corner rounds failed") from exc
     return sketch.sketch.faces()[0]
 
 
@@ -234,7 +238,7 @@ def _shell(side: Side) -> Part:
     x_span = (min(x for x, _ in outer_pts), max(x for x, _ in outer_pts))
     y_span = (min(y for _, y in outer_pts)-2, max(y for _, y in outer_pts)+2)
     h = C.cover_ridge_top_z(side) + 2 - C.MAIN_RIM_Z
-    outer_face = _face(outer_pts, C.COVER_CORNER_R, C.COVER_SOUTH_CORNER_R)
+    outer_face = _face(outer_pts, C.COVER_CORNER_R)
     outer = cast(Part, Pos(0, 0, C.MAIN_RIM_Z) * extrude(outer_face, amount=h))
     outer = cast(Part, outer - _roof_above_cutter(side, False, x_span, y_span))
     outer = cast(Part, outer - _north_shoulder_cutter(side, x_span))
@@ -242,19 +246,14 @@ def _shell(side: Side) -> Part:
                  - _side_shoulder_cutter(side, x_span[1], True))
     # A local loft avoids OCC chamfer propagation onto the tangent side/ramp edges.
     bevel = C.COVER_SOUTH_BEVEL
-    top_pts = [(x, y if i < 2 else y+bevel) for i, (x, y) in enumerate(outer_pts)]
-    top_face = _face(top_pts, C.COVER_CORNER_R,
-                     C.COVER_SOUTH_CORNER_R-bevel, south_inset=bevel)
+    top_face = _face(_cover_polygon(south_inset=bevel), C.COVER_CORNER_R)
     bevel_z = C.COVER_FOOT_Z-bevel
     bevel_slice = Pos(0, 0, bevel_z) * extrude(outer_face, amount=bevel)
     retained = loft([Pos(0, 0, bevel_z)*outer_face,
                      Pos(0, 0, C.COVER_FOOT_Z)*top_face], ruled=True)
     outer = cast(Part, outer-(bevel_slice-retained))
     inner = cast(Part, Pos(0, 0, C.MAIN_RIM_Z-0.2) *
-                 extrude(_face(inner_pts, 0.2,
-                               max(0.2, C.COVER_SOUTH_CORNER_R-C.COVER_SOUTH_WALL_THICKNESS),
-                               south_inset=C.COVER_SOUTH_WALL_THICKNESS),
-                         amount=h+0.4))
+                 extrude(_face(inner_pts, 0.2), amount=h+0.4))
     inner = cast(Part, inner - _roof_above_cutter(side, True, x_span, y_span))
     return cast(Part, outer-inner)
 

@@ -36,15 +36,17 @@ documented in [docs/z-stack.md](docs/z-stack.md) and defined in
 
 ## MCU cover south edge
 
-The removable cover has a **16 mm-wide, 3 mm-deep encoder-centered scallop**
-with rounded outer shoulders and a **0.5 mm top bevel**. Concentric outer
-and cavity arcs preserve the **1.5 mm south wall**; the inner apex remains
-**0.5 mm clear of the encoder plate-window envelope**.
+The removable cover has a **17 mm-wide, 4 mm-deep faceted south recess**,
+with a **6 mm flat central lip**, diagonal sides, **1.5 mm clipped outer
+corners**, and a **0.5 mm top bevel**. Normally offset cavity facets preserve
+the **1.5 mm south wall**; the inner lip remains **0.5 mm clear of the
+encoder plate-window envelope**.
 
-Adjust `COVER_SCALLOP_DEPTH` and `COVER_SCALLOP_HALF_WIDTH` in
-`src/sofle_case/constants.py`. Reducing depth moves the shoulders inward
-without moving the apex or sacrificing its wall thickness or clearance.
-Both halves mirror the scallop. Physical fit still needs a printed check.
+Adjust `COVER_RECESS_DEPTH`, `COVER_RECESS_HALF_WIDTH`, and
+`COVER_RECESS_FLAT_HALF_WIDTH` in `src/sofle_case/constants.py`.
+Reducing depth moves the shoulders inward without moving the central lip
+or sacrificing wall thickness or clearance. Both halves mirror the recess.
+Physical fit still needs a printed check.
 
 ## Slide-switch access
 

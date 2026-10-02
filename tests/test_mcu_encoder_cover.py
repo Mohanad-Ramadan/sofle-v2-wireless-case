@@ -59,34 +59,36 @@ def test_roof_uses_exact_tangent_smoothstep_and_flat_side_specific_ridge():
     assert C.cover_ridge_top_z("right") != C.cover_ridge_top_z("left")
 
 
-def test_scallop_preserves_south_wall_and_encoder_clearance(covers):
+def test_faceted_recess_preserves_flat_lip_wall_and_encoder_clearance(covers):
     enc_x, enc_y, _, bbox_h = MEC._encoder_bbox()
     thickness = C.COVER_SOUTH_WALL_THICKNESS
-    # The apex's inner surface stays south of the encoder's clearance envelope.
     apex = enc_y-bbox_h/2-C.COVER_ENCODER_CAVITY_CLEAR-thickness
-    depth, half_width = C.COVER_SCALLOP_DEPTH, C.COVER_SCALLOP_HALF_WIDTH
-    radius = (half_width**2+depth**2)/(2*depth)
-    center_y = apex-radius
+    depth, half_width, flat_half = (C.COVER_RECESS_DEPTH, C.COVER_RECESS_HALF_WIDTH,
+                                   C.COVER_RECESS_FLAT_HALF_WIDTH)
+    slope = depth/(half_width-flat_half)
+    normal_length = math.hypot(slope, 1)
     for side, cover in covers.items():
         def probe(x, y, z, side=side):
-            return _probe(x if side == "right" else C.OUTER_WIDTH-x, y, z, 0.1)
+            return _probe(x if side == "right" else C.OUTER_WIDTH-x, y, z, 0.05)
 
-        # A real cut through the roof, not merely an indentation into its underside.
-        assert (cover & probe(enc_x, apex-0.5, C.COVER_FOOT_Z-0.2)).volume < 1e-5
-        for angle in (-0.4, 0.0, 0.4):
-            for offset, solid in ((-0.2, False), (0.2, True),
-                                  (thickness-0.2, True), (thickness+0.2, False)):
-                r = radius+offset
-                x = enc_x+r*math.sin(angle)
-                y = center_y+r*math.cos(angle)
-                volume = (cover & probe(x, y, C.MAIN_RIM_Z+0.8)).volume
-                assert (volume > 0.0009) if solid else (volume < 1e-5)
-        clearance = probe(enc_x, enc_y-bbox_h/2-0.25, C.MAIN_RIM_Z+0.8)
-        assert (cover & clearance).volume < 1e-5
+        # The entire central lip is flat, not a circular arc under the knob.
+        for dx in (-0.8*flat_half, 0.0, 0.8*flat_half):
+            assert (cover & probe(enc_x+dx, apex-0.1, C.COVER_FOOT_Z-0.2)).volume < 1e-6
+        stations = [(enc_x+dx, apex, 0.0, 1.0)
+                    for dx in (-0.8*flat_half, 0.0, 0.8*flat_half)]
+        for sign in (-1, 1):
+            stations.append((enc_x+sign*(half_width+flat_half)/2, apex-depth/2,
+                             sign*slope/normal_length, 1/normal_length))
+        for x, y, nx, ny in stations:
+            for offset, solid in ((-0.15, False), (0.15, True),
+                                  (thickness-0.15, True), (thickness+0.15, False)):
+                volume = (cover & probe(x+nx*offset, y+ny*offset, C.MAIN_RIM_Z+0.8)).volume
+                assert (volume > 0.00012) if solid else (volume < 1e-6)
+        assert (cover & probe(enc_x, enc_y-bbox_h/2-0.25, C.MAIN_RIM_Z+0.8)).volume < 1e-6
 
 
-def test_reducing_scallop_depth_keeps_apex_wall_and_clearance(monkeypatch):
-    monkeypatch.setattr(C, "COVER_SCALLOP_DEPTH", 0.75)
+def test_reducing_recess_depth_keeps_flat_lip_wall_and_clearance(monkeypatch):
+    monkeypatch.setattr(C, "COVER_RECESS_DEPTH", 0.75)
     cover = MEC.build_mcu_encoder_cover("right")
     assert cover.is_valid and len(cover.solids()) == 1
     x, y, _, bbox_h = MEC._encoder_bbox()

@@ -184,9 +184,11 @@ COVER_MOUNT_HOLES_PCB: tuple[tuple[float, float], ...] = (
 # Separated MCU-to-encoder canopy — open at the coplanar plate/rim landing.
 COVER_WALL_THICKNESS = 2.0
 COVER_SOUTH_WALL_THICKNESS = 1.5  # room beside the encoder's south-east corner
-# South scallop: shoulders move outward so its apex retains hardware clearance.
-COVER_SCALLOP_DEPTH = 3.0
-COVER_SCALLOP_HALF_WIDTH = 8.0
+# Faceted south recess; the flat lip retains its encoder clearance at any depth.
+COVER_RECESS_DEPTH = 4.0
+COVER_RECESS_HALF_WIDTH = 8.5
+COVER_RECESS_FLAT_HALF_WIDTH = 3.0
+COVER_SOUTH_CORNER_CLIP = 1.5
 COVER_SOUTH_BEVEL = 0.5
 COVER_WEST_WALL = WALL_THICKNESS - RIM_FACET_RUN
 COVER_WEST_OUTSET = 0.0
@@ -209,7 +211,6 @@ COVER_RAMP_FOOT_Y = pcb_to_case(*SW_ENCODER_POS)[1] + 10.0 - 1.0
 COVER_RAMP_TOP_Y = 81.6
 COVER_WALL_LANDING_OFFSET = WALL_THICKNESS + PCB_XY_CLEARANCE - RIM_FACET_RUN
 COVER_CORNER_R = COVER_WALL_LANDING_OFFSET
-COVER_SOUTH_CORNER_R = 2.0
 COVER_USB_PORT_W = USB_C_W + 2 * 0.5
 COVER_USB_PORT_R = 0.5
 
