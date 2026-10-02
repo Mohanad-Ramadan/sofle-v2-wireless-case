@@ -184,6 +184,10 @@ COVER_MOUNT_HOLES_PCB: tuple[tuple[float, float], ...] = (
 # Separated MCU-to-encoder canopy — open at the coplanar plate/rim landing.
 COVER_WALL_THICKNESS = 2.0
 COVER_SOUTH_WALL_THICKNESS = 1.5  # room beside the encoder's south-east corner
+# South scallop: shoulders move outward so its apex retains hardware clearance.
+COVER_SCALLOP_DEPTH = 3.0
+COVER_SCALLOP_HALF_WIDTH = 8.0
+COVER_SOUTH_BEVEL = 0.5
 COVER_WEST_WALL = WALL_THICKNESS - RIM_FACET_RUN
 COVER_WEST_OUTSET = 0.0
 COVER_NORTH_WALL = 1.3
@@ -197,7 +201,7 @@ COVER_BOSS_TAP_DIA = STANDOFF_TAP_DIA  # 1.8
 COVER_BOSS_BORE_DEPTH = STANDOFF_BORE_DEPTH  # 4.0
 COVER_BOSS_BORE_CHAMFER = STANDOFF_BORE_CHAMFER  # 0.3
 COVER_SHAFT_CUTOUT_DIA = 8.0
-# The removable shell needs usable air beneath its south knife; unlike the old
+# The removable shell needs usable air beneath its south edge; unlike the old
 # fused membrane, its roof cannot collapse onto the rim datum.
 COVER_FOOT_Z = ENCODER_BODY_TOP_Z + 2.5
 COVER_RAMP_FOOT_Y = pcb_to_case(*SW_ENCODER_POS)[1] + 10.0 - 1.0

@@ -22,6 +22,7 @@ from build123d import (
     Polyline,
     Pos,
     Solid,
+    ThreePointArc,
     extrude,
     fillet,
     loft,
@@ -67,47 +68,42 @@ def _cover_wall_x_y() -> tuple[float, float, float, float]:
             - C.COVER_WEST_OUTSET)
     east = 34.6
     north = _north_landing_y()
-    _, enc_y, bbox_w, _ = _encoder_bbox()
-    south_at_encoder = (enc_y - bbox_w/2 - C.COVER_ENCODER_CAVITY_CLEAR
-                        - C.COVER_WALL_THICKNESS - 3.0)
-    return west, east, north, south_at_encoder
-
-
-def _knife_slope() -> float:
-    """Slope of the tray's actual straightened south-west flare."""
-    a, b = Tray._outer_poly_pts()[2:4]
-    return (b[1] - a[1]) / (b[0] - a[0])
+    _, enc_y, _, bbox_h = _encoder_bbox()
+    south = (enc_y - bbox_h/2 - C.COVER_ENCODER_CAVITY_CLEAR
+             - C.COVER_SOUTH_WALL_THICKNESS - C.COVER_SCALLOP_DEPTH)
+    return west, east, north, south
 
 
 def _cover_outer_polygon() -> list[tuple[float, float]]:
-    """Compact footprint whose min-Y edge is parallel to the tray SW flare."""
-    west, east, north, south_at_encoder = _cover_wall_x_y()
-    enc_x = C.pcb_to_case(*C.SW_ENCODER_POS)[0]
-    slope = _knife_slope()
-    south_w = south_at_encoder + slope * (west - enc_x)
-    south_e = south_at_encoder + slope * (east - enc_x)
-    return [(west, north), (east, north),
-            (east, south_e), (west, south_w)]
+    """Footprint envelope; _face inserts the concave south arc."""
+    west, east, north, south = _cover_wall_x_y()
+    return [(west, north), (east, north), (east, south), (west, south)]
 
 
 def _cover_inner_polygon() -> list[tuple[float, float]]:
-    west, east, north, south_at_encoder = _cover_wall_x_y()
-    enc_x = C.pcb_to_case(*C.SW_ENCODER_POS)[0]
-    slope = _knife_slope()
+    west, east, north, south = _cover_wall_x_y()
     iw, ie = west + C.COVER_WEST_WALL, east - C.COVER_EAST_WALL
-    inward_y = C.COVER_SOUTH_WALL_THICKNESS * math.sqrt(1 + slope*slope)
-    sw = south_at_encoder + slope * (iw - enc_x) + inward_y
-    se = south_at_encoder + slope * (ie - enc_x) + inward_y
+    inner_south = south + C.COVER_SOUTH_WALL_THICKNESS
     return [(iw, north-C.COVER_NORTH_WALL),
-            (ie, north-C.COVER_NORTH_WALL), (ie, se), (iw, sw)]
+            (ie, north-C.COVER_NORTH_WALL), (ie, inner_south), (iw, inner_south)]
 
 
 def _face(points: list[tuple[float, float]], north_radius: float = 0.0,
-          south_radius: float = 0.0):
-    """Polygon face with smooth transitions at the north and south rims."""
+          south_radius: float = 0.0, *, south_inset: float = 0.0):
+    """Rounded shoulders joined by concentric arcs for constant south thickness."""
+    enc_x = C.pcb_to_case(*C.SW_ENCODER_POS)[0]
+    depth, half_width = C.COVER_SCALLOP_DEPTH, C.COVER_SCALLOP_HALF_WIDTH
+    radius = (half_width**2+depth**2)/(2*depth)
+    center_y = _cover_wall_x_y()[3]+depth-radius
+    radius += south_inset
+    south = points[-1][1]
+    arc_half = math.sqrt(radius**2-(south-center_y)**2)
+    arc_e, arc_w = (enc_x+arc_half, south), (enc_x-arc_half, south)
     with BuildSketch(Plane.XY) as sketch:
         with BuildLine():
-            Polyline(*points, close=True)
+            Polyline(*points[:3], arc_e)
+            ThreePointArc(arc_e, (enc_x, center_y+radius), arc_w)
+            Polyline(arc_w, points[-1], points[0])
         make_face()
         if north_radius:
             north = max(y for _, y in points)
@@ -117,7 +113,9 @@ def _face(points: list[tuple[float, float]], north_radius: float = 0.0,
             except (ValueError, Standard_Failure) as exc:
                 raise RuntimeError("required canopy north-corner rounds failed") from exc
         if south_radius:
-            south = sorted((v for v in sketch.vertices()), key=lambda v: v.Y)[:2]
+            south = [v for v in sketch.vertices()
+                     if any(abs(v.X-x) < 0.05 and abs(v.Y-y) < 0.05
+                            for x, y in points[-2:])]
             try:
                 fillet(south, radius=south_radius)
             except (ValueError, Standard_Failure) as exc:
@@ -236,15 +234,26 @@ def _shell(side: Side) -> Part:
     x_span = (min(x for x, _ in outer_pts), max(x for x, _ in outer_pts))
     y_span = (min(y for _, y in outer_pts)-2, max(y for _, y in outer_pts)+2)
     h = C.cover_ridge_top_z(side) + 2 - C.MAIN_RIM_Z
-    outer = cast(Part, Pos(0, 0, C.MAIN_RIM_Z) *
-                 extrude(_face(outer_pts, C.COVER_CORNER_R, C.COVER_SOUTH_CORNER_R), amount=h))
+    outer_face = _face(outer_pts, C.COVER_CORNER_R, C.COVER_SOUTH_CORNER_R)
+    outer = cast(Part, Pos(0, 0, C.MAIN_RIM_Z) * extrude(outer_face, amount=h))
     outer = cast(Part, outer - _roof_above_cutter(side, False, x_span, y_span))
     outer = cast(Part, outer - _north_shoulder_cutter(side, x_span))
     outer = cast(Part, outer-_side_shoulder_cutter(side, x_span[0], False)
                  - _side_shoulder_cutter(side, x_span[1], True))
+    # A local loft avoids OCC chamfer propagation onto the tangent side/ramp edges.
+    bevel = C.COVER_SOUTH_BEVEL
+    top_pts = [(x, y if i < 2 else y+bevel) for i, (x, y) in enumerate(outer_pts)]
+    top_face = _face(top_pts, C.COVER_CORNER_R,
+                     C.COVER_SOUTH_CORNER_R-bevel, south_inset=bevel)
+    bevel_z = C.COVER_FOOT_Z-bevel
+    bevel_slice = Pos(0, 0, bevel_z) * extrude(outer_face, amount=bevel)
+    retained = loft([Pos(0, 0, bevel_z)*outer_face,
+                     Pos(0, 0, C.COVER_FOOT_Z)*top_face], ruled=True)
+    outer = cast(Part, outer-(bevel_slice-retained))
     inner = cast(Part, Pos(0, 0, C.MAIN_RIM_Z-0.2) *
                  extrude(_face(inner_pts, 0.2,
-                               max(0.2, C.COVER_SOUTH_CORNER_R-C.COVER_SOUTH_WALL_THICKNESS)),
+                               max(0.2, C.COVER_SOUTH_CORNER_R-C.COVER_SOUTH_WALL_THICKNESS),
+                               south_inset=C.COVER_SOUTH_WALL_THICKNESS),
                          amount=h+0.4))
     inner = cast(Part, inner - _roof_above_cutter(side, True, x_span, y_span))
     return cast(Part, outer-inner)

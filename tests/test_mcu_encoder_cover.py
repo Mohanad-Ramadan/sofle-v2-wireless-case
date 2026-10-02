@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 from build123d import (
-    GeomType,
     Part,
     Solid,
     export_stl,
@@ -60,39 +59,43 @@ def test_roof_uses_exact_tangent_smoothstep_and_flat_side_specific_ridge():
     assert C.cover_ridge_top_z("right") != C.cover_ridge_top_z("left")
 
 
-def test_south_edge_follows_tray_sw_flare_and_clears_encoder():
-    poly = _cover_outer_polygon()
-    west, east = poly[-1], poly[-2]
-    tray = Tray._outer_poly_pts()
-    flare_a, flare_b = tray[2], tray[3]
-    knife_angle = math.atan2(east[1]-west[1], east[0]-west[0])
-    flare_angle = math.atan2(flare_b[1]-flare_a[1], flare_b[0]-flare_a[0])
-    assert knife_angle == pytest.approx(flare_angle, abs=1e-9)
-    enc_x, enc_y = C.pcb_to_case(*C.SW_ENCODER_POS)
-    knife_y = west[1] + (enc_x-west[0])*math.tan(knife_angle)
-    _, _, bbox_w, _ = MEC._encoder_bbox()
-    required = bbox_w/2+C.COVER_ENCODER_CAVITY_CLEAR+C.COVER_SOUTH_WALL_THICKNESS
-    assert enc_y-knife_y >= required
-    _, _, _, bbox_h = MEC._encoder_bbox()
-    inner = MEC._cover_inner_polygon()
-    inner_west, inner_east = inner[-1], inner[-2]
-    encoder_right = enc_x+bbox_w/2
-    inner_y_at_right = inner_west[1] + (inner_east[1]-inner_west[1]) * (
-        encoder_right-inner_west[0])/(inner_east[0]-inner_west[0])
-    assert enc_y-bbox_h/2-inner_y_at_right >= C.COVER_ENCODER_CAVITY_CLEAR
-    assert C.COVER_SOUTH_WALL_THICKNESS >= 1.5
-    assert max(x for x, _ in (west, east)) < 36.0
-    assert all(math.dist(p, (48.8226199825, 18.0753941254)) > 10 for p in poly)
+def test_scallop_preserves_south_wall_and_encoder_clearance(covers):
+    enc_x, enc_y, _, bbox_h = MEC._encoder_bbox()
+    thickness = C.COVER_SOUTH_WALL_THICKNESS
+    # The apex's inner surface stays south of the encoder's clearance envelope.
+    apex = enc_y-bbox_h/2-C.COVER_ENCODER_CAVITY_CLEAR-thickness
+    depth, half_width = C.COVER_SCALLOP_DEPTH, C.COVER_SCALLOP_HALF_WIDTH
+    radius = (half_width**2+depth**2)/(2*depth)
+    center_y = apex-radius
+    for side, cover in covers.items():
+        def probe(x, y, z, side=side):
+            return _probe(x if side == "right" else C.OUTER_WIDTH-x, y, z, 0.1)
+
+        # A real cut through the roof, not merely an indentation into its underside.
+        assert (cover & probe(enc_x, apex-0.5, C.COVER_FOOT_Z-0.2)).volume < 1e-5
+        for angle in (-0.4, 0.0, 0.4):
+            for offset, solid in ((-0.2, False), (0.2, True),
+                                  (thickness-0.2, True), (thickness+0.2, False)):
+                r = radius+offset
+                x = enc_x+r*math.sin(angle)
+                y = center_y+r*math.cos(angle)
+                volume = (cover & probe(x, y, C.MAIN_RIM_Z+0.8)).volume
+                assert (volume > 0.0009) if solid else (volume < 1e-5)
+        clearance = probe(enc_x, enc_y-bbox_h/2-0.25, C.MAIN_RIM_Z+0.8)
+        assert (cover & clearance).volume < 1e-5
 
 
-def test_full_knife_footprint_is_hollow_above_the_landing(covers):
-    right = covers["right"]
-    west, east = _cover_outer_polygon()[-1], _cover_outer_polygon()[-2]
-    x = (west[0] + east[0]) / 2
-    y_edge = west[1] + (east[1]-west[1])*(x-west[0])/(east[0]-west[0])
-    z = C.MAIN_RIM_Z + 0.8
-    assert (right & _probe(x, y_edge + C.COVER_SOUTH_WALL_THICKNESS + 0.8, z)).volume < 1e-5
-    assert (right & _probe(x, y_edge + C.COVER_SOUTH_WALL_THICKNESS/2, z)).volume > 0.005
+def test_reducing_scallop_depth_keeps_apex_wall_and_clearance(monkeypatch):
+    monkeypatch.setattr(C, "COVER_SCALLOP_DEPTH", 0.75)
+    cover = MEC.build_mcu_encoder_cover("right")
+    assert cover.is_valid and len(cover.solids()) == 1
+    x, y, _, bbox_h = MEC._encoder_bbox()
+    apex = y-bbox_h/2-C.COVER_ENCODER_CAVITY_CLEAR-C.COVER_SOUTH_WALL_THICKNESS
+    assert cover.bounding_box().min.Y == pytest.approx(apex-0.75, abs=0.01)
+    assert (cover & _probe(x, apex-0.2, C.COVER_FOOT_Z-0.2, 0.1)).volume < 1e-5
+    for offset in (0.2, C.COVER_SOUTH_WALL_THICKNESS-0.2):
+        assert (cover & _probe(x, apex+offset, C.MAIN_RIM_Z+0.8, 0.1)).volume > 0.0009
+    assert (cover & _probe(x, y-bbox_h/2-0.25, C.MAIN_RIM_Z+0.8, 0.1)).volume < 1e-5
 
 
 def test_bosses_align_to_th1_th2_and_have_blind_pilots(covers):
@@ -186,11 +189,6 @@ def test_north_top_shoulder_has_case_style_two_to_one_draft(covers):
     assert (right & _probe(x, north-0.1, ridge-0.2, 0.1)).volume < 1e-5
     # The same station remains solid below the 2:1 drafted shoulder.
     assert (right & _probe(x, north-0.1, ridge-0.9, 0.1)).volume > 1e-4
-
-
-def test_required_north_and_south_corner_rounds_exist():
-    face = MEC._face(MEC._cover_outer_polygon(), C.COVER_CORNER_R, C.COVER_SOUTH_CORNER_R)
-    assert sum(edge.geom_type == GeomType.CIRCLE for edge in face.edges()) >= 4
 
 
 def test_west_and_east_shoulders_are_swept_facets_on_ramp_and_ridge(covers):

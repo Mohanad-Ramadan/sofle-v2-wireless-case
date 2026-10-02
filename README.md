@@ -34,6 +34,18 @@ The authoritative vertical stack and the protected south facet dimensions are
 documented in [docs/z-stack.md](docs/z-stack.md) and defined in
 `src/sofle_case/constants.py`.
 
+## MCU cover south edge
+
+The removable cover has a **16 mm-wide, 3 mm-deep encoder-centered scallop**
+with rounded outer shoulders and a **0.5 mm top bevel**. Concentric outer
+and cavity arcs preserve the **1.5 mm south wall**; the inner apex remains
+**0.5 mm clear of the encoder plate-window envelope**.
+
+Adjust `COVER_SCALLOP_DEPTH` and `COVER_SCALLOP_HALF_WIDTH` in
+`src/sofle_case/constants.py`. Reducing depth moves the shoulders inward
+without moving the apex or sacrificing its wall thickness or clearance.
+Both halves mirror the scallop. Physical fit still needs a printed check.
+
 ## Slide-switch access
 
 The tray and mounted MCU cover share **one concave, jack-like port** with a
