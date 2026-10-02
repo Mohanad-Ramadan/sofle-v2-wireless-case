@@ -44,7 +44,7 @@ def build_case_half(side: Side) -> Part:
 
     case = build_tray(rim_z=C.MAIN_RIM_Z)
 
-    # Straight PCB-frame bore: inner wall follows PCB outline + 0.2 clearance
+    # Straight PCB-frame bore: inner wall follows PCB outline + PCB_XY_CLEARANCE
     # full height 6.6..rim 15.7, north wall solid — no MCU bay notch/cavity
     # (MCU on tall headers clears in open air above rim).
     for hx, hy in C.MOUNTING_HOLES:

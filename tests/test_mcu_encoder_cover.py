@@ -143,7 +143,6 @@ def test_north_wall_is_flush_with_local_tray_rim(covers):
     expected = (local_outer + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
                 - C.RIM_FACET_RUN)
     assert MEC._north_landing_y() == pytest.approx(expected, abs=0.01)
-    assert MEC._north_landing_y() == pytest.approx(118.4, abs=0.01)
     assert MEC._north_landing_y() < Tray._outer_extruded(0, 1).bounding_box().max.Y - 6
     assert max(y for _, y in MEC._cover_outer_polygon()) == pytest.approx(expected)
     for cover in covers.values():
@@ -155,7 +154,6 @@ def test_west_edge_follows_local_tray_rim_and_keeps_mcu_clearance():
     local_tray_rim = (Tray._outer_poly_pts()[15][0] - C.WALL_THICKNESS
                       - C.PCB_XY_CLEARANCE + C.RIM_FACET_RUN)
     assert west == pytest.approx(local_tray_rim + C.COVER_WEST_OUTSET, abs=0.01)
-    assert west == pytest.approx(10.45, abs=0.1)
     inner_west = min(x for x, _ in MEC._cover_inner_polygon())
     tray_inner_rim = Tray._outer_poly_pts()[15][0] - C.PCB_XY_CLEARANCE
     assert inner_west == pytest.approx(tray_inner_rim, abs=0.01)

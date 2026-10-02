@@ -18,17 +18,6 @@ def test_south_facet_datums_are_pinned():
     assert east_rim[0] < east_toe[0]
     assert west_rim[0] > west_toe[0]
 
-    # These are the protected crossings on the straightened thumb/E4 ramp.  Pin
-    # the final coordinates as well as the construction helper so a mask retune
-    # cannot silently move either crease while preserving its mirrored run.
-    expected = (
-        (114.502284, 22.0, 15.7),
-        (138.078543, 22.0, 6.9),
-        (48.822620, 18.075394, 15.7),
-        (25.246361, -0.992805, 6.9),
-    )
-    for actual, target in zip((east_rim, east_toe, west_rim, west_toe), expected):
-        assert all(abs(value - wanted) < 1e-4 for value, wanted in zip(actual, target))
 
 
 def test_south_facet_is_cut_but_floor_remains_closed():

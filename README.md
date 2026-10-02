@@ -5,6 +5,9 @@ reversible half is a single surface-less monolithic tray: the rim ends exactly
 at the switch-plate top, with integrated tapped bosses, battery/JST recesses,
 slide-switch access, and rubber-foot seats.
 
+The nominal PCB-to-inner-wall clearance is **0.40 mm per side**, with **4.75 mm**
+structural walls. Printed fit still requires checking against the actual PCB.
+
 ## Build
 
 ```sh

@@ -235,7 +235,7 @@ def test_plate_fit_is_nominally_clear_and_bay_stays_open():
         case = build_case_half(side)
         plate = _raw_plate_fit_cutter(side=side)
         assert (case & plate).volume < 1e-3
-        # Straight PCB-frame bore: PCB+0.2 clearance, plate is smaller, so even grown plate clears
+        # Straight PCB-frame bore: plate is smaller, so even grown plate clears
         assert (case & _raw_plate_fit_cutter(xy_growth=0.01, side=side)).volume < 1e-3
         assert (case & _raw_plate_fit_cutter(xy_growth=0.15, side=side)).volume < 1e-3
 
@@ -247,7 +247,7 @@ def test_plate_fit_is_nominally_clear_and_bay_stays_open():
 
 @pytest.mark.parametrize("side", ["right", "left"])
 def test_plate_fit_band_tracks_raw_outline_without_local_wall_gaps(side: str):
-    """Straight bore: PCB+0.2 wall is continuous; plate outboard is air, notch open."""
+    """Straight bore: PCB-offset wall is continuous; plate outboard is air, notch open."""
     case = build_case_half(side)
 
     representative_plate_edges = (9, 2, 0)
@@ -272,7 +272,7 @@ def test_plate_fit_band_tracks_raw_outline_without_local_wall_gaps(side: str):
 def test_complete_authoritative_mcu_notch_is_closed_solid_at_each_fit_band_height(side: str):
     """North wall solid: tall-header + straight bore — no MCU bay opening.
 
-    Wall follows PCB+0.2 bore full height 6.6..rim; MCU on tall headers clears
+    Wall follows the PCB-offset bore full height 6.6..rim; MCU on tall headers clears
     in open air above rim. The former notch band (14.1..15.7) is now solid wall.
     Probe the wall-band portion of the notch (X 12..34, Y standard_inner..outer)
     — inner wall strip avoids outer rim chamfer — and assert it is solid.
@@ -281,7 +281,7 @@ def test_complete_authoritative_mcu_notch_is_closed_solid_at_each_fit_band_heigh
     standard_inner = C.pcb_to_case(0, 0)[1] + C.PCB_XY_CLEARANCE
     for z in (C.PLATE_SEAT_Z, (C.PLATE_SEAT_Z + C.PLATE_TOP_Z) / 2,
               C.PLATE_TOP_Z - 0.01):
-        # Inner wall strip at the former notch location (north wall, PCB+0.2 bore)
+        # Inner wall strip at the former notch location (north wall, PCB-offset bore)
         # Use inner 0.9mm of wall to avoid outer rim chamfer at top slices
         wall_band = Solid.make_box(22.0, 0.9, 0.01).translate(
             (12.0, standard_inner + 0.1, z)
