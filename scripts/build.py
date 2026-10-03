@@ -33,10 +33,15 @@ def _remove_legacy_outputs(out_dir: Path, side: str) -> None:
             click.echo(f"  removed legacy artifact {path}")
 
 
-def _export(part: Part, stem: Path, tolerance: float = 1e-3, angular_tolerance: float = 0.05) -> None:
+STL_LINEAR_TOLERANCE = 1e-4  # mm
+STL_ANGULAR_TOLERANCE = 0.01  # rad ≈ 0.57°
+
+
+def _export(part: Part, stem: Path, tolerance: float = STL_LINEAR_TOLERANCE,
+            angular_tolerance: float = STL_ANGULAR_TOLERANCE) -> None:
     stl = stem.with_suffix(".stl")
-    # Keep a tighter angular tolerance than build123d's default so drafted
-    # facets remain visually clean in the exported mesh.
+    # Finest practical mesh: 0.1 µm chord error and ~0.57° facet angle keep
+    # curved port, chamfers and drafted faces smooth in slicers.
     if not export_stl(part, str(stl), tolerance=tolerance, angular_tolerance=angular_tolerance):
         raise RuntimeError(f"export_stl failed for {stl}")
     click.echo(f"  wrote {stl} ({stl.stat().st_size} bytes)")
@@ -50,10 +55,11 @@ def _export(part: Part, stem: Path, tolerance: float = 1e-3, angular_tolerance: 
               help="Open the built geometry in OCP CAD Viewer after building.")
 @click.option("--phantoms", "show_phantoms", is_flag=True, default=False,
               help="Include hardware phantoms when viewing. Phantoms are never exported or fused.")
-@click.option("--tolerance", type=float, default=1e-3, show_default=True,
+@click.option("--tolerance", type=float, default=STL_LINEAR_TOLERANCE, show_default=True,
               help="STL linear deflection (mm). Lower = finer, larger file.")
-@click.option("--angular-tolerance", type=float, default=0.05, show_default=True,
-              help="STL angular deflection (rad). Lower = smoother ramp, larger file. Default 0.05≈2.9° vs build123d 0.1≈5.7°.")
+@click.option("--angular-tolerance", type=float, default=STL_ANGULAR_TOLERANCE, show_default=True,
+              help="STL angular deflection (rad). Lower = smoother curves, larger file. "
+                   "Default 0.01≈0.57° vs build123d 0.1≈5.7°.")
 def main(side: str, out_dir: Path, show_viewer: bool, show_phantoms: bool,
          tolerance: float, angular_tolerance: float) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
