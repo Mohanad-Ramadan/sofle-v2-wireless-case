@@ -17,11 +17,10 @@ def test_z_range():
 
 
 def test_xy_footprint():
+    """Fit a 50 × 72 mm protected cell without squeezing its circuit."""
     bb = battery_pocket().bounding_box()
-    expected_w = C.BATTERY_W + 2 * C.BATTERY_XY_CLEARANCE
-    expected_l = C.BATTERY_L + 2 * C.BATTERY_XY_CLEARANCE
-    assert abs((bb.max.X - bb.min.X) - expected_w) < 0.01
-    assert abs((bb.max.Y - bb.min.Y) - expected_l) < 0.01
+    assert abs(bb.size.X - 51.0) < 0.01
+    assert abs(bb.size.Y - 73.0) < 0.01
 
 
 def test_center_shifted_east():
@@ -60,3 +59,31 @@ def test_socket_clearance_regression():
     assert battery_top + C.BATTERY_Z_CLEARANCE <= socket_under + 1e-6, (
         f"battery top {battery_top} + clr {C.BATTERY_Z_CLEARANCE} exceeds socket underside {socket_under}"
     )
+
+
+def test_continuous_wire_retention_and_slack_clearance():
+    from itertools import pairwise
+
+    from sofle_case.battery import jst_channel_path, jst_wire_channel
+
+    cutter = jst_wire_channel()
+    for (x0, y0), (x1, y1) in pairwise(jst_channel_path()):
+        length = abs(x1 - x0) + abs(y1 - y0)
+        for step in range(3, int(length) - 2):
+            t = step / length
+            x, y = x0 + t * (x1 - x0), y0 + t * (y1 - y0)
+            # Full-height top insertion slot; wider cavity below stores slack.
+            assert cutter.is_inside((x, y, C.FLOOR_THICKNESS - 0.2))
+            for offset in (-1.1, 1.1):
+                sx = x + (offset if x0 == x1 else 0)
+                sy = y + (offset if y0 == y1 else 0)
+                assert not cutter.is_inside((sx, sy, C.FLOOR_THICKNESS - 0.2))
+                assert cutter.is_inside((sx, sy, C.JST_CHANNEL_FLOOR_Z + 2.5))
+
+
+def test_wire_slot_remains_open_at_turns():
+    from sofle_case.battery import jst_channel_path, jst_wire_channel
+
+    cutter = jst_wire_channel()
+    for x, y in jst_channel_path()[1:-1]:
+        assert cutter.is_inside((x, y, C.FLOOR_THICKNESS - 0.2))

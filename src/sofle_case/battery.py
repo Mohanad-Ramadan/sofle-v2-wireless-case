@@ -154,35 +154,37 @@ def jst_channel_path() -> list[tuple[float, float]]:
 def jst_wire_channel() -> Part:
     """Cutter part: the run carrying the battery leads from the battery pocket to the JST.
 
-    NOT cosmetic. Only ``STANDOFF_SHOULDER_H`` (2.5 mm) of air exists under the PCB and the
-    hotswap sockets eat ~2.0 of it, so a 1.9 mm lead cannot cross the switch field at all
-    without this.
+    The recessed route keeps the battery leads below the PCB and hotswap sockets.
 
-    Built as overlapping axis-aligned boxes along ``jst_channel_path``. Each leg is extended half
-    a channel width past both ends, which is what fills the corners — butt-jointed legs would
-    leave a notch on the outside of every turn, exactly where a lead is pressed hardest.
-
-    Cut to ``JST_CHANNEL_FLOOR_Z``, which is the JST pocket's floor, not a wire-sized depth — see
-    the constants note.
+    Two rounded, overlapping-box runs form a wide lower cavity and a narrow top slot.
+    The material beside the slot remains as continuous wall-rooted lips, including the
+    turns. Both runs extend into the end pockets so the entrances remain unobstructed.
+    The lips finish flush with the floor top, leaving the deeper cavity for wire slack.
     """
     z_lo, z_hi = C.JST_CHANNEL_FLOOR_Z, C.FLOOR_THICKNESS
-    half = C.JST_CHANNEL_W / 2
+    lip_bottom = z_hi - C.JST_WIRE_LIP_THICKNESS
     pts = jst_channel_path()
-
-    legs = []
-    for (x0, y0), (x1, y1) in pairwise(pts):
-        if abs(y1 - y0) < 1e-9:                      # horizontal leg
-            lo, hi = min(x0, x1) - half, max(x0, x1) + half
-            cx, cy, dx, dy = (lo + hi) / 2, y0, hi - lo, C.JST_CHANNEL_W
-        else:                                        # vertical leg
-            lo, hi = min(y0, y1) - half, max(y0, y1) + half
-            cx, cy, dx, dy = x0, (lo + hi) / 2, C.JST_CHANNEL_W, hi - lo
-        legs.append(Solid.make_box(dx, dy, z_hi - z_lo).translate((cx - dx / 2, cy - dy / 2, z_lo)))
-
-    run = legs[0]
-    for leg in legs[1:]:
-        run = cast(Part, run + leg)
-    return cast(Part, run)
+    layers = []
+    for width, bottom, top, radius in (
+        (C.JST_CHANNEL_W, z_lo, lip_bottom, C.JST_CHANNEL_CORNER_R),
+        (C.JST_WIRE_SLOT_W, lip_bottom, z_hi, C.JST_WIRE_SLOT_W / 4),
+    ):
+        half = width / 2
+        legs = []
+        for (x0, y0), (x1, y1) in pairwise(pts):
+            if abs(y1 - y0) < 1e-9:
+                lo, hi = min(x0, x1) - half, max(x0, x1) + half
+                cx, cy, dx, dy = (lo + hi) / 2, y0, hi - lo, width
+            else:
+                lo, hi = min(y0, y1) - half, max(y0, y1) + half
+                cx, cy, dx, dy = x0, (lo + hi) / 2, width, hi - lo
+            legs.append(Solid.make_box(dx, dy, top - bottom).translate(
+                (cx - dx / 2, cy - dy / 2, bottom)))
+        run = legs[0]
+        for leg in legs[1:]:
+            run = cast(Part, run + leg)
+        layers.append(fillet(run.edges().filter_by(Axis.Z), radius=radius))
+    return cast(Part, layers[0] + layers[1])
 
 
 # %%

@@ -34,6 +34,23 @@ The authoritative vertical stack and the protected south facet dimensions are
 documented in [docs/z-stack.md](docs/z-stack.md) and defined in
 `src/sofle_case/constants.py`.
 
+## Battery pocket and wire retention
+
+The battery pocket is **51 × 73 mm (X × Y)** for a **50 × 72 mm** cell
+including its protection circuit, with 0.5 mm clearance per side. Its depth
+is unchanged; use adhesive on the flat floor rather than battery clips.
+The assumed cell thickness remains 4.5 mm; thicker cells need a Z-clearance check.
+
+The **5 mm-wide hooked wire trench** keeps its route and has **1.5 mm-radius
+lower corners**. Continuous lips run along both sides, including the turns,
+leaving a **1.5 mm-wide top insertion slot** for **1 mm-diameter insulated leads**.
+The lips are 1.2 mm thick and flush with the floor top, leaving a **3.3 mm-high
+lower cavity** for loose bends and excess wire. The top slot has 0.375 mm-radius
+corners; both pocket entrances remain open. Insert leads individually through
+the slot and tuck slack beneath the lips without tight folds or insulation
+compression. Printed lip strength, overhang quality, and adhesive fit still
+need a physical check.
+
 ## MCU cover south edge
 
 The removable cover has a **17 mm-wide, 4 mm-deep faceted south recess**,
