@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cover Mark Editor</title>
+<style>
+:root{--bg:#f4f3ef;--panel:#fff;--ink:#1f2328;--muted:#6b7177;--line:#d9d7d0;--cover:#e3e8eb;--edge:#5b6b76;
+--fixed:#8aa2b1;--cut:#c4572f;--ghost:#2f6685;--lock:#9aa0a6;--warn:#9a5b00;--warnbg:#fbefd9;--accent:#2f6685}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#17191b;--panel:#202326;--ink:#e8e6e1;--muted:#9aa0a6;--line:#34383c;--cover:#2b3136;--edge:#8796a0;--fixed:#6d8797;--cut:#ef9a6e;--ghost:#7fb6d6;--lock:#6b7177;--warn:#f0b35a;--warnbg:#3a2e1a;--accent:#7fb6d6}}
+:root[data-theme="dark"]{--bg:#17191b;--panel:#202326;--ink:#e8e6e1;--muted:#9aa0a6;--line:#34383c;--cover:#2b3136;--edge:#8796a0;--fixed:#6d8797;--cut:#ef9a6e;--ghost:#7fb6d6;--lock:#6b7177;--warn:#f0b35a;--warnbg:#3a2e1a;--accent:#7fb6d6}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+h1{font-size:17px;font-weight:600;margin:0}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex-wrap:wrap}
+.seg button{border:0;background:transparent;color:var(--muted);padding:6px 11px;font:inherit;cursor:pointer}
+.seg button.on{background:var(--accent);color:var(--panel)}
+.seg button .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--cut);margin-left:6px;vertical-align:middle}
+main{display:grid;grid-template-columns:minmax(0,1fr) 370px;min-height:calc(100vh - 60px)}
+.view{position:relative;padding:12px}
+canvas{width:100%;height:100%;min-height:460px;display:block;touch-action:none;cursor:crosshair}
+canvas.grab{cursor:grab}canvas.grabbing{cursor:grabbing}
+.legend{position:absolute;left:24px;bottom:16px;font-size:12px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap}
+.legend i{display:inline-block;width:18px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}
+aside{background:var(--panel);border-left:1px solid var(--line);padding:14px 16px;overflow:auto;max-height:calc(100vh - 60px)}
+fieldset{border:0;border-top:1px solid var(--line);margin:0;padding:10px 0 4px}
+legend{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:0 0 4px}
+.row{display:grid;grid-template-columns:96px minmax(0,1fr) 70px;align-items:center;gap:8px;margin:6px 0}
+.row output{white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right;font-size:12px;color:var(--muted)}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.check{display:flex;align-items:center;gap:8px;margin:6px 0;font-size:13px}
+.stats{font-size:13px}
+.stats div{display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-bottom:1px dashed var(--line)}
+.stats span:last-child{font-variant-numeric:tabular-nums;color:var(--muted);text-align:right}
+.warn{background:var(--warnbg);color:var(--warn);border-radius:6px;padding:7px 9px;font-size:12px;margin:6px 0}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 6px}
+.btns button{font:inherit;font-size:13px;padding:6px 11px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.btns button.primary{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+pre,code{font:12px/1.4 ui-monospace,Menlo,monospace}
+pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px;white-space:pre-wrap;word-break:break-all;margin:6px 0;max-height:120px;overflow:auto}
+.hint{font-size:12px;color:var(--muted);margin:4px 0}
+@media (max-width:820px){main{grid-template-columns:1fr}aside{border-left:0;border-top:1px solid var(--line);max-height:none}canvas{min-height:380px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Cover mark editor</h1>
+  <div class="seg" id="pick" aria-label="Curve to edit"></div>
+  <div class="seg" id="zoom"><button data-z="both" class="on">Both covers</button><button data-z="right">Right</button><button data-z="left">Left</button></div>
+</header>
+<main>
+  <div class="view">
+    <canvas id="cv" aria-label="Plan view of both covers with the mark curves and the selected curve's handles"></canvas>
+    <div class="legend">
+      <span><i style="background:var(--cut)"></i>curve you're editing</span>
+      <span><i style="background:var(--fixed)"></i>other grooves</span>
+      <span><i style="background:var(--ghost)"></i>its original formula</span>
+      <span>drag handles · double-click curve to add · double-click handle to remove · to scale</span>
+    </div>
+  </div>
+  <aside>
+    <fieldset><legend id="shape-title">Shape</legend>
+      <label class="check"><input type="checkbox" id="lock"> Keep left cover unchanged (locks the handles that shape it)</label>
+      <p class="hint" id="mode"></p>
+    </fieldset>
+    <fieldset id="length-box"><legend>How far Bow A runs into the right cover</legend>
+      <label class="check"><input type="checkbox" id="full"> Full run (out through the edge)</label>
+      <div class="row"><label for="length">Length</label><input type="range" id="length" min="1" max="60" step="0.5"><output id="length-o"></output></div>
+    </fieldset>
+    <fieldset><legend>Readout</legend><div class="stats" id="stats"></div><div id="warnings"></div></fieldset>
+    <div class="btns">
+      <button class="primary" id="download">Download mark.json</button>
+      <button id="copy">Copy constants</button>
+      <button id="production">Reset curve to production</button>
+      <button id="original">Reset curve to formula</button>
+    </div>
+    <pre id="snippet"></pre>
+    <p class="hint">Apply and rebuild:</p>
+    <pre>python scripts/dev/mark_editor.py apply ~/Downloads/mark.json
+python scripts/build.py left
+python scripts/build.py right</pre>
+  </aside>
+</main>
+<script src="mark_editor.js"></script>
+<script>
+const D = window.MARK, SPL = D.splay_deg * Math.PI / 180, OW = D.outer_width;
+const rot = (p, th) => [Math.cos(th) * p[0] - Math.sin(th) * p[1], Math.sin(th) * p[0] + Math.cos(th) * p[1]];
+const toAsm = (q, s) => s === "left" ? rot([OW - q[0], q[1]], SPL) : (p => [p[0] + D.right_offset[0], p[1] + D.right_offset[1]])(rot(q, -SPL));
+const toCanon = (p, s) => { if (s === "left") { const r = rot(p, -SPL); return [OW - r[0], r[1]]; } return rot([p[0] - D.right_offset[0], p[1] - D.right_offset[1]], SPL); };
+const I = D.inside, dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const inside = q => q[0] >= I.x0 && q[0] <= I.x1 && q[1] >= I.y0 && q[1] <= I.y1
+  && Math.hypot(q[0] - I.ex, q[1] - I.ey) > I.quiet && !(Math.abs(q[0] - I.mcu_x) < I.usb_half && q[1] > I.usb_y);
+const outlineAsm = s => D.outline.map(q => toAsm(q, s));
+
+/* same arithmetic as cover_mark.catmull_rom (centripetal, reflected phantom ends) */
+function lerp(a, b, ta, tb, t) { const f = (t - ta) / (tb - ta); return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; }
+function catmull(P) {
+  const n = P.length, ext = [[2 * P[0][0] - P[1][0], 2 * P[0][1] - P[1][1]], ...P, [2 * P[n - 1][0] - P[n - 2][0], 2 * P[n - 1][1] - P[n - 2][1]]];
+  const out = [P[0]], span = [0];
+  for (let i = 1; i < ext.length - 2; i++) {
+    const [p0, p1, p2, p3] = [ext[i - 1], ext[i], ext[i + 1], ext[i + 2]];
+    const t1 = Math.max(dist(p0, p1), 1e-9) ** .5, t2 = t1 + Math.max(dist(p1, p2), 1e-9) ** .5, t3 = t2 + Math.max(dist(p2, p3), 1e-9) ** .5;
+    for (let k = 1; k <= D.samples; k++) {
+      const t = t1 + (t2 - t1) * k / D.samples;
+      const a1 = lerp(p0, p1, 0, t1, t), a2 = lerp(p1, p2, t1, t2, t), a3 = lerp(p2, p3, t2, t3, t);
+      const b1 = lerp(a1, a2, 0, t2, t), b2 = lerp(a2, a3, t1, t3, t);
+      out.push(lerp(b1, b2, t1, t2, t)); span.push(i - 1);
+    }
+  }
+  return {pts: out, span};
+}
+function runs(canon) {
+  const out = []; let r = [];
+  for (const q of canon) { if (inside(q)) r.push(q); else { if (r.length > 1) out.push(r); r = []; } }
+  if (r.length > 1) out.push(r);
+  return out;
+}
+const runLength = rs => rs.reduce((s, r) => s + r.slice(1).reduce((t, q, i) => t + dist(r[i], q), 0), 0);
+const northFirst = rs => rs.map(r => r[0][1] >= r[r.length - 1][1] ? r : r.slice().reverse()).sort((a, b) => b[0][1] - a[0][1]);
+function limit(rs, L) {
+  rs = northFirst(rs);
+  if (L == null) return rs;
+  const out = []; let left = L;
+  for (const r of rs) {
+    const kept = [r[0]];
+    for (let i = 1; i < r.length; i++) {
+      const st = dist(r[i - 1], r[i]);
+      if (st >= left) { const f = st ? left / st : 0; kept.push([r[i - 1][0] + f * (r[i][0] - r[i - 1][0]), r[i - 1][1] + f * (r[i][1] - r[i - 1][1])]); left = 0; break; }
+      kept.push(r[i]); left -= st;
+    }
+    if (kept.length > 1) out.push(kept);
+    if (left <= 0) break;
+  }
+  return out;
+}
+function segX(p, p2, q, q2) {
+  const r = [p2[0] - p[0], p2[1] - p[1]], s = [q2[0] - q[0], q2[1] - q[1]], d = r[0] * s[1] - r[1] * s[0];
+  if (Math.abs(d) < 1e-12) return null;
+  const t = ((q[0] - p[0]) * s[1] - (q[1] - p[1]) * s[0]) / d, u = ((q[0] - p[0]) * r[1] - (q[1] - p[1]) * r[0]) / d;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? t : null;
+}
+function minRadius(pts, keep) {
+  let m = Infinity;
+  for (let i = 5; i + 5 < pts.length; i += 5) {
+    if (keep && !keep(pts[i])) continue;
+    const a = pts[i - 5], b = pts[i], c = pts[i + 5], ar = Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1]));
+    if (ar > 1e-12) m = Math.min(m, dist(a, b) * dist(b, c) * dist(a, c) / (2 * ar));
+  }
+  return m;
+}
+
+/* state: each curve is either its formula (analytic) or a Catmull-Rom through its handles */
+const fresh = pts => pts.map(p => ({x: p[0], y: p[1], locked: false}));
+let C = D.curves.map(c => ({...c, H: fresh(c.handles || c.default_handles), analytic: c.handles == null}));
+let L = D.length, zoom = "both", act = 0, leftRef = null;
+try {
+  const s = JSON.parse(localStorage.getItem("mark-editor"));
+  if (s && s.curves && s.curves.length === C.length) { s.curves.forEach((sc, i) => { C[i].H = fresh(sc.handles); C[i].analytic = sc.analytic; }); L = s.length; act = s.act || 0; }
+} catch (e) {}
+const save = () => { try { localStorage.setItem("mark-editor", JSON.stringify({curves: C.map(c => ({handles: c.H.map(h => [h.x, h.y]), analytic: c.analytic})), length: L, act})); } catch (e) {} };
+const pointsOf = c => c.analytic ? {pts: c.formula, span: null} : catmull(c.H.map(h => [h.x, h.y]));
+const isBow = c => c.kind === "bow";
+function pieces(c, pts) {
+  const out = {};
+  for (const s of ["left", "right"]) { const rs = runs(pts.map(p => toCanon(p, s))); out[s] = s === "right" && isBow(c) ? limit(rs, L) : northFirst(rs); out[s + "Full"] = runLength(rs); }
+  return out;
+}
+const leftKey = c => JSON.stringify(pieces(c, pointsOf(c).pts).left.map(r => r.map(q => q.map(v => v.toFixed(4)))));
+function applyLock(on) {
+  const c = C[act]; c.H.forEach(h => h.locked = false); leftRef = null;
+  if (!on) return;
+  const k = catmull(c.H.map(h => [h.x, h.y])), touched = new Set();
+  k.pts.forEach((p, i) => { if (inside(toCanon(p, "left"))) touched.add(k.span[i]); });
+  for (const j of touched) for (let m = j - 1; m <= j + 2; m++) if (c.H[m]) c.H[m].locked = true;
+  leftRef = leftKey(c);
+}
+function edited() { C[act].analytic = false; }
+
+/* drawing */
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let B, Sc = 1, ox = 0, oy = 0, last = null;
+function bounds() {
+  const pts = zoom === "both" ? outlineAsm("left").concat(outlineAsm("right")) : outlineAsm(zoom), m = zoom === "both" ? 6 : 4;
+  return {x0: Math.min(...pts.map(p => p[0])) - m, x1: Math.max(...pts.map(p => p[0])) + m, y0: Math.min(...pts.map(p => p[1])) - m, y1: Math.max(...pts.map(p => p[1])) + m};
+}
+const X = p => [ox + (p[0] - B.x0) * Sc, oy + (B.y1 - p[1]) * Sc];
+const W = (x, y) => [B.x0 + (x - ox) / Sc, B.y1 - (y - oy) / Sc];
+function path(pts, close) { ctx.beginPath(); pts.forEach((p, i) => { const [x, y] = X(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); if (close) ctx.closePath(); }
+function stroke(pts, color, w, dash, alpha) { ctx.setLineDash(dash || []); ctx.globalAlpha = alpha || 1; ctx.strokeStyle = color; ctx.lineWidth = w; path(pts); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1; }
+function draw() {
+  const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  cv.width = r.width * dpr; cv.height = r.height * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, r.width, r.height);
+  B = bounds(); Sc = Math.min(r.width / (B.x1 - B.x0), r.height / (B.y1 - B.y0));
+  ox = (r.width - (B.x1 - B.x0) * Sc) / 2; oy = (r.height - (B.y1 - B.y0) * Sc) / 2;
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  for (const s of ["left", "right"]) {
+    path(outlineAsm(s), true); ctx.fillStyle = css("--cover"); ctx.fill(); ctx.strokeStyle = css("--edge"); ctx.lineWidth = 1; ctx.stroke();
+    const ct = D.chamfer_top.map(q => toAsm(q, s)); stroke(ct.concat([ct[0]]), css("--edge"), 1, [3, 3], .45);
+    const [x, y] = X(toAsm(D.encoder, s)); ctx.beginPath(); ctx.arc(x, y, D.shaft_r * Sc, 0, 7); ctx.fillStyle = css("--bg"); ctx.fill(); ctx.strokeStyle = css("--edge"); ctx.stroke();
+  }
+  const all = C.map(c => { const k = pointsOf(c); return {c, k, pc: pieces(c, k.pts)}; });
+  all.forEach((a, i) => { if (i !== act) for (const s of ["left", "right"]) for (const run of a.pc[s]) stroke(run.map(q => toAsm(q, s)), css("--fixed"), Math.max(a.c.width * Sc, 1)); });
+  const A = all[act];
+  stroke(A.c.formula, css("--ghost"), 1, [2, 4], .8);
+  stroke(A.k.pts, css("--cut"), 1, [5, 4], .35);
+  for (const s of ["left", "right"]) for (const run of A.pc[s]) stroke(run.map(q => toAsm(q, s)), css("--cut"), Math.max(A.c.width * Sc, 1.5));
+  // crossings of the edited curve with the others on the right cover, from its north entry
+  const xs = []; let along = 0;
+  for (const run of A.pc.right) for (let i = 1; i < run.length; i++) {
+    all.forEach((o, oi) => { if (oi === act) return; for (const r2 of o.pc.right) for (let j = 1; j < r2.length; j++) { const t = segX(run[i - 1], run[i], r2[j - 1], r2[j]); if (t != null) xs.push({at: along + t * dist(run[i - 1], run[i]), pt: lerp(run[i - 1], run[i], 0, 1, t), with: o.c.name}); } });
+    along += dist(run[i - 1], run[i]);
+  }
+  ctx.font = "11px -apple-system,sans-serif";
+  for (const x of xs) { const [px, py] = X(toAsm(x.pt, "right")); ctx.beginPath(); ctx.arc(px, py, 5, 0, 7); ctx.strokeStyle = css("--ink"); ctx.lineWidth = 1.5; ctx.stroke(); ctx.fillStyle = css("--ink"); ctx.fillText(`${x.at.toFixed(1)} mm`, px + 8, py + 4); }
+  A.c.H.forEach((h, i) => { const [x, y] = X([h.x, h.y]); ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); if (h.locked) { ctx.strokeStyle = css("--lock"); ctx.lineWidth = 1.5; ctx.stroke(); } else { ctx.fillStyle = css("--cut"); ctx.globalAlpha = A.c.analytic ? .55 : 1; ctx.fill(); ctx.globalAlpha = 1; ctx.strokeStyle = css("--panel"); ctx.lineWidth = 1.5; ctx.stroke(); } ctx.fillStyle = css("--muted"); ctx.fillText(String(i + 1), x + 8, y - 6); });
+  last = {A, all};
+  readout(all, A, xs.sort((a, b) => a.at - b.at));
+}
+function eastExit(pc) {   // right-cover end of a curve's piece nearest the east edge (canonical y)
+  let best = null;
+  for (const r of pc.right) for (const q of [r[0], r[r.length - 1]]) if (!best || q[0] > best[0]) best = q;
+  return best && best[0] > D.inside.x1 - 4 ? best[1] : null;
+}
+function readout(all, A, xs) {
+  const onCover = p => inside(toCanon(p, "left")) || inside(toCanon(p, "right"));
+  const R = minRadius(A.k.pts, onCover);
+  const rows = [["Editing", A.c.name], ["Shape", A.c.analytic ? "formula (drag a handle to edit)" : `${A.c.H.length} handles (${A.c.H.filter(h => h.locked).length} locked)`],
+    ["Tightest bend on a cover", R === Infinity ? "straight" : `${R.toFixed(1)} mm`],
+    ["Left piece", `${runLength(A.pc.left).toFixed(1)} mm`], ["Right piece", `${runLength(A.pc.right).toFixed(1)} of ${A.pc.rightFull.toFixed(1)} mm`]];
+  xs.forEach(x => rows.push([`Crosses ${x.with}`, `${x.at.toFixed(1)} mm in`]));
+  const exits = all.map(a => ({n: a.c.name, y: eastExit(a.pc)})).filter(e => e.y != null).sort((a, b) => b.y - a.y);
+  exits.forEach((e, i) => rows.push([`Right east exit · ${e.n}`, `y ${e.y.toFixed(1)}${i ? ` (gap ${(exits[i - 1].y - e.y).toFixed(1)})` : ""}`]));
+  document.getElementById("stats").innerHTML = rows.map(([a, b]) => `<div><span>${a}</span><span>${b}</span></div>`).join("");
+  const w = [];
+  if (R < 3) w.push(`Tightest bend on a cover is ${R.toFixed(1)} mm. Under ~3 mm a ${A.c.width} mm groove reads as a blob, and under ${A.c.width} mm the build refuses it.`);
+  if (leftRef && leftKey(A.c) !== leftRef) w.push("The left piece has changed: a handle was dragged into the span that shapes it.");
+  if (!A.pc.right.length) w.push("This curve misses the right cover.");
+  if (!A.pc.left.length) w.push("This curve misses the left cover.");
+  document.getElementById("warnings").innerHTML = w.map(t => `<div class="warn">${t}</div>`).join("");
+  const bow = all.find(a => isBow(a.c)); document.getElementById("length").max = Math.max(1, Math.ceil(bow.pc.rightFull * 2) / 2);
+  const fmt = c => c.analytic ? "None" : `(${c.H.map(h => `(${h.x.toFixed(4)}, ${h.y.toFixed(4)})`).join(", ")},)`;
+  document.getElementById("snippet").textContent = `COVER_MARK_LINE_POINTS = (${C.filter(c => !isBow(c)).map(fmt).join(", ")},)\nCOVER_MARK_CURVE_POINTS = ${fmt(C.find(isBow))}\nCOVER_MARK_RIGHT_CURVE_LENGTH = ${L == null ? "None" : L.toFixed(2)}`;
+  document.getElementById("mode").textContent = A.c.analytic ? "This curve still follows its formula. Drag any handle to start editing it." : "Edited: this curve is a smooth Catmull-Rom through its handles, one curve over both covers.";
+  document.getElementById("length-box").style.opacity = isBow(A.c) ? 1 : .5;
+  document.querySelectorAll("#pick button").forEach((b, i) => b.innerHTML = `${C[i].name}${C[i].analytic ? "" : '<span class="dot" title="edited"></span>'}`);
+}
+
+/* interaction */
+const el = id => document.getElementById(id);
+function sync() { el("full").checked = L == null; el("length").disabled = L == null; if (L != null) el("length").value = L; el("length-o").textContent = L == null ? "full" : `${L.toFixed(1)} mm`; document.querySelectorAll("#pick button").forEach((b, i) => b.classList.toggle("on", i === act)); el("shape-title").textContent = `Shape · ${C[act].name}`; }
+let pending = false;
+function changed() { save(); sync(); if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; draw(); }); } }
+C.forEach((c, i) => { const b = document.createElement("button"); b.addEventListener("click", () => { C[act].H.forEach(h => h.locked = false); act = i; applyLock(el("lock").checked); changed(); }); el("pick").appendChild(b); });
+const pos = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+const hit = (x, y) => C[act].H.findIndex(h => { const [hx, hy] = X([h.x, h.y]); return Math.hypot(hx - x, hy - y) <= 9; });
+let drag = -1;
+cv.addEventListener("pointerdown", e => { const [x, y] = pos(e), i = hit(x, y); if (i >= 0 && !C[act].H[i].locked) { drag = i; cv.setPointerCapture(e.pointerId); cv.className = "grabbing"; } });
+cv.addEventListener("pointermove", e => {
+  const [x, y] = pos(e);
+  if (drag >= 0) { const [wx, wy] = W(x, y); C[act].H[drag].x = wx; C[act].H[drag].y = wy; edited(); changed(); return; }
+  const i = hit(x, y); cv.className = i >= 0 && !C[act].H[i].locked ? "grab" : "";
+});
+cv.addEventListener("pointerup", () => { drag = -1; cv.className = ""; });
+cv.addEventListener("dblclick", e => {
+  const [x, y] = pos(e), i = hit(x, y), c = C[act];
+  if (i >= 0) { if (!c.H[i].locked && c.H.length > 4) { c.H.splice(i, 1); edited(); changed(); } return; }
+  const k = catmull(c.H.map(h => [h.x, h.y]));
+  let best = -1, bd = 12;
+  k.pts.forEach((p, n) => { const [px, py] = X(p), d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; best = n; } });
+  if (best < 1) return;
+  const j = k.span[best];
+  if (c.H[j].locked && c.H[j + 1].locked) { el("warnings").insertAdjacentHTML("afterbegin", `<div class="warn">That stretch shapes the left cover; untick "Keep left cover unchanged" to add a handle there.</div>`); return; }
+  const p = k.pts[best]; c.H.splice(j + 1, 0, {x: p[0], y: p[1], locked: false}); edited(); changed();
+});
+el("lock").addEventListener("change", e => { applyLock(e.target.checked); changed(); });
+el("full").addEventListener("change", e => { L = e.target.checked ? null : Math.round((last ? last.all.find(a => isBow(a.c)).pc.rightFull : 20) * 2) / 2; changed(); });
+el("length").addEventListener("input", e => { L = parseFloat(e.target.value); changed(); });
+el("production").onclick = () => { const c = C[act]; c.H = fresh(c.handles || c.default_handles); c.analytic = c.handles == null; if (isBow(c)) L = D.length; applyLock(el("lock").checked); changed(); };
+el("original").onclick = () => { const c = C[act]; c.H = fresh(c.default_handles); c.analytic = true; applyLock(el("lock").checked); changed(); };
+document.querySelectorAll("#zoom button").forEach(b => b.addEventListener("click", () => { zoom = b.dataset.z; document.querySelectorAll("#zoom button").forEach(x => x.classList.toggle("on", x === b)); draw(); }));
+const json = () => JSON.stringify({lines: C.filter(c => !isBow(c)).map(c => c.analytic ? null : c.H.map(h => [+h.x.toFixed(4), +h.y.toFixed(4)])),
+  bow: (b => b.analytic ? null : b.H.map(h => [+h.x.toFixed(4), +h.y.toFixed(4)]))(C.find(isBow)), length: L}, null, 2) + "\n";
+el("download").onclick = () => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([json()], {type: "application/json"})); a.download = "mark.json"; a.click(); URL.revokeObjectURL(a.href); };
+el("copy").onclick = async e => { try { await navigator.clipboard.writeText(el("snippet").textContent); e.target.textContent = "Copied"; } catch (err) { e.target.textContent = "Copy failed"; } setTimeout(() => e.target.textContent = "Copy constants", 1400); };
+new ResizeObserver(draw).observe(cv);
+sync(); draw();
+</script>
+</body>
+</html>

@@ -7,7 +7,9 @@ coordinates and mirrored after all side-specific openings have been cut.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from functools import cache
+from itertools import pairwise
 from typing import Literal, cast
 
 from build123d import (
@@ -31,11 +33,13 @@ from build123d import (
 from OCP.Standard import Standard_Failure
 
 from . import constants as C
+from . import cover_mark
 from . import tray as Tray
 from .plate_geometry import load_plate_cutouts
 from .slide_access import slide_body_cavity, slide_finger_cutout
 
 Side = Literal["left", "right"]
+Point = tuple[float, float]
 
 
 @cache
@@ -153,10 +157,15 @@ def _encoder_bbox() -> tuple[float, float, float, float]:
 
 
 def _roof_above_cutter(side: Side, inner: bool, x_span: tuple[float, float],
-                       y_span: tuple[float, float]) -> Part:
-    """Space above one exact cubic Bezier roof, swept along X."""
+                       y_span: tuple[float, float], *, drop: float | None = None) -> Part:
+    """Space above one exact cubic Bezier roof, swept along X.
+
+    ``drop`` lowers the whole roof vertically (used for the groove floor)."""
     y0, y1 = C.COVER_RAMP_FOOT_Y, C.COVER_RAMP_TOP_Y
-    thickness = C.COVER_TOP_THICKNESS if inner else 0.0
+    if drop is not None:
+        thickness = drop
+    else:
+        thickness = C.COVER_TOP_THICKNESS if inner else 0.0
     z0 = C.COVER_FOOT_Z - thickness
     z1 = C.cover_ridge_top_z(side) - thickness
     length = y1-y0
@@ -276,10 +285,92 @@ def _usb_cutter(side: Side) -> Part:
                          north-C.COVER_NORTH_WALL-1.0, north+2.0)
 
 
-def build_mcu_encoder_cover(side: Side = "right") -> Part:
+def _mark_inside(side: Side) -> Callable[[Point], bool]:
+    """Canonical-frame test for where the connection mark's centreline may run.
+
+    Like the old canopy marks, strokes run ``COVER_MARK_RUN_OUT`` past the outline: the groove
+    holds its depth to the chamfer's top line, then dies as the chamfer drops away beneath the
+    lowered-roof floor. Only the encoder shaft margin and the USB opening are kept clear."""
+    half = max(C.COVER_MARK_WIDTH, C.COVER_MARK_CURVE_WIDTH)/2
+    outer = _cover_outer_polygon()
+    run = C.COVER_MARK_RUN_OUT
+    x0, x1 = min(x for x, _ in outer)-run, max(x for x, _ in outer)+run
+    y0, y1 = min(y for _, y in outer)-run, max(y for _, y in outer)+run
+    ex, ey, _, _ = _encoder_bbox()
+    quiet = C.COVER_SHAFT_CUTOUT_DIA/2+C.COVER_MARK_QUIET_R+half
+    mcu_x = C.pcb_to_case(*C.MCU_POS)[0]
+    usb_half = C.COVER_USB_PORT_W/2+1.0+half
+    usb_y = max(y for _, y in outer)-C.COVER_NORTH_WALL-1.0-half
+
+    def inside(p: Point) -> bool:
+        x, y = p
+        if not (x0 <= x <= x1 and y0 <= y <= y1):
+            return False
+        if math.dist(p, (ex, ey)) <= quiet:
+            return False
+        return not (abs(x-mcu_x) < usb_half and y > usb_y)
+
+    return inside
+
+
+def _turn_radius(a: Point, b: Point, c: Point) -> float:
+    """Circumradius of three consecutive stroke vertices; a fold shows as a small radius."""
+    twice_area = abs((b[0]-a[0])*(c[1]-a[1])-(c[0]-a[0])*(b[1]-a[1]))
+    if twice_area < 1e-12:
+        return math.inf
+    return math.dist(a, b)*math.dist(b, c)*math.dist(a, c)/(2*twice_area)
+
+
+def _band_prism(points: list[Point], width: float, z0: float, z1: float) -> Part:
+    """Flat-floored groove: a planar band along one polyline, extruded z0 to z1."""
+    half = width/2
+    normals = []
+    for a, b in pairwise(points):
+        length = math.dist(a, b)
+        normals.append((-(b[1]-a[1])/length, (b[0]-a[0])/length))
+    left: list[Point] = []
+    right: list[Point] = []
+    for i, p in enumerate(points):
+        if i in (0, len(points)-1):
+            n, scale = normals[0 if i == 0 else -1], 1.0
+        else:
+            assert _turn_radius(points[i-1], p, points[i+1]) > width, (
+                "connection mark stroke folds on itself")
+            prev, nxt = normals[i-1], normals[i]
+            m = (prev[0]+nxt[0], prev[1]+nxt[1])
+            size = math.hypot(*m)
+            n = (m[0]/size, m[1]/size)
+            scale = 1.0/(n[0]*prev[0]+n[1]*prev[1])
+        ox, oy = n[0]*half*scale, n[1]*half*scale
+        left.append((p[0]+ox, p[1]+oy))
+        right.append((p[0]-ox, p[1]-oy))
+    face = _face(left+right[::-1])
+    return cast(Part, Pos(0, 0, z0) * extrude(face, amount=z1-z0))
+
+
+def _mark_cutter(side: Side) -> Part:
+    """M17-3 grooves for one cover, in canonical (built, pre-mirror) coordinates."""
+    outer = _cover_outer_polygon()
+    xs, ys = [x for x, _ in outer], [y for _, y in outer]
+    x_span = (min(xs), max(xs))
+    y_span = (min(ys)-2, max(ys)+2)
+    # Start below the open underside so no groove face is coplanar with it.
+    z0, z1 = C.MAIN_RIM_Z-1.0, C.cover_ridge_top_z(side)+2.0
+    grooves: Part | None = None
+    for points, width in cover_mark.strokes(side, _mark_inside(side)):
+        band = _band_prism(points, width, z0, z1)
+        grooves = band if grooves is None else cast(Part, grooves+band)
+    assert grooves is not None, "connection mark produced no strokes"
+    floor = _roof_above_cutter(side, False, x_span, y_span, drop=C.COVER_MARK_DEPTH)
+    return cast(Part, grooves & floor)
+
+
+def build_mcu_encoder_cover(side: Side = "right", mark: bool = C.COVER_MARK_ENABLED) -> Part:
     if side not in ("left", "right"):
         raise ValueError(f"side must be 'left' or 'right', got {side!r}")
     cover = _shell(side)
+    if mark:
+        cover = cast(Part, cover-_mark_cutter(side))
     for point in _th_positions("right"):
         cover = cast(Part, cover+_boss(point, side))
     cover = cast(Part, cover-_usb_cutter(side)-slide_finger_cutout()

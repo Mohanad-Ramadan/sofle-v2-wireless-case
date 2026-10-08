@@ -233,3 +233,49 @@ def cover_ridge_top_z(side: Literal["left", "right"] | str) -> float:
 
 
 COVER_ENCODER_CAVITY_CLEAR = 0.5
+
+# --- Cover connection mark (M17-3) ------------------------------------------------
+# Approved from docs/previews/controller/variants/M17-3.json; drawn once in the assembled
+# pair frame, so the two covers carry different pieces of one figure.
+COVER_MARK_ENABLED = True
+COVER_MARK_DEPTH = 0.30          # vertical groove depth; roof keeps 1.20 mm of 1.5 mm
+COVER_MARK_WIDTH = 0.80          # narrows lines
+COVER_MARK_CURVE_WIDTH = 0.80    # steep bow curve
+COVER_MARK_RUN_OUT = 2.0         # strokes run this far past the outline so grooves break out
+                                 # through the edges and fade down the chamfers (old canopy style)
+COVER_MARK_QUIET_R = 3.0         # keep-out beyond the shaft cut-out radius
+COVER_MARK_LINES = 3
+COVER_MARK_CENTER = 31.0
+COVER_MARK_SPACING = 12.5
+COVER_MARK_PINCH = 0.75
+COVER_MARK_PINCH_U = -9.5
+COVER_MARK_PINCH_V = 38.0
+COVER_MARK_PINCH_SIGMA = 20.5
+COVER_MARK_BEND = 18.0
+COVER_MARK_BEND_SIGMA = 16.0
+COVER_MARK_S_BOW = 0.5
+COVER_MARK_FAN = 1.2
+COVER_MARK_LINE_FAN = (0.49, 1.0, 1.0)  # per line, south to north; scales FAN. 0.49 tucks the south
+                                        # line in: right-cover exits 103.4 / 90.0 / 77.0, 13 mm apart
+COVER_MARK_CURVE_A = 8.5         # peak lateral bow of the steep curve
+# Mark editor (docs/previews/controller/mark_editor.html): handles in the ASSEMBLED pair frame. The
+# curve is a centripetal Catmull-Rom through them, one curve over both covers, so the two pieces
+# stay smooth and continuous through the gap. None = the analytic bow above.
+COVER_MARK_CURVE_POINTS: tuple[tuple[float, float], ...] | None = ((233.3911, -45.0322), (230.0679, -25.7693), (232.0724, -11.4378), (231.2143, 5.1575), (225.1644, 16.4579), (199.8850, 17.0376), (190.8095, 19.2748), (180.6302, 27.3304), (171.8794, 38.1876), (163.2595, 51.3400), (145.8141, 66.8358), (156.6058, 71.3164), (162.0475, 80.5097), (161.8593, 91.8484), (161.6710, 103.1872),)
+# Same idea for the narrows lines, south to north: None keeps a line's formula; handles make it
+# a Catmull-Rom through them (still one curve over both covers).
+COVER_MARK_LINE_POINTS: tuple[tuple[tuple[float, float], ...] | None, ...] = (None, None, None)
+COVER_MARK_RIGHT_CURVE_LENGTH: float | None = None  # mm run from its north entry; None = full
+# Assembled-pair pose, from the archived canopy_puzzle.py (ce64f2a).
+COVER_MARK_SPLAY_HALF_DEG = -24.671392
+COVER_MARK_RIGHT_OFFSET = (212.081635, -84.171123)
+COVER_MARK_LINE_A = (-36.124941, 157.132546 + 3.3)  # (normal angle deg, offset incl. nudge)
+COVER_MARK_LINE_A_SPAN = (-107.741015, -45.965048, 0.515849)  # (t_lo, t_hi, u_seam)
+COVER_MARK_LINE_A_PAD = 34.0
+COVER_MARK_U_HALF = 70.0         # narrows are sampled over u in [-70, 70] mm
+COVER_MARK_S_SCALE = 50.0        # S-bow cubic scale, mm
+COVER_MARK_FAN_SCALE = 60.0      # fan ramp scale past the pinch, mm
+COVER_MARK_FAN_BLEND = 6.0       # mm each side of the pinch; the fan eases in (C1) instead of
+                                 # switching on with a slope break (was a 3-9 deg kink at entry)
+COVER_MARK_SAMPLE_STEP = 0.025   # mm; shared t grid for the steep curve
+COVER_MARK_SIMPLIFY_TOL = 0.01   # mm; Ramer-Douglas-Peucker tolerance on each stroke

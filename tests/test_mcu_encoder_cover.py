@@ -265,7 +265,8 @@ def test_cover_retains_continuous_roof_over_actuator_access(covers, side):
     shell = MEC._shell(side)
     roof_web = (shell - shell.translate((0, 0, -1.0))) & mouth
     assert roof_web.volume > 1.0
-    missing = (_sided(roof_web, side) - covers[side]).volume
+    # The M17-3 connection groove is deliberate, not access: take it out of the roof first.
+    missing = (_sided(roof_web - MEC._mark_cutter(side), side) - covers[side]).volume
     assert missing <= 1e-5, (
         f"{side} access removes roof material: {missing:.6f} mm³"
     )

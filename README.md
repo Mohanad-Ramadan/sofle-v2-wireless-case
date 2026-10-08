@@ -70,6 +70,43 @@ Reducing depth moves the shoulders inward without moving the central lip
 or sacrificing wall thickness or clearance. Both halves mirror the recess.
 Physical fit still needs a printed check.
 
+## MCU cover connection mark
+
+The removable MCU/encoder covers carry the approved **M17-3** connection mark
+on their roofs: three narrows lines plus one steep bow curve, engraved
+**0.80 mm wide and 0.30 mm deep** (the roof keeps 1.20 mm). The figure is
+drawn once in the assembled pair frame, so the left and right covers each
+carry a different piece of the same figure; the footprints still mirror.
+Like the old canopy marks, the grooves run out through the cover's edges:
+each holds its full depth to the chamfer's top line, then dies away as the
+chamfer drops below the groove floor. Only the encoder shaft margin and the
+USB opening are kept clear.
+
+Every mark curve is fully editable. `COVER_MARK_LINE_POINTS` (one entry per
+narrows line, south to north) and `COVER_MARK_CURVE_POINTS` (Bow A) hold
+handles in the assembled pair frame; each edited curve is one centripetal
+Catmull-Rom through its handles, so both covers cut smooth, continuous pieces
+of it through the gap. `None` keeps that curve's formula.
+`COVER_MARK_RIGHT_CURVE_LENGTH` limits how far the right cover's Bow A piece
+runs from its north entry (`None` = out through the edge). Edit them visually
+in `docs/previews/controller/mark_editor.html` (serve that folder, e.g.
+`python -m http.server --directory docs/previews/controller`): pick a curve,
+drag its handles, double-click it to add a handle, or tick "Keep left cover
+unchanged" to lock the handles that shape the left piece. The readout lists
+where every curve exits the right cover's east edge and the gaps between them.
+Download its JSON, then `python scripts/dev/mark_editor.py apply mark.json` and
+rebuild. Re-run `python scripts/dev/mark_editor.py export` after any other
+`COVER_MARK_*` change so the page stays in sync.
+
+The narrows lines' fan eases in over `COVER_MARK_FAN_BLEND` (6 mm) either side
+of the squeeze point, so the lines enter the right cover without a kink.
+
+Tune `COVER_MARK_*` in `src/sofle_case/constants.py`. Set
+`COVER_MARK_ENABLED = False` (or pass `mark=False`) to build plain covers.
+Widen `COVER_MARK_WIDTH` and `COVER_MARK_CURVE_WIDTH` together if the test
+print is faint. The geometry lives in `src/sofle_case/cover_mark.py`
+(pure plan math) and `_mark_cutter` in `src/sofle_case/mcu_encoder_cover.py`.
+
 ## Slide-switch access
 
 The tray and mounted MCU cover share **one concave, jack-like port** with a

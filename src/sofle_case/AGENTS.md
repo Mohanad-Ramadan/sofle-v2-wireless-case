@@ -15,6 +15,13 @@ with a rim flush to the switch plate.
   exact nominal plate-fit cutter; `plate_phantom.py` may consume it for viewing.
 - `standoffs.py` owns the stepped Ø5.5/Ø3.9 M2 bosses and blind pilot bore.
 - `battery.py` owns the battery, JST, and wire-channel recess cutters.
+- `cover_mark.py` owns the M17-3 connection-mark plan geometry (pure math; imports
+  only the standard library and `constants`). Strokes run out through the cover
+  edges. Any mark curve can be a Catmull-Rom through handles (`COVER_MARK_LINE_POINTS` per narrows
+  line, `COVER_MARK_CURVE_POINTS` for Bow A; assembled frame, one curve for both covers).
+  `catmull_rom` must stay identical to `docs/previews/controller/mark_editor.html`.
+  `COVER_MARK_RIGHT_CURVE_LENGTH` limits only the right piece. The narrows fan uses a C1 eased
+  ramp (`_eased_ramp`); never go back to `max(x, 0)`, which put a 3-9 deg kink at the entry.
 - Phantom modules are visualization-only and must not be imported by structural
   builders.
 
