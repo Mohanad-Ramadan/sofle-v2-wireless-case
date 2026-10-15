@@ -56,7 +56,26 @@ def test_roof_uses_exact_tangent_smoothstep_and_flat_side_specific_ridge():
         assert (z1-MEC._cover_roof_z(C.COVER_RAMP_TOP_Y-eps, side))/eps < 1e-3
         assert MEC._cover_roof_z(C.COVER_RAMP_TOP_Y + 10, side) == pytest.approx(z1)
     assert C.COVER_TOP_THICKNESS == pytest.approx(1.5)
-    assert C.cover_ridge_top_z("right") != C.cover_ridge_top_z("left")
+    for side in ("right", "left"):
+        underside = C.cover_ridge_top_z(side) - C.COVER_TOP_THICKNESS
+        assert underside >= (C.MCU_PCB_TOP_Z + C.MCU_HEADER_TAIL_H
+                             + C.COVER_ROOF_CLEARANCE - 1e-9)
+
+
+def test_cover_leaves_header_tail_room_over_both_mcu_orientations(covers):
+    cx, cy = C.pcb_to_case(*C.MCU_POS)
+    assert cy > C.COVER_RAMP_TOP_Y  # roof is at full ridge height over the MCU
+    for side, cover in covers.items():
+        x0 = cx if side == "right" else C.OUTER_WIDTH-cx
+        tail_top = C.MCU_PCB_TOP_Z + C.MCU_HEADER_TAIL_H
+        for dx in (-7.62, 0.0, 7.62):
+            for z in (C.MCU_PCB_TOP_Z + 0.1, tail_top - 0.1):
+                assert (cover & _probe(x0+dx, cy, z, 0.1)).volume < 1e-6
+
+
+def test_engraving_depth_leaves_printable_roof():
+    assert C.COVER_MARK_DEPTH == pytest.approx(0.6)
+    assert C.COVER_TOP_THICKNESS - C.COVER_MARK_DEPTH >= 0.9 - 1e-9
 
 
 def test_faceted_recess_preserves_flat_lip_wall_and_encoder_clearance(covers):

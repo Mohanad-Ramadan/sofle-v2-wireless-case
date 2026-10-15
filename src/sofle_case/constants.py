@@ -51,6 +51,7 @@ MCU_PIN_SPAN_Y = 27.94
 MCU_PIN_TO_SOUTH_EDGE = 2.54
 MCU_PCB_TOP_Z = PCB_TOP_Z + 11.0
 MCU_PCB_BOT_Z = MCU_PCB_TOP_Z - MCU_BOARD_THK
+MCU_HEADER_TAIL_H = 2.16  # soldered header-pin tails above the board top; the room the right cover proved good
 MCU_BODY_S_Y = pcb_to_case(*MCU_POS)[1] - MCU_PIN_SPAN_Y / 2 - MCU_PIN_TO_SOUTH_EDGE
 MCU_BODY_N_Y = MCU_BODY_S_Y + MCU_BODY_L
 MCU_ORIENTATION = {"left": "flipped", "right": "neutral"}
@@ -227,9 +228,12 @@ def cover_usb_port_z(side: Literal["left", "right"] | str) -> tuple[float, float
 
 
 def cover_ridge_top_z(side: Literal["left", "right"] | str) -> float:
-    """Per-half ridge above the MCU board and jack."""
-    stack = max(usb_jack_z(side)[1], MCU_PCB_TOP_Z) + COVER_ROOF_CLEARANCE + COVER_TOP_THICKNESS
-    return stack
+    """Per-half ridge above the MCU board, its soldered header tails and the jack.
+
+    The flipped (left) jack hangs under the board, so the header tails set its height;
+    the neutral (right) jack already stands taller than the tails."""
+    top = max(usb_jack_z(side)[1], MCU_PCB_TOP_Z + MCU_HEADER_TAIL_H)
+    return top + COVER_ROOF_CLEARANCE + COVER_TOP_THICKNESS
 
 
 COVER_ENCODER_CAVITY_CLEAR = 0.5
@@ -238,7 +242,7 @@ COVER_ENCODER_CAVITY_CLEAR = 0.5
 # Approved from docs/previews/controller/variants/M17-3.json; drawn once in the assembled
 # pair frame, so the two covers carry different pieces of one figure.
 COVER_MARK_ENABLED = True
-COVER_MARK_DEPTH = 0.30          # vertical groove depth; roof keeps 1.20 mm of 1.5 mm
+COVER_MARK_DEPTH = 0.60          # vertical groove depth; roof keeps 0.90 mm of 1.5 mm
 COVER_MARK_WIDTH = 0.80          # narrows lines
 COVER_MARK_CURVE_WIDTH = 0.80    # steep bow curve
 COVER_MARK_RUN_OUT = 2.0         # strokes run this far past the outline so grooves break out
