@@ -145,8 +145,8 @@ JST_WIRE_SLOT_W = JST_WIRE_DIAMETER + 0.5
 JST_WIRE_LIP_THICKNESS = 1.2
 
 # Underside feet.
-FOOT_DEPTH = 0.6
-FOOT_DIA = 10.0
+FOOT_DEPTH = 1.0
+FOOT_DIA = 11.0
 FOOT_POSITIONS: tuple[tuple[float, float], ...] = (
     (20.5, 108.5), (141.75, 102.75), (21.0, 23.0), (142.5, 39.75),
 )
