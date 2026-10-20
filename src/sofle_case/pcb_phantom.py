@@ -75,7 +75,7 @@ def _pcb_plate() -> Part:
     return cast(Part, Pos(0, 0, C.PCB_SEAT_Z) * bp.part)
 
 
-def _mcu_block() -> Part:
+def _mcu_block(oled: C.OledMode = "none") -> Part:
     """nice!nano on long headers — board-only box plus thin pin rails (tall-header split).
 
     Reality: MCU sits on ~11 mm headers, bottom at C.MCU_PCB_BOT_Z (20.1) well
@@ -96,15 +96,17 @@ def _mcu_block() -> Part:
     center_y = (C.MCU_BODY_N_Y + C.MCU_BODY_S_Y) / 2
 
     # Board-only box — the actual PCB, above the rim.
-    board_h = C.MCU_PCB_TOP_Z - C.MCU_PCB_BOT_Z  # 1.6 mm
-    board_center_z = (C.MCU_PCB_BOT_Z + C.MCU_PCB_TOP_Z) / 2
+    # Short OLED headers drop the board MCU_SHORT_DROP (C.mcu_pcb_top_z).
+    mcu_top, mcu_bot = C.mcu_pcb_top_z(oled), C.mcu_pcb_bot_z(oled)
+    board_h = mcu_top - mcu_bot  # 1.6 mm
+    board_center_z = (mcu_bot + mcu_top) / 2
 
     # Pin rails — thin columns in open air below the board. Must stay inside
     # the strict inner cavity, so clipped south of the north wall's inner face.
     # Using two continuous rails at the east/west edges as an approximation for
     # the two 2.54 mm pitch pin rows (≈0.64 mm square each).
-    pin_h = C.MCU_PCB_BOT_Z - C.PCB_TOP_Z
-    pin_center_z = (C.PCB_TOP_Z + C.MCU_PCB_BOT_Z) / 2
+    pin_h = mcu_bot - C.PCB_TOP_Z
+    pin_center_z = (C.PCB_TOP_Z + mcu_bot) / 2
     pin_w = 0.64  # ~0.64 mm square pin
     # East/west X at MCU edges, inset by half pin width so rail stays inside MCU footprint
     # and well inside PCB polygon's cavity.
@@ -133,7 +135,7 @@ def _mcu_block() -> Part:
     return bp.part
 
 
-def _usb_c_stub(side: str = "right") -> Part:
+def _usb_c_stub(side: str = "right", oled: C.OledMode = "none") -> Part:
     """USB-C jack body stub at the +Y face of the MCU block, at this half's measured band.
 
     The stub protrudes ``C.USB_JACK_Y_PROTRUDE`` (1.0 mm, measured) past the board's +Y
@@ -145,7 +147,7 @@ def _usb_c_stub(side: str = "right") -> Part:
     cx, _ = C.pcb_to_case(*C.MCU_POS)
     mcu_y_face = C.MCU_BODY_N_Y           # +Y (USB-end) face of the board = 117.18 case-Y
     stub_center_y = mcu_y_face + C.USB_JACK_Y_PROTRUDE / 2
-    jack_lo, jack_hi = C.usb_jack_z(side)
+    jack_lo, jack_hi = C.usb_jack_z(side, oled)
     stub_h = jack_hi - jack_lo
     center_z = jack_lo + stub_h / 2
 
@@ -226,7 +228,8 @@ def _jst_body(mount: str = "east") -> Part:
     return bp.part
 
 
-def build_pcb_phantom(side: str = "right", include_encoder: bool = True) -> Part:
+def build_pcb_phantom(side: str = "right", include_encoder: bool = True,
+                      oled: C.OledMode = "none") -> Part:
     """PCB plate + MCU daughter board + USB-C jack stub + slide-switch body + pin holes + EC11 & knob.
 
     ``side`` picks the MCU orientation, which sets where the jack stub sits in Z.
@@ -234,8 +237,10 @@ def build_pcb_phantom(side: str = "right", include_encoder: bool = True) -> Part
     The EC11 is included by default because it IS board hardware, and until now it was the one
     component with no phantom anywhere: ``switch_phantom`` skips SW25 on purpose (it is not an MX
     switch) and this module never picked it up, so the encoder was invisible in every fit-check.
-    Pass ``include_encoder=False`` if something else in the scene already draws it."""
-    children = [_pcb_plate(), _mcu_block(), _usb_c_stub(side),
+    Pass ``include_encoder=False`` if something else in the scene already draws it.
+
+    ``oled`` (literal, default ``"none"``) lowers the MCU and jack in ``short`` mode."""
+    children = [_pcb_plate(), _mcu_block(oled), _usb_c_stub(side, oled),
                 _slide_switch_body(), _slide_switch_pin_holes(), _jst_body()]
     if include_encoder:
         from .encoder_phantom import build_encoder_phantom

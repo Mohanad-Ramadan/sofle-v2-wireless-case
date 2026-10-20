@@ -74,18 +74,137 @@ USB_JACK_NEUTRAL_HI_Z = MCU_PCB_TOP_Z + USB_JACK_PROUD
 USB_JACK_FLIPPED_LO_Z = MCU_PCB_BOT_Z - USB_JACK_PROUD
 USB_JACK_FLIPPED_HI_Z = MCU_PCB_BOT_Z + USB_JACK_SINK
 
+# --- Optional 4-pin I2C OLED (128x32) over the MCU ------------------------------------
+# One tri-state flag. "none" reproduces the cover and case exactly; "long"/"short" pick the
+# user-measured module height. Every mode-dependent value below is a pure function of an
+# explicit `oled` argument (literal "none" default); nothing reads OLED_MODE at runtime.
+OledMode = Literal["none", "long", "short"]
+OLED_MODES: tuple[str, ...] = ("none", "long", "short")
+OLED_MODE: OledMode = "none"
+OLED_MODULE_L = 39.0                # module length, north-south (user-confirmed)
+OLED_MODULE_W = 12.0                # module width, east-west (shop spec)
+OLED_DISPLAY_W = 6.0                # visible strip, X
+OLED_DISPLAY_L = 22.38              # visible strip, Y, centred on the module length (spec active area)
+OLED_DISPLAY_LEFT_INSET = 2.0       # strip edge from the module's top-view west frame (both halves)
+OLED_PIN_INSET = 1.2                # pin-hole centre to the module's south (pin-end) edge (shop spec)
+OLED_NORTH_CLEAR = 0.4              # module north end to the cover's inner north wall
+OLED_PHANTOM_THK = 1.0              # display-only slab thickness
+OLED_TOP_ABOVE_PCB_LONG = 16.2      # module top above the main PCB bottom face (measured)
+OLED_TOP_ABOVE_PCB_SHORT = 13.0
+# The 16.2 -> 13.0 header swap lowers the MCU board, its tails and its jack by the same amount.
+MCU_SHORT_DROP = OLED_TOP_ABOVE_PCB_LONG - OLED_TOP_ABOVE_PCB_SHORT
 
-def usb_jack_z(side: Literal["left", "right"] | str) -> tuple[float, float]:
+# J3: 5-pad palindromic nice!view footprint, PCB coords from data/raw/SofleKeyboard-PTH.drl
+# (the 1.0 mm tool); a test re-derives them. Nets west->east on the NEUTRAL side.
+J3_PADS_PCB: tuple[tuple[float, float], ...] = (
+    (5.22, -33.685), (7.76, -33.685), (10.30, -33.685), (12.84, -33.685), (15.38, -33.685),
+)
+J3_NETS_NEUTRAL: tuple[str, ...] = ("SDA", "SCL", "VCC", "GND", "CS")
+OLED_MODULE_NETS: tuple[str, ...] = ("GND", "VCC", "SCL", "SDA")
+
+# Straightened PCB-polygon north runs in case Y (tray segs 14 and 12); the tray asserts them.
+TRAY_NORTH_LOW_Y = pcb_to_case(0.0, 0.0)[1]                      # seg 14, x 13.65..54.65
+TRAY_NORTH_STEP_Y = pcb_to_case(0.0, MCU_Y_RELIEF_TARGET_Y)[1]   # seg 12, x 54.65..73.65
+
+
+def _check_oled(oled: str) -> None:
+    if oled not in OLED_MODES:
+        raise ValueError(f"oled must be one of {OLED_MODES}, got {oled!r}")
+
+
+def _check_side(side: str) -> None:
+    if side not in ("left", "right"):
+        raise ValueError(f"side must be 'left' or 'right', got {side!r}")
+
+
+def oled_top_z(oled: OledMode | str) -> float:
+    """Module top Z, datum the main PCB bottom face (PCB_SEAT_Z)."""
+    _check_oled(oled)
+    if oled == "long":
+        return PCB_SEAT_Z + OLED_TOP_ABOVE_PCB_LONG
+    if oled == "short":
+        return PCB_SEAT_Z + OLED_TOP_ABOVE_PCB_SHORT
+    raise ValueError("oled 'none' has no module")
+
+
+def mcu_pcb_top_z(oled: OledMode | str = "none") -> float:
+    _check_oled(oled)
+    return MCU_PCB_TOP_Z - (MCU_SHORT_DROP if oled == "short" else 0.0)
+
+
+def mcu_pcb_bot_z(oled: OledMode | str = "none") -> float:
+    return mcu_pcb_top_z(oled) - MCU_BOARD_THK
+
+
+def usb_jack_z(side: Literal["left", "right"] | str,
+               oled: OledMode | str = "none") -> tuple[float, float]:
+    _check_side(side)
+    top, bot = mcu_pcb_top_z(oled), mcu_pcb_bot_z(oled)
     if side == "left":
-        return USB_JACK_FLIPPED_LO_Z, USB_JACK_FLIPPED_HI_Z
-    if side == "right":
-        return USB_JACK_NEUTRAL_LO_Z, USB_JACK_NEUTRAL_HI_Z
-    raise ValueError(f"side must be 'left' or 'right', got {side!r}")
+        return bot - USB_JACK_PROUD, bot + USB_JACK_SINK
+    return top - USB_JACK_SINK, top + USB_JACK_PROUD
 
 
-def usb_port_z(side: Literal["left", "right"] | str) -> tuple[float, float]:
-    lo, hi = usb_jack_z(side)
+def usb_port_z(side: Literal["left", "right"] | str,
+               oled: OledMode | str = "none") -> tuple[float, float]:
+    lo, hi = usb_jack_z(side, oled)
     return lo - USB_PORT_CLEAR_LO, hi + USB_PORT_CLEAR_HI
+
+
+def j3_nets(side: Literal["left", "right"] | str) -> tuple[str, ...]:
+    """J3 nets by pad index in the canonical (built, pre-mirror) frame; the flipped half
+    reads the palindromic footprint from the other end, so CS swaps ends."""
+    _check_side(side)
+    if MCU_ORIENTATION[side] == "neutral":
+        return J3_NETS_NEUTRAL
+    return tuple(reversed(J3_NETS_NEUTRAL))
+
+
+def oled_pads(side: Literal["left", "right"] | str) -> tuple[int, ...]:
+    """The 4 contiguous J3 pad indices carrying the module's nets (CS excluded) on this half."""
+    nets = j3_nets(side)
+    idx = tuple(i for i, n in enumerate(nets) if n in OLED_MODULE_NETS)
+    if len(idx) != len(OLED_MODULE_NETS) or idx != tuple(range(idx[0], idx[0] + len(idx))):
+        raise ValueError(f"{side}: module nets not on contiguous J3 pads {nets}")
+    return idx
+
+
+def oled_module_xy(side: Literal["left", "right"] | str) -> tuple[float, float, float, float]:
+    """Module footprint (x0, x1, y0, y1), canonical frame: X centred on the chosen pads,
+    pins OLED_PIN_INSET from the south end, body running north."""
+    pads = [pcb_to_case(*J3_PADS_PCB[i]) for i in oled_pads(side)]
+    cx = sum(p[0] for p in pads) / len(pads)
+    pin_y = pads[0][1]
+    y0 = pin_y - OLED_PIN_INSET
+    return cx - OLED_MODULE_W / 2, cx + OLED_MODULE_W / 2, y0, y0 + OLED_MODULE_L
+
+
+def oled_window_xy(side: Literal["left", "right"] | str) -> tuple[float, float, float, float]:
+    """Display window (x0, x1, y0, y1), canonical frame. The strip sits OLED_DISPLAY_LEFT_INSET
+    from the module's PHYSICAL west frame; the left half is mirrored after building, so its
+    physical west is the canonical east."""
+    mx0, mx1, my0, my1 = oled_module_xy(side)
+    if side == "left":
+        x1 = mx1 - OLED_DISPLAY_LEFT_INSET
+        x0 = x1 - OLED_DISPLAY_W
+    else:
+        x0 = mx0 + OLED_DISPLAY_LEFT_INSET
+        x1 = x0 + OLED_DISPLAY_W
+    cy = (my0 + my1) / 2
+    return x0, x1, cy - OLED_DISPLAY_L / 2, cy + OLED_DISPLAY_L / 2
+
+
+def north_wall_extra(oled: OledMode | str = "none") -> dict[int, float]:
+    """Outward growth of the straightened tray north segments {idx: mm}; empty in "none".
+    Seg 14 grows so the cover's inner north wall clears the module by OLED_NORTH_CLEAR; seg 12
+    grows onto the same line, so x 13.65..73.65 becomes one edge."""
+    _check_oled(oled)
+    if oled == "none":
+        return {}
+    need = (oled_module_xy("right")[3] + OLED_NORTH_CLEAR + COVER_NORTH_WALL + RIM_FACET_RUN)
+    e14 = need - (TRAY_NORTH_LOW_Y + WALL_THICKNESS + PCB_XY_CLEARANCE)
+    e12 = e14 - (TRAY_NORTH_STEP_Y - TRAY_NORTH_LOW_Y)
+    return {12: e12, 14: e14}
 
 
 # Retained slide-switch clearance, including its 0.5 mm XY pad.
@@ -222,17 +341,31 @@ COVER_USB_PORT_W = USB_C_W + 2 * 0.5
 COVER_USB_PORT_R = 0.5
 
 
-def cover_usb_port_z(side: Literal["left", "right"] | str) -> tuple[float, float]:
-    lo, hi = usb_jack_z(side)
+def cover_ramp_top_y(oled: OledMode | str = "none") -> float:
+    """Ramp top Y; in OLED modes pulled south to the module's south end so the roof is flat
+    over the whole module."""
+    _check_oled(oled)
+    if oled == "none":
+        return COVER_RAMP_TOP_Y
+    return min(COVER_RAMP_TOP_Y, oled_module_xy("right")[2])
+
+
+def cover_usb_port_z(side: Literal["left", "right"] | str,
+                     oled: OledMode | str = "none") -> tuple[float, float]:
+    lo, hi = usb_jack_z(side, oled)
     return lo - 0.5, hi + 0.5
 
 
-def cover_ridge_top_z(side: Literal["left", "right"] | str) -> float:
-    """Per-half ridge above the MCU board, its soldered header tails and the jack.
+def cover_ridge_top_z(side: Literal["left", "right"] | str,
+                      oled: OledMode | str = "none") -> float:
+    """Per-half ridge above the MCU board, its soldered header tails, the jack and (OLED modes)
+    the module top.
 
     The flipped (left) jack hangs under the board, so the header tails set its height;
     the neutral (right) jack already stands taller than the tails."""
-    top = max(usb_jack_z(side)[1], MCU_PCB_TOP_Z + MCU_HEADER_TAIL_H)
+    top = max(usb_jack_z(side, oled)[1], mcu_pcb_top_z(oled) + MCU_HEADER_TAIL_H)
+    if oled != "none":
+        top = max(top, oled_top_z(oled))
     return top + COVER_ROOF_CLEARANCE + COVER_TOP_THICKNESS
 
 

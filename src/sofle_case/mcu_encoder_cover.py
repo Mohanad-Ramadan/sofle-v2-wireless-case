@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from dataclasses import dataclass
 from functools import cache
 from itertools import pairwise
 from typing import Literal, cast
@@ -40,18 +41,57 @@ from .slide_access import slide_body_cavity, slide_finger_cutout
 
 Side = Literal["left", "right"]
 Point = tuple[float, float]
+Box2 = tuple[float, float, float, float]
 
 
 @cache
-def _north_landing_y() -> float:
-    """Local straight MCU-wall rim, clear of the more northerly relief bump."""
+def _north_landing_y(oled: C.OledMode = "none") -> float:
+    """Local straight MCU-wall rim, clear of the more northerly relief bump. Flush with the
+    tray's outer north wall for ``oled`` (which grows north in OLED modes) less the rim facet."""
     mcu_x = C.pcb_to_case(*C.MCU_POS)[0]
-    points = Tray._outer_poly_pts()
-    segments = zip(points, points[1:] + points[:1])
-    local_y = max(a[1] for a, b in segments
-                  if abs(a[1]-b[1]) < 1e-6 and min(a[0], b[0]) <= mcu_x <= max(a[0], b[0]))
+    local_y = Tray.outline(oled).north_run(mcu_x)
     return (local_y + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
             - C.RIM_FACET_RUN)
+
+
+@dataclass(frozen=True)
+class CoverProfile:
+    """Every side/mode-dependent cover value, canonical (built, pre-mirror) frame."""
+    side: Side
+    oled: C.OledMode
+    ridge: float
+    ramp_top_y: float
+    north_y: float                   # outer north wall, flush with the tray for this mode
+    usb_port_z: tuple[float, float]
+    module_xy: Box2 | None           # OLED module footprint (x0, x1, y0, y1)
+    window_xy: Box2 | None           # display window (x0, x1, y0, y1)
+
+
+def profile(side: Side = "right", oled: C.OledMode = "none") -> CoverProfile:
+    """Cached cover profile for the literal ``oled`` mode (never resolved via C.OLED_MODE)."""
+    return _profile(side, oled)
+
+
+@cache
+def _profile(side: Side, oled: C.OledMode) -> CoverProfile:
+    window = None if oled == "none" else C.oled_window_xy(side)
+    return CoverProfile(
+        side=side, oled=oled,
+        ridge=C.cover_ridge_top_z(side, oled),
+        ramp_top_y=C.cover_ramp_top_y(oled),
+        north_y=_north_landing_y(oled),
+        usb_port_z=C.cover_usb_port_z(side, oled),
+        module_xy=None if oled == "none" else C.oled_module_xy(side),
+        window_xy=window,
+    )
+
+
+ProfileArg = CoverProfile | Side
+
+
+def _prof(p: ProfileArg) -> CoverProfile:
+    """Helpers take a profile; a bare side means that side's ``none`` profile."""
+    return p if isinstance(p, CoverProfile) else profile(p)
 
 
 def _mirror_left(part: Part) -> Part:
@@ -66,22 +106,24 @@ def _th_positions(side: Side = "right") -> list[tuple[float, float]]:
     return points
 
 
-def _cover_wall_x_y() -> tuple[float, float, float, float]:
+def _cover_wall_x_y(p: ProfileArg = "right") -> Box2:
+    """Outer west, east, north, south; only north depends on the mode. The rest is read live
+    from constants (a test monkeypatches the recess depth)."""
     west = (C.pcb_to_case(0, 0)[0] - C.COVER_WALL_LANDING_OFFSET
             - C.COVER_WEST_OUTSET)
     east = 34.6
-    north = _north_landing_y()
+    north = _prof(p).north_y
     _, enc_y, _, bbox_h = _encoder_bbox()
     south = (enc_y - bbox_h/2 - C.COVER_ENCODER_CAVITY_CLEAR
              - C.COVER_SOUTH_WALL_THICKNESS - C.COVER_RECESS_DEPTH)
     return west, east, north, south
 
 
-def _cover_polygon(*, west_inset: float = 0.0, east_inset: float = 0.0,
+def _cover_polygon(p: ProfileArg = "right", *, west_inset: float = 0.0, east_inset: float = 0.0,
                    north_inset: float = 0.0, south_inset: float = 0.0
                    ) -> list[tuple[float, float]]:
     """Offset every south facet normally, preserving thickness through the recess."""
-    west, east, north, south = _cover_wall_x_y()
+    west, east, north, south = _cover_wall_x_y(p)
     west, east = west+west_inset, east-east_inset
     north, south = north-north_inset, south+south_inset
     enc_x = C.pcb_to_case(*C.SW_ENCODER_POS)[0]
@@ -105,12 +147,12 @@ def _cover_polygon(*, west_inset: float = 0.0, east_inset: float = 0.0,
     return points
 
 
-def _cover_outer_polygon() -> list[tuple[float, float]]:
-    return _cover_polygon()
+def _cover_outer_polygon(p: ProfileArg = "right") -> list[tuple[float, float]]:
+    return _cover_polygon(p)
 
 
-def _cover_inner_polygon() -> list[tuple[float, float]]:
-    return _cover_polygon(west_inset=C.COVER_WEST_WALL, east_inset=C.COVER_EAST_WALL,
+def _cover_inner_polygon(p: ProfileArg = "right") -> list[tuple[float, float]]:
+    return _cover_polygon(p, west_inset=C.COVER_WEST_WALL, east_inset=C.COVER_EAST_WALL,
                           north_inset=C.COVER_NORTH_WALL,
                           south_inset=C.COVER_SOUTH_WALL_THICKNESS)
 
@@ -131,10 +173,11 @@ def _face(points: list[tuple[float, float]], north_radius: float = 0.0):
     return sketch.sketch.faces()[0]
 
 
-def _cover_roof_z(y: float, side: Side) -> float:
+def _cover_roof_z(y: float, p: ProfileArg) -> float:
     """Analytic cubic smoothstep roof with horizontal end tangents."""
-    z0, z1 = C.COVER_FOOT_Z, C.cover_ridge_top_z(side)
-    y0, y1 = C.COVER_RAMP_FOOT_Y, C.COVER_RAMP_TOP_Y
+    p = _prof(p)
+    z0, z1 = C.COVER_FOOT_Z, p.ridge
+    y0, y1 = C.COVER_RAMP_FOOT_Y, p.ramp_top_y
     if y <= y0:
         return z0
     if y >= y1:
@@ -156,21 +199,22 @@ def _encoder_bbox() -> tuple[float, float, float, float]:
     raise AssertionError("encoder cutout not found within 1 mm of SW_ENCODER_POS")
 
 
-def _roof_above_cutter(side: Side, inner: bool, x_span: tuple[float, float],
+def _roof_above_cutter(p: ProfileArg, inner: bool, x_span: tuple[float, float],
                        y_span: tuple[float, float], *, drop: float | None = None) -> Part:
     """Space above one exact cubic Bezier roof, swept along X.
 
     ``drop`` lowers the whole roof vertically (used for the groove floor)."""
-    y0, y1 = C.COVER_RAMP_FOOT_Y, C.COVER_RAMP_TOP_Y
+    p = _prof(p)
+    y0, y1 = C.COVER_RAMP_FOOT_Y, p.ramp_top_y
     if drop is not None:
         thickness = drop
     else:
         thickness = C.COVER_TOP_THICKNESS if inner else 0.0
     z0 = C.COVER_FOOT_Z - thickness
-    z1 = C.cover_ridge_top_z(side) - thickness
+    z1 = p.ridge - thickness
     length = y1-y0
     y_min, y_max = y_span
-    ceiling = C.cover_ridge_top_z(side) + 8.0
+    ceiling = p.ridge + 8.0
     with BuildPart() as bp:
         with BuildSketch(Plane.YZ):
             with BuildLine():
@@ -187,10 +231,11 @@ def _roof_above_cutter(side: Side, inner: bool, x_span: tuple[float, float],
     return cast(Part, Pos(x_span[0]-2.0, 0, 0) * bp.part)
 
 
-def _north_shoulder_cutter(side: Side, x_span: tuple[float, float]) -> Part:
+def _north_shoulder_cutter(p: ProfileArg, x_span: tuple[float, float]) -> Part:
     """0.5 run / 1.0 drop facet, the tray rim's 2:1 drafted language."""
-    north = max(y for _, y in _cover_outer_polygon())
-    ridge = C.cover_ridge_top_z(side)
+    p = _prof(p)
+    north = max(y for _, y in _cover_outer_polygon(p))
+    ridge = p.ridge
     run, drop = 0.5, 1.0
     with BuildPart() as bp:
         with BuildSketch(Plane.YZ):
@@ -203,10 +248,11 @@ def _north_shoulder_cutter(side: Side, x_span: tuple[float, float]) -> Part:
     return cast(Part, Pos(x_span[0]-1.0, 0, 0) * bp.part)
 
 
-def _side_shoulder_cutter(side: Side, x_wall: float, east: bool) -> Part:
+def _side_shoulder_cutter(p: ProfileArg, x_wall: float, east: bool) -> Part:
     """One ruled Bezier surface rotates from the south bevel into the side draft."""
-    y0, y1 = C.COVER_RAMP_FOOT_Y, C.COVER_RAMP_TOP_Y
-    z0, z1 = C.COVER_FOOT_Z, C.cover_ridge_top_z(side)
+    p = _prof(p)
+    y0, y1 = C.COVER_RAMP_FOOT_Y, p.ramp_top_y
+    z0, z1 = C.COVER_FOOT_Z, p.ridge
     bevel = C.COVER_SOUTH_BEVEL
     run, drop = C.COVER_SIDE_CHAMFER_RUN, C.COVER_SIDE_CHAMFER_DROP
     inward = -1 if east else 1
@@ -217,7 +263,7 @@ def _side_shoulder_cutter(side: Side, x_wall: float, east: bool) -> Part:
     outer = [(x_wall, y, z-d) for y, z, d in zip(ys, zs, drops)]
     inner = [(x_wall+inward*r, y, z) for y, z, r in zip(ys, zs, runs)]
     ramp_face = Face.make_bezier_surface([outer, inner])
-    north = _north_landing_y()
+    north = p.north_y
     ridge_face = Face.make_bezier_surface([
         [outer[-1], (x_wall, north, z1-drop)],
         [inner[-1], (x_wall+inward*run, north, z1)],
@@ -226,20 +272,21 @@ def _side_shoulder_cutter(side: Side, x_wall: float, east: bool) -> Part:
     return cast(Part, Solid.extrude(ramp_face, direction)+Solid.extrude(ridge_face, direction))
 
 
-def _shell(side: Side) -> Part:
-    outer_pts, inner_pts = _cover_outer_polygon(), _cover_inner_polygon()
+def _shell(p: ProfileArg) -> Part:
+    p = _prof(p)
+    outer_pts, inner_pts = _cover_outer_polygon(p), _cover_inner_polygon(p)
     x_span = (min(x for x, _ in outer_pts), max(x for x, _ in outer_pts))
     y_span = (min(y for _, y in outer_pts)-2, max(y for _, y in outer_pts)+2)
-    h = C.cover_ridge_top_z(side) + 2 - C.MAIN_RIM_Z
+    h = p.ridge + 2 - C.MAIN_RIM_Z
     outer_face = _face(outer_pts, C.COVER_CORNER_R)
     outer = cast(Part, Pos(0, 0, C.MAIN_RIM_Z) * extrude(outer_face, amount=h))
-    outer = cast(Part, outer - _roof_above_cutter(side, False, x_span, y_span))
-    outer = cast(Part, outer - _north_shoulder_cutter(side, x_span))
-    outer = cast(Part, outer-_side_shoulder_cutter(side, x_span[0], False)
-                 - _side_shoulder_cutter(side, x_span[1], True))
+    outer = cast(Part, outer - _roof_above_cutter(p, False, x_span, y_span))
+    outer = cast(Part, outer - _north_shoulder_cutter(p, x_span))
+    outer = cast(Part, outer-_side_shoulder_cutter(p, x_span[0], False)
+                 - _side_shoulder_cutter(p, x_span[1], True))
     # Wrap the bevel around the low canopy; the side cutters continue it up the ramp.
     bevel = C.COVER_SOUTH_BEVEL
-    top_face = _face(_cover_polygon(west_inset=bevel, east_inset=bevel,
+    top_face = _face(_cover_polygon(p, west_inset=bevel, east_inset=bevel,
                                     south_inset=bevel), C.COVER_CORNER_R)
     bevel_z = C.COVER_FOOT_Z-bevel
     bevel_slice = Pos(0, 0, bevel_z) * extrude(outer_face, amount=bevel)
@@ -250,13 +297,13 @@ def _shell(side: Side) -> Part:
     outer = cast(Part, outer-((bevel_slice-retained) & low_canopy))
     inner = cast(Part, Pos(0, 0, C.MAIN_RIM_Z-0.2) *
                  extrude(_face(inner_pts, 0.2), amount=h+0.4))
-    inner = cast(Part, inner - _roof_above_cutter(side, True, x_span, y_span))
+    inner = cast(Part, inner - _roof_above_cutter(p, True, x_span, y_span))
     return cast(Part, outer-inner)
 
 
-def _boss(at: tuple[float, float], side: Side) -> Part:
+def _boss(at: tuple[float, float], p: ProfileArg) -> Part:
     x, y = at
-    top = _cover_roof_z(y, side) - C.COVER_TOP_THICKNESS + 0.2
+    top = _cover_roof_z(y, p) - C.COVER_TOP_THICKNESS + 0.2
     boss = Solid.make_cylinder(C.COVER_BOSS_OD/2, top-C.PCB_TOP_Z).translate((x, y, C.PCB_TOP_Z))
     straight = Solid.make_cylinder(C.COVER_BOSS_TAP_DIA/2,
                                    C.COVER_BOSS_BORE_DEPTH-C.COVER_BOSS_BORE_CHAMFER).translate(
@@ -278,21 +325,22 @@ def _rounded_bore(width: float, lo: float, hi: float, y0: float, y1: float) -> P
         return bore
 
 
-def _usb_cutter(side: Side) -> Part:
-    north = max(y for _, y in _cover_outer_polygon())
-    lo, hi = C.cover_usb_port_z(side)
+def _usb_cutter(p: ProfileArg) -> Part:
+    p = _prof(p)
+    north = max(y for _, y in _cover_outer_polygon(p))
+    lo, hi = p.usb_port_z
     return _rounded_bore(C.COVER_USB_PORT_W, lo, hi,
                          north-C.COVER_NORTH_WALL-1.0, north+2.0)
 
 
-def _mark_inside(side: Side) -> Callable[[Point], bool]:
+def _mark_inside(p: ProfileArg) -> Callable[[Point], bool]:
     """Canonical-frame test for where the connection mark's centreline may run.
 
     Like the old canopy marks, strokes run ``COVER_MARK_RUN_OUT`` past the outline: the groove
     holds its depth to the chamfer's top line, then dies as the chamfer drops away beneath the
     lowered-roof floor. Only the encoder shaft margin and the USB opening are kept clear."""
     half = max(C.COVER_MARK_WIDTH, C.COVER_MARK_CURVE_WIDTH)/2
-    outer = _cover_outer_polygon()
+    outer = _cover_outer_polygon(p)
     run = C.COVER_MARK_RUN_OUT
     x0, x1 = min(x for x, _ in outer)-run, max(x for x, _ in outer)+run
     y0, y1 = min(y for _, y in outer)-run, max(y for _, y in outer)+run
@@ -348,37 +396,56 @@ def _band_prism(points: list[Point], width: float, z0: float, z1: float) -> Part
     return cast(Part, Pos(0, 0, z0) * extrude(face, amount=z1-z0))
 
 
-def _mark_cutter(side: Side) -> Part:
+def _mark_cutter(p: ProfileArg) -> Part:
     """M17-3 grooves for one cover, in canonical (built, pre-mirror) coordinates."""
-    outer = _cover_outer_polygon()
+    p = _prof(p)
+    outer = _cover_outer_polygon(p)
     xs, ys = [x for x, _ in outer], [y for _, y in outer]
     x_span = (min(xs), max(xs))
     y_span = (min(ys)-2, max(ys)+2)
     # Start below the open underside so no groove face is coplanar with it.
-    z0, z1 = C.MAIN_RIM_Z-1.0, C.cover_ridge_top_z(side)+2.0
+    z0, z1 = C.MAIN_RIM_Z-1.0, p.ridge+2.0
     grooves: Part | None = None
-    for points, width in cover_mark.strokes(side, _mark_inside(side)):
+    for points, width in cover_mark.strokes(p.side, _mark_inside(p)):
         band = _band_prism(points, width, z0, z1)
         grooves = band if grooves is None else cast(Part, grooves+band)
     assert grooves is not None, "connection mark produced no strokes"
-    floor = _roof_above_cutter(side, False, x_span, y_span, drop=C.COVER_MARK_DEPTH)
+    floor = _roof_above_cutter(p, False, x_span, y_span, drop=C.COVER_MARK_DEPTH)
     return cast(Part, grooves & floor)
 
 
-def build_mcu_encoder_cover(side: Side = "right", mark: bool = C.COVER_MARK_ENABLED) -> Part:
+def _oled_window_cutter(p: CoverProfile) -> Part:
+    """Straight-walled display window through the flat roof over the module (plan D4)."""
+    assert p.window_xy is not None
+    x0, x1, y0, y1 = p.window_xy
+    # From the cavity air under the roof to above the ridge: no face is coplanar.
+    z0 = p.ridge - C.COVER_TOP_THICKNESS - 0.3
+    z1 = p.ridge + 1.0
+    return cast(Part, Solid.make_box(x1-x0, y1-y0, z1-z0).translate((x0, y0, z0)))
+
+
+def build_mcu_encoder_cover(side: Side = "right", mark: bool = C.COVER_MARK_ENABLED,
+                            oled: C.OledMode = "none") -> Part:
+    """``oled`` is the literal OLED mode (default ``"none"``, never resolved via C.OLED_MODE)."""
     if side not in ("left", "right"):
         raise ValueError(f"side must be 'left' or 'right', got {side!r}")
-    cover = _shell(side)
+    p = profile(side, oled)
+    cover = _shell(p)
     if mark:
-        cover = cast(Part, cover-_mark_cutter(side))
+        cover = cast(Part, cover-_mark_cutter(p))
     for point in _th_positions("right"):
-        cover = cast(Part, cover+_boss(point, side))
-    cover = cast(Part, cover-_usb_cutter(side)-slide_finger_cutout()
+        cover = cast(Part, cover+_boss(point, p))
+    cover = cast(Part, cover-_usb_cutter(p)-slide_finger_cutout()
                  - slide_body_cavity(C.MAIN_RIM_Z + 0.3))
     x, y, _, _ = _encoder_bbox()
     shaft = Solid.make_cylinder(C.COVER_SHAFT_CUTOUT_DIA/2, 10.0).translate(
         (x, y, C.COVER_FOOT_Z-C.COVER_TOP_THICKNESS-1.0))
     cover = cast(Part, cover-shaft)
+    if p.window_xy is not None:
+        # Cut last (D9): after the mark, USB and shaft, before the mirror.
+        cover = cast(Part, cover-_oled_window_cutter(p))
+        if not cover.is_valid or len(cover.solids()) != 1:
+            raise RuntimeError(f"{side} {oled} OLED window left an invalid cover")
     if side == "left":
         cover = _mirror_left(cover)
     return cover

@@ -44,10 +44,31 @@ check operation on a printed assembly with the roof fitted.
 
 Four rubber-foot recesses open from Z=0 and are `FOOT_DEPTH` deep.
 
+## OLED modes (MCU stack)
+
+Heights for `--oled` (see `constants.oled_top_z`, `mcu_pcb_top_z`, `usb_jack_z`,
+`cover_ridge_top_z`). The OLED datum is the main PCB's bottom face, `PCB_SEAT_Z`
+= 9.1. `short` swaps 16.2 for 13.0 mm headers, lowering the MCU stack by
+`MCU_SHORT_DROP` = 3.2 mm on both halves.
+
+| Value (Z, mm) | none | long | short |
+|---|---:|---:|---:|
+| OLED module top | — | 25.30 | 22.10 |
+| MCU board top | 21.70 | 21.70 | 18.50 |
+| Header-tail top | 23.86 | 23.86 | 20.66 |
+| Right (neutral) jack | 20.70–23.86 | 20.70–23.86 | 17.50–20.66 |
+| Left (flipped) jack | 17.94–21.10 | 17.94–21.10 | 14.74–17.90 |
+| Left cover USB port | 17.44–21.60 | 17.44–21.60 | 14.24–18.40 |
+| Cover ridge | 25.96 | 27.40 | 24.20 |
+
+Only short-left puts the port band (13.94–18.60) below `MAIN_RIM_Z`, so only
+that tray gets an open-top USB slot through its north wall (Z 13.94 to the rim).
+The module bottom is not modelled (UNCHECKED).
+
 ## Build artifacts
 
 Each side exports a monolithic tray STL (`sofle_case_{side}.stl`) and a separate
-removable cover STL (`sofle_cover_{side}.stl`). STEP export is unsupported and
+removable cover STL (`sofle_cover_{side}.stl`); OLED modes add `_oled-{mode}` to both. STEP export is unsupported and
 removed. Rebuilding a side removes only its exact known legacy monolithic STEP
 and split top/bottom artifacts from the requested output directory; unrelated
 files are preserved.

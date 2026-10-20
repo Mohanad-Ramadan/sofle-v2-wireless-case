@@ -51,6 +51,38 @@ the slot and tuck slack beneath the lips without tight folds or insulation
 compression. Printed lip strength, overhang quality, and adhesive fit still
 need a physical check.
 
+## OLED window (optional)
+
+`python scripts/build.py {left|right} --oled {none|long|short}` (default
+`OLED_MODE = "none"` in `constants.py`). `none` builds today's case and cover,
+unchanged and unsuffixed. `long` and `short` fit a 0.91" 128x32 4-pin I2C OLED
+on J3 over the MCU and write `sofle_case_{side}_oled-{mode}.stl` and
+`sofle_cover_{side}_oled-{mode}.stl`, then print a fit report (pads, nets,
+module/window spans in the physical frame, heights, ridge).
+
+- Module top, measured above the main PCB's bottom face (Z 9.1): **16.2 mm**
+  (`long`, Z 25.3) or **13.0 mm** (`short`, Z 22.1). `short` also lowers the
+  nice!nano, its header tails and its USB-C jack by 3.2 mm on both halves.
+- Cover: a straight-walled **6.0 x 22.38 mm** window, 2.0 mm from the module's
+  west edge on each half (right x 18.680-24.680, left x 124.580-130.580; the
+  halves are not mirrors because CS swaps ends of J3). Ridge **27.40** (`long`)
+  / **24.20** (`short`) gives 0.6 mm over the module; the ramp top moves south
+  to y 80.765 so the roof is flat over it. The M17-3 mark keeps its normal
+  position; its grooves may run into the window.
+- Case: the tray north wall grows 2.665 mm outward over x 13.65-73.65 so the
+  longer cover lands flush with no overhang (cover north y 121.465). In
+  `short`, the left half's jack drops below the rim, so its tray north wall gets
+  an open-top USB slot (Z 13.94 to the rim, from y 115.05).
+- Module 39 x 12 mm, active area 22.38 mm long, pin-hole centre 1.2 mm from
+  the pin-end edge (shop spec); module-bottom
+  clearance to the jack and header tails is UNCHECKED (the measured top Z is
+  authoritative).
+- **Accepted risk (no plug pocket, by decision):** in OLED modes the USB-C
+  plug must reach **3.385 mm** from the cover face to the jack face (0.720 mm
+  without the OLED). On short-left it must also pass 5.4-6.3 mm of tray wall
+  (3.865 mm from the outer face to the jack at the jack's bottom edge). Check
+  that your plug's overmold seats before relying on it.
+
 ## MCU cover south edge
 
 The removable cover has a **17 mm-wide, 4 mm-deep faceted south recess**,
@@ -74,7 +106,7 @@ Physical fit still needs a printed check.
 
 The removable MCU/encoder covers carry the approved **M17-3** connection mark
 on their roofs: three narrows lines plus one steep bow curve, engraved
-**0.80 mm wide and 0.30 mm deep** (the roof keeps 1.20 mm). The figure is
+**0.80 mm wide and 0.60 mm deep** (the roof keeps 0.90 mm of its 1.5 mm). The figure is
 drawn once in the assembled pair frame, so the left and right covers each
 carry a different piece of the same figure; the footprints still mirror.
 Like the old canopy marks, the grooves run out through the cover's edges:

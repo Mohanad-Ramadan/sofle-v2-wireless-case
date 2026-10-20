@@ -68,3 +68,21 @@ def test_volume_less_than_bbox():
         * (bb.max.Z - bb.min.Z)
     )
     assert phantom.volume < bbox_vol
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+def test_short_oled_drops_the_mcu_phantom_3_2(side):
+    none = build_pcb_phantom(side, include_encoder=False).bounding_box()
+    short = build_pcb_phantom(side, include_encoder=False, oled="short").bounding_box()
+    assert none.max.Z - short.max.Z == pytest.approx(C.MCU_SHORT_DROP, abs=1e-6)
+
+
+@pytest.mark.parametrize("oled", ["long", "short"])
+@pytest.mark.parametrize("side", ["left", "right"])
+def test_oled_phantom_slab_sits_on_the_module_footprint(side, oled):
+    from sofle_case.oled_phantom import build_oled_phantom
+    bb = build_oled_phantom(side, oled).bounding_box()
+    x0, x1, y0, y1 = C.oled_module_xy(side)
+    assert (bb.min.X, bb.max.X, bb.min.Y, bb.max.Y) == pytest.approx((x0, x1, y0, y1), abs=1e-6)
+    assert bb.max.Z == pytest.approx(C.oled_top_z(oled), abs=1e-6)
+    assert bb.max.Z - bb.min.Z == pytest.approx(C.OLED_PHANTOM_THK, abs=1e-6)

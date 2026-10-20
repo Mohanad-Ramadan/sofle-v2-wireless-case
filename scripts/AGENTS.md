@@ -10,7 +10,7 @@ Standalone CLI utilities. Two categories: the main build script (runs every time
 
 | File | Description |
 |------|-------------|
-| `build.py` | **Main build CLI.** Builds `build_case_half(side)` and exports one STL to `output/`. `--show` opens the viewer; `--phantoms` adds view-only hardware. |
+| `build.py` | **Main build CLI.** Builds `build_case_half(side, oled)` and `build_mcu_encoder_cover(side, oled=...)`, exporting `sofle_case_{side}.stl` and `sofle_cover_{side}.stl` to `output/`. `--oled none|long|short` (default `C.OLED_MODE`) is passed explicitly to every builder; non-`none` modes add `_oled-{mode}` to BOTH STL names and print `oled_fit_report`. `--show` opens the viewer; `--phantoms` adds view-only hardware (plus the OLED slab in OLED modes). |
 | `parse_gerber.py` | One-off: parses KiCad Gerber edge-cuts + PTH drill file → writes `data/pcb_outline.json` and `data/mounting_holes.json`. |
 | `parse_cpl.py` | One-off: parses KiCad CPL (component placement) CSV → writes `data/components.json`. |
 | `parse_kicad_plate.py` | One-off: parses KiCad plate `.kicad_pcb` → `data/plate_outline.json` + `data/plate_cutouts.json`. **Superseded by `parse_plate_gerber.py`** for the real hardware. |
@@ -31,7 +31,7 @@ Standalone CLI utilities. Two categories: the main build script (runs every time
 - STEP export is unsupported and removed. Before each build, `build.py` removes only the requested side's exact known legacy monolithic STEP and split top/bottom artifacts; unrelated output files are preserved.
 
 ### Testing Requirements
-- `test_build_cli.py` smoke-tests `build.py` by invoking it via subprocess and checking exactly one non-empty STL is written per side.
+- `test_build_cli.py` smoke-tests `build.py` by invoking it via subprocess: the case and cover STLs per side, legacy cleanup, the `_oled-{mode}` suffixes, and the pinned OLED fit-report lines (`right --oled long`, `left --oled short`).
 
 ### Common Patterns
 - All scripts use `from __future__ import annotations` and `pathlib.Path` (not `os.path`).

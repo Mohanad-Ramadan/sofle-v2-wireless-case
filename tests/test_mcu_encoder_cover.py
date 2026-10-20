@@ -21,6 +21,7 @@ from tests.shared_builds import build_mcu_encoder_cover
 from tests.test_clearances import _sided
 
 _cover_outer_polygon = MEC._cover_outer_polygon
+MODES = ("none", "long", "short")
 
 
 @pytest.fixture(scope="module")
@@ -32,8 +33,10 @@ def _probe(x: float, y: float, z: float, size: float = 0.3) -> Solid:
     return Solid.make_box(size, size, size).translate((x-size/2, y-size/2, z-size/2))
 
 
-def test_cover_is_one_valid_solid_with_open_bottom_and_bosses(covers):
-    for side, cover in covers.items():
+@pytest.mark.parametrize("oled", MODES)
+def test_cover_is_one_valid_solid_with_open_bottom_and_bosses(oled):
+    for side in ("right", "left"):
+        cover = build_mcu_encoder_cover(side, oled=oled)
         assert cover.is_valid and len(cover.solids()) == 1
         assert cover.bounding_box().min.Z == pytest.approx(C.PCB_TOP_Z, abs=0.05)
         cx, cy = C.pcb_to_case(*C.MCU_POS)
@@ -62,14 +65,19 @@ def test_roof_uses_exact_tangent_smoothstep_and_flat_side_specific_ridge():
                              + C.COVER_ROOF_CLEARANCE - 1e-9)
 
 
-def test_cover_leaves_header_tail_room_over_both_mcu_orientations(covers):
+@pytest.mark.parametrize("oled", MODES)
+def test_cover_leaves_header_tail_room_over_both_mcu_orientations(oled):
     cx, cy = C.pcb_to_case(*C.MCU_POS)
-    assert cy > C.COVER_RAMP_TOP_Y  # roof is at full ridge height over the MCU
-    for side, cover in covers.items():
+    assert cy > C.cover_ramp_top_y(oled)  # roof is at full ridge height over the MCU
+    mcu_top = C.mcu_pcb_top_z(oled)
+    for side in ("right", "left"):
+        cover = build_mcu_encoder_cover(side, oled=oled)
         x0 = cx if side == "right" else C.OUTER_WIDTH-cx
-        tail_top = C.MCU_PCB_TOP_Z + C.MCU_HEADER_TAIL_H
+        tail_top = mcu_top + C.MCU_HEADER_TAIL_H
+        assert (MEC.profile(side, oled).ridge - C.COVER_TOP_THICKNESS
+                >= tail_top + C.COVER_ROOF_CLEARANCE - 1e-9)
         for dx in (-7.62, 0.0, 7.62):
-            for z in (C.MCU_PCB_TOP_Z + 0.1, tail_top - 0.1):
+            for z in (mcu_top + 0.1, tail_top - 0.1):
                 assert (cover & _probe(x0+dx, cy, z, 0.1)).volume < 1e-6
 
 
@@ -119,8 +127,9 @@ def test_reducing_recess_depth_keeps_flat_lip_wall_and_clearance(monkeypatch):
     assert (cover & _probe(x, y-bbox_h/2-0.25, C.MAIN_RIM_Z+0.8, 0.1)).volume < 1e-5
 
 
-def test_bosses_align_to_th1_th2_and_have_blind_pilots(covers):
-    right = covers["right"]
+@pytest.mark.parametrize("oled", MODES)
+def test_bosses_align_to_th1_th2_and_have_blind_pilots(oled):
+    right = build_mcu_encoder_cover("right", oled=oled)
     assert C.COVER_BOSS_OD == pytest.approx(5.5)
     assert C.COVER_BOSS_TAP_DIA == pytest.approx(1.8)
     assert C.COVER_BOSS_BORE_DEPTH == pytest.approx(4.0)
@@ -138,14 +147,17 @@ def test_cover_mount_points_are_named_and_match_authoritative_component_data():
     assert MEC._th_positions("right") == [C.pcb_to_case(*p) for p in expected]
 
 
-def test_usb_is_rounded_and_side_registered_with_half_millimetre_clearance(covers):
+@pytest.mark.parametrize("oled", MODES)
+def test_usb_is_rounded_and_side_registered_with_half_millimetre_clearance(oled):
     assert C.COVER_USB_PORT_W == pytest.approx(C.USB_C_W + 1.0)
-    north = max(y for _, y in _cover_outer_polygon())
+    north = max(y for _, y in _cover_outer_polygon(MEC.profile("right", oled)))
     mcu_x = C.pcb_to_case(*C.MCU_POS)[0]
-    for side, cover in covers.items():
+    for side in ("right", "left"):
+        cover = build_mcu_encoder_cover(side, oled=oled)
         x = mcu_x if side == "right" else C.OUTER_WIDTH-mcu_x
-        jack_lo, jack_hi = C.usb_jack_z(side)
-        lo, hi = C.cover_usb_port_z(side)
+        jack_lo, jack_hi = C.usb_jack_z(side, oled)
+        lo, hi = C.cover_usb_port_z(side, oled)
+        assert MEC.profile(side, oled).usb_port_z == (lo, hi)
         assert lo == pytest.approx(jack_lo-0.5)
         assert hi == pytest.approx(jack_hi+0.5)
         neck_y = north-C.COVER_NORTH_WALL/2
@@ -163,23 +175,34 @@ def test_usb_is_rounded_and_side_registered_with_half_millimetre_clearance(cover
 
 
 def test_north_wall_is_flush_with_local_tray_rim(covers):
-    local_outer = Tray._outer_poly_pts()[14][1]
+    local_outer = Tray.outline("none").north_run(C.pcb_to_case(*C.MCU_POS)[0])
     expected = (local_outer + C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
                 - C.RIM_FACET_RUN)
     assert MEC._north_landing_y() == pytest.approx(expected, abs=0.01)
-    assert MEC._north_landing_y() < Tray._outer_extruded(0, 1).bounding_box().max.Y - 6
+    # `none` only: OLED modes grow this run to within 2.1 mm of the bump (plan D6).
+    assert MEC._north_landing_y() < Tray._outer_extruded(0, 1, "none").bounding_box().max.Y - 6
     assert max(y for _, y in MEC._cover_outer_polygon()) == pytest.approx(expected)
     for cover in covers.values():
         assert cover.bounding_box().max.Y == pytest.approx(expected, abs=0.01)
 
 
+def _tray_west_edge_x(oled):
+    """X of the vertical outline edge west of the MCU that spans its body's Y range."""
+    pts = Tray.outline(oled).pts
+    mcu_x = C.pcb_to_case(*C.MCU_POS)[0]
+    return max(a[0] for a, b in zip(pts, pts[1:] + pts[:1])
+               if abs(a[0] - b[0]) < 1e-6 and a[0] < mcu_x
+               and min(a[1], b[1]) <= C.MCU_BODY_S_Y and max(a[1], b[1]) >= C.MCU_BODY_S_Y)
+
+
 def test_west_edge_follows_local_tray_rim_and_keeps_mcu_clearance():
     west = min(x for x, _ in _cover_outer_polygon())
-    local_tray_rim = (Tray._outer_poly_pts()[15][0] - C.WALL_THICKNESS
+    tray_west = _tray_west_edge_x("none")
+    local_tray_rim = (tray_west - C.WALL_THICKNESS
                       - C.PCB_XY_CLEARANCE + C.RIM_FACET_RUN)
     assert west == pytest.approx(local_tray_rim + C.COVER_WEST_OUTSET, abs=0.01)
     inner_west = min(x for x, _ in MEC._cover_inner_polygon())
-    tray_inner_rim = Tray._outer_poly_pts()[15][0] - C.PCB_XY_CLEARANCE
+    tray_inner_rim = tray_west - C.PCB_XY_CLEARANCE
     assert inner_west == pytest.approx(tray_inner_rim, abs=0.01)
     assert inner_west - west == pytest.approx(C.WALL_THICKNESS - C.RIM_FACET_RUN)
     mcu_west = C.pcb_to_case(*C.MCU_POS)[0] - C.MCU_WIDTH/2

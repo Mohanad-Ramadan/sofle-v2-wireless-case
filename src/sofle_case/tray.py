@@ -5,6 +5,8 @@ the final case builder subtracts the shared outer-side slide-switch recess."""
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
+from dataclasses import dataclass
 from functools import cache
 from typing import cast
 
@@ -53,9 +55,11 @@ def _poly_pts() -> list[tuple[float, float]]:
     return poly[:-1] if poly[0] == poly[-1] else poly
 
 
-def _grow_segments(pts: list[tuple[float, float]], idxs: set[int],
-                   extra: float) -> list[tuple[float, float]]:
+def _grow_segments(pts: list[tuple[float, float]], idxs: set[int] | Mapping[int, float],
+                   extra: float = 0.0) -> list[tuple[float, float]]:
     """``pts`` with the segments in ``idxs`` pushed OUTWARD by ``extra``, corners re-solved.
+    ``idxs`` may instead be a ``{idx: extra}`` map, growing each segment by its own amount in
+    ONE pass (``extra`` is then ignored).
 
     Segment ``i`` runs ``pts[i] -> pts[i+1]``. Each listed segment's supporting LINE is moved out
     along its own outward normal, then EVERY vertex is recomputed as the intersection of its two
@@ -63,7 +67,9 @@ def _grow_segments(pts: list[tuple[float, float]], idxs: set[int],
     grown stretch join its untouched neighbours cleanly: the shared corner simply slides along the
     neighbour's own line, so no step, no taper and no new vertices appear at the handover. A
     parallel or degenerate pair keeps its original vertex."""
-    if not idxs or extra == 0.0:
+    grow = (dict(idxs) if isinstance(idxs, Mapping) else {i: extra for i in idxs})
+    grow = {i: e for i, e in grow.items() if e != 0.0}
+    if not grow:
         return list(pts)
     n = len(pts)
     area2 = sum(pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1]
@@ -76,7 +82,7 @@ def _grow_segments(pts: list[tuple[float, float]], idxs: set[int],
         el = math.hypot(ex, ey)
         ux, uy = ex / el, ey / el
         nx, ny = (uy, -ux) if ccw else (-uy, ux)          # outward normal
-        off = extra if i in idxs else 0.0
+        off = grow.get(i, 0.0)
         lines.append((p[0] + nx * off, p[1] + ny * off, ux, uy))
     out: list[tuple[float, float]] = []
     for i in range(n):
@@ -88,6 +94,29 @@ def _grow_segments(pts: list[tuple[float, float]], idxs: set[int],
             continue
         t = ((bx - ax) * buy - (by - ay) * bux) / den
         out.append((ax + aux * t, ay + auy * t))
+    return out
+
+
+def _dedupe(pts: list[tuple[float, float]], tol: float = 1e-9) -> list[tuple[float, float]]:
+    """``pts`` without coincident vertices and without vertices whose two edges are collinear.
+
+    Growing a zero-length-after-growth segment (the north step, seg 13, in OLED modes) leaves
+    a coincident pair, and the runs either side of it then lie on one line; both kinds of
+    vertex are removed so that line is ONE edge."""
+    out = list(pts)
+    changed = True
+    while changed and len(out) > 3:
+        changed = False
+        n = len(out)
+        for i in range(n):
+            p0, p1, p2 = out[(i - 1) % n], out[i], out[(i + 1) % n]
+            ax, ay = p1[0] - p0[0], p1[1] - p0[1]
+            bx, by = p2[0] - p1[0], p2[1] - p1[1]
+            la, lb = math.hypot(ax, ay), math.hypot(bx, by)
+            if la < tol or abs(ax * by - ay * bx) < tol * la * lb:
+                del out[i]
+                changed = True
+                break
     return out
 
 
@@ -103,7 +132,7 @@ SOUTH_RUN_IDXS = frozenset({2, 3, 4})
 SOUTH_E4_IDX = 4
 
 
-def _outer_poly_pts() -> list[tuple[float, float]]:
+def _outer_poly_pts(oled: C.OledMode = "none") -> list[tuple[float, float]]:
     """`_poly_pts()` with the SW reflex kink dropped AND the southern runs grown outward.
 
     Two departures from the sharp polygon, both OUTER-ONLY — `_reflex_vertex_points` /
@@ -115,19 +144,39 @@ def _outer_poly_pts() -> list[tuple[float, float]]:
         ADDS a sliver of outer material (fills the notch).
       * the three southern runs are pushed outward by ``SOUTH_WALL_EXTRA`` (`_grow_segments`) —
         the material the deep south facet is raked into. See that constant's block.
+      * OLED modes only: the north runs (segs 12, 14) grow by ``C.north_wall_extra(oled)`` in
+        the SAME pass onto one line, and `_dedupe` merges them into one edge.
     """
     pts = _poly_pts()
     straight = pts[:3] + pts[4:]     # drop pts[3] — straighten the SW thumb ramp
-    return _grow_segments(straight, set(SOUTH_RUN_IDXS), C.SOUTH_WALL_EXTRA)
+    north = C.north_wall_extra(oled)
+    if north:
+        _assert_north_segments(straight)
+    grow = {i: C.SOUTH_WALL_EXTRA for i in SOUTH_RUN_IDXS} | north
+    return _dedupe(_grow_segments(straight, grow))
 
 
-def _reflex_vertex_points() -> list[tuple[float, float]]:
+def _assert_north_segments(pts: list[tuple[float, float]]) -> None:
+    """Fail loudly if the straightened north runs drift off the indices `north_wall_extra` names:
+    seg 12 is the westward run at TRAY_NORTH_STEP_Y, seg 13 the drop to TRAY_NORTH_LOW_Y, seg 14
+    the westward run at TRAY_NORTH_LOW_Y."""
+    (x12, y12), (x13, y13), (x14, y14), (x15, y15) = pts[12], pts[13], pts[14], pts[15]
+    tol = 1e-6
+    assert abs(y12 - C.TRAY_NORTH_STEP_Y) < tol and abs(y13 - C.TRAY_NORTH_STEP_Y) < tol \
+        and x12 > x13, f"seg 12 drifted: {pts[12]} -> {pts[13]}"
+    assert abs(x13 - x14) < tol and abs(y14 - C.TRAY_NORTH_LOW_Y) < tol, \
+        f"seg 13 drifted: {pts[13]} -> {pts[14]}"
+    assert abs(y15 - C.TRAY_NORTH_LOW_Y) < tol and x14 > x15, \
+        f"seg 14 drifted: {pts[14]} -> {pts[15]}"
+
+
+def _reflex_vertex_points(oled: C.OledMode = "none") -> list[tuple[float, float]]:
     """Outline vertices where the boundary turns the 'wrong way' (reflex, ≥3°).
 
     A Kind.ARC offset rounds convex corners but leaves reflex corners as sharp
     V-notches — each one used to throw a spurious crease through the outer wall
     and the rim facet. These are the vertices `_rounded_wire` rounds away."""
-    pts = _outer_poly_pts()          # SW-straightened outline (outer wall + facet only)
+    pts = list(outline(oled).pts)    # SW-straightened outline (outer wall + facet only)
     n = len(pts)
     area2 = sum(pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1]
                 for i in range(n))
@@ -145,8 +194,36 @@ def _reflex_vertex_points() -> list[tuple[float, float]]:
     return out
 
 
+@dataclass(frozen=True)
+class Outline:
+    """The outer-wall outline for one OLED mode: grown, deduped vertices."""
+    oled: C.OledMode
+    pts: tuple[tuple[float, float], ...]
+
+    @property
+    def reflex(self) -> list[tuple[float, float]]:
+        return _reflex_vertex_points(self.oled)
+
+    def north_run(self, x: float) -> float:
+        """Y of the northernmost horizontal outline segment spanning case-X ``x``."""
+        segs = zip(self.pts, self.pts[1:] + self.pts[:1])
+        return max(a[1] for a, b in segs
+                   if abs(a[1] - b[1]) < 1e-6 and min(a[0], b[0]) <= x <= max(a[0], b[0]))
+
+
+def outline(oled: C.OledMode = "none") -> Outline:
+    """Cached outer outline for ``oled`` (the literal mode — never resolved via C.OLED_MODE).
+    Positional cache key, so ``outline()`` and ``outline("none")`` are the same object."""
+    return _outline(oled)
+
+
 @cache
-def _rounded_wire() -> Wire:
+def _outline(oled: C.OledMode) -> Outline:
+    return Outline(oled, tuple(_outer_poly_pts(oled)))
+
+
+@cache
+def _rounded_wire(oled: C.OledMode) -> Wire:
     """The outline wire with every REFLEX vertex rounded by REFLEX_ROUND_R, plus the convex
     flat-front/E4 corner rounded by FRONT_CORNER_ROUND_R (2-D).
 
@@ -157,11 +234,12 @@ def _rounded_wire() -> Wire:
     rounding a reflex corner only ADDS outer material (fills the notch), so the
     wall gets locally thicker there, never thinner. Per-vertex radius fallback
     so one tight corner can't abort the profile."""
-    rounds = [(p, C.REFLEX_ROUND_R) for p in _reflex_vertex_points()]
-    rounds.append((_outer_poly_pts()[SOUTH_E4_IDX], C.FRONT_CORNER_ROUND_R))
+    pts = outline(oled).pts
+    rounds = [(p, C.REFLEX_ROUND_R) for p in _reflex_vertex_points(oled)]
+    rounds.append((pts[SOUTH_E4_IDX], C.FRONT_CORNER_ROUND_R))
     with BuildSketch(Plane.XY) as sk:
         with BuildLine():
-            Polyline(*_outer_poly_pts(), close=True)
+            Polyline(*pts, close=True)
         make_face()
         for (rx, ry), r0 in rounds:
             for r in (r0, r0 * 0.5, r0 * 0.25):
@@ -177,11 +255,11 @@ def _rounded_wire() -> Wire:
     return cast(Wire, sk.sketch.faces()[0].outer_wire())
 
 
-def _outer_extruded(z_lo: float, z_hi: float) -> Part:
+def _outer_extruded(z_lo: float, z_hi: float, oled: C.OledMode = "none") -> Part:
     """REFLEX-ROUNDED polygon offset OUTWARD by (WALL_THICKNESS + PCB_XY_CLEARANCE),
     Kind.ARC, extruded from z_lo to z_hi. Rounded so the outer skin has no sharp
     V-notches at reflex outline corners (see _rounded_wire)."""
-    wire = _rounded_wire()
+    wire = _rounded_wire(oled)
     with BuildPart() as bp:
         with BuildSketch(Plane.XY):
             face = make_face(wire)  # type: ignore[arg-type]
@@ -192,7 +270,7 @@ def _outer_extruded(z_lo: float, z_hi: float) -> Part:
 
 
 def offset_extruded(amount: float, z_lo: float, z_hi: float, kind: Kind = Kind.ARC,
-                    rounded: bool = False) -> Part:
+                    rounded: bool = False, oled: C.OledMode = "none") -> Part:
     """PCB polygon offset OUTWARD by ``amount``, extruded ``z_lo → z_hi``.
 
     Public helper shared with the monolithic case (case.py): fit-band support
@@ -202,7 +280,7 @@ def offset_extruded(amount: float, z_lo: float, z_hi: float, kind: Kind = Kind.A
     (``WALL_THICKNESS + PCB_XY_CLEARANCE``) lands inside the wall. ``Kind.ARC``
     matches the outer shell's rounded convex corners. ``rounded=True`` uses the
     reflex-rounded outline (facet band only — plate/pocket stay sharp)."""
-    wire = _rounded_wire() if rounded else _polygon_wire()
+    wire = _rounded_wire(oled) if rounded else _polygon_wire()
     with BuildPart() as bp:
         with BuildSketch(Plane.XY):
             face = make_face(wire)  # type: ignore[arg-type]
@@ -213,7 +291,7 @@ def offset_extruded(amount: float, z_lo: float, z_hi: float, kind: Kind = Kind.A
 
 
 @cache
-def outer_south_overhang() -> float:
+def outer_south_overhang(oled: C.OledMode = "none") -> float:
     """How far SOUTH of Y=0 the outer skin reaches, in mm (0 before the south wall was grown).
 
     ``OUTER_DEPTH`` is the outer skin's own bounding depth and the footprint datum, so
@@ -222,7 +300,7 @@ def outer_south_overhang() -> float:
     real offset profile rather than predicted, because the southmost point is the thumb tip's
     offset ARC and its dip is set by where the grown corner landed, not by the growth directly.
     Public so the bbox tests can state the true depth instead of hard-coding a number."""
-    return max(0.0, -_outer_extruded(0.0, 1.0).bounding_box().min.Y)
+    return max(0.0, -_outer_extruded(0.0, 1.0, oled).bounding_box().min.Y)
 
 
 def _inner_extruded(z_lo: float, z_hi: float) -> Part:
@@ -241,8 +319,8 @@ def _inner_extruded(z_lo: float, z_hi: float) -> Part:
 # Shell + cavity
 # ---------------------------------------------------------------------------
 
-def _outer_shell(rim_z: float = C.MAIN_RIM_Z) -> Part:
-    return _outer_extruded(0.0, rim_z)
+def _outer_shell(rim_z: float = C.MAIN_RIM_Z, oled: C.OledMode = "none") -> Part:
+    return _outer_extruded(0.0, rim_z, oled)
 
 
 def _cavity_solid(rim_z: float = C.MAIN_RIM_Z) -> Part:
@@ -267,7 +345,7 @@ def _axis_box(x0: float, x1: float, y0: float, y1: float, z0: float, z1: float) 
 # Bottom counter-chamfer (elephant-foot pre-compensation)
 # ---------------------------------------------------------------------------
 
-def _chamfer_bottom_edges(part: Part) -> Part:
+def _chamfer_bottom_edges(part: Part, oled: C.OledMode = "none") -> Part:
     """Chamfer the outer bottom perimeter (Z=0 plane) by BOTTOM_CHAMFER.
 
     The squished first layers fill the missing 45° wedge instead of bulging
@@ -285,7 +363,7 @@ def _chamfer_bottom_edges(part: Part) -> Part:
     if not bottom:
         # Fallback: derive bottom loop from outer wire's bottom edges (strict frame)
         try:
-            outer = _outer_extruded(0.0, 1.0)
+            outer = _outer_extruded(0.0, 1.0, oled)
             outer_bottom = outer.edges().filter_by_position(Axis.Z, minimum=-0.01, maximum=0.01)
             # Use broader Z tolerance on part to capture north edge if slightly offset
             fallback = part.edges().filter_by_position(Axis.Z, minimum=-0.5, maximum=0.5)
@@ -338,7 +416,8 @@ def _chamfer_bottom_edges(part: Part) -> Part:
 _FACET_END_EXT = 0.6
 
 
-def _rim_facet_frustum(drop: float, run: float, rim_z: float) -> Solid:
+def _rim_facet_frustum(drop: float, run: float, rim_z: float,
+                       oled: C.OledMode = "none") -> Solid:
     """The 'keep' frustum whose sloped outer wall IS the facet plane.
 
     A DRAFTED PRISM raised from ONE cross-section — the outer-wall offset taken at
@@ -359,7 +438,7 @@ def _rim_facet_frustum(drop: float, run: float, rim_z: float) -> Solid:
     e = _FACET_END_EXT
     z0, z1 = rim_z - drop - e, rim_z + e
     amt0 = outer + slope * e                 # widest section, below the toe
-    wire = _rounded_wire()                   # reflex-rounded → facet continuous at the jogs
+    wire = _rounded_wire(oled)               # reflex-rounded → facet continuous at the jogs
     with BuildSketch(Plane(origin=(0, 0, z0))) as sk:
         face = make_face(wire)  # type: ignore[arg-type]
         face = offset(face, amount=amt0, kind=Kind.ARC)
@@ -370,23 +449,25 @@ def _rim_facet_frustum(drop: float, run: float, rim_z: float) -> Solid:
     return Solid(TopoDS.Solid_s(prism.Shape()))
 
 
-def _rim_facet_cutter(drop: float, run: float, rim_z: float) -> Part:
+def _rim_facet_cutter(drop: float, run: float, rim_z: float,
+                      oled: C.OledMode = "none") -> Part:
     """Wedge ring shaved from the outer-wall top: the full outer prism minus the keep
     frustum. Zero width at the toe (Z = rim_z − drop), ``run`` wide at the rim. Subtracting
     it from the tray slopes the outer-top edge inward — the drafted facet."""
     outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
     e = _FACET_END_EXT
-    band = offset_extruded(outer, rim_z - drop - e, rim_z + e, rounded=True)
-    return cast(Part, band - _rim_facet_frustum(drop, run, rim_z))
+    band = offset_extruded(outer, rim_z - drop - e, rim_z + e, rounded=True, oled=oled)
+    return cast(Part, band - _rim_facet_frustum(drop, run, rim_z, oled))
 
 
-def _sw_ramp_offset_pt_at_x(off: float, x: float) -> tuple[float, float]:
+def _sw_ramp_offset_pt_at_x(off: float, x: float,
+                            oled: C.OledMode = "none") -> tuple[float, float]:
     """Point (x, y) on the GROWN, straightened SW thumb ramp offset OUTWARD by ``off`` at the given
     case-X. off=outer → the facet toe (outer-face) line; off=outer−RUN → the rim inset line.
 
     Read off `_outer_poly_pts()`, not the sharp polygon: the ramp the facet actually rides is the
     one SOUTH_WALL_EXTRA has already pushed out, so the crease has to be dropped onto that line."""
-    o = _outer_poly_pts()
+    o = outline(oled).pts
     a, b = o[2], o[3]                         # SW thumb ramp, grown & straightened
     ex, ey = b[0] - a[0], b[1] - a[1]
     el = math.hypot(ex, ey); ux, uy = ex / el, ey / el
@@ -395,7 +476,8 @@ def _sw_ramp_offset_pt_at_x(off: float, x: float) -> tuple[float, float]:
     return x, p0y + uy * (x - p0x) / ux
 
 
-def _front_slash_crossings(rim_z: float = C.MAIN_RIM_Z) -> tuple[tuple[float, float, float], ...]:
+def _front_slash_crossings(rim_z: float = C.MAIN_RIM_Z, oled: C.OledMode = "none"
+                           ) -> tuple[tuple[float, float, float], ...]:
     """Rim & toe of the two front creases in right-half case coords.
       • EAST '\\' — the cap y=FRONT_FACET_Y_MASK crossing ramp E4's offset lines (rim = outer−RUN, toe
         = full outer).
@@ -403,7 +485,7 @@ def _front_slash_crossings(rim_z: float = C.MAIN_RIM_Z) -> tuple[tuple[float, fl
         toe), dropped onto the GROWN straightened SW ramp's offset lines. Same run/angle as the
         East by construction. It sits centred on the thumb-switch midpoint while it fits there and
         is otherwise CLAMPED east onto the ramp — see the block over the clamp below."""
-    pts = _outer_poly_pts()                   # GROWN outline — the wall the facet actually rides
+    pts = outline(oled).pts                   # GROWN outline — the wall the facet actually rides
     outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
     z_rim, z_toe = rim_z, rim_z - C.FRONT_FACET_DROP
     off_rim, off_toe = outer - C.FRONT_FACET_RUN, outer
@@ -447,7 +529,7 @@ def _front_slash_crossings(rim_z: float = C.MAIN_RIM_Z) -> tuple[tuple[float, fl
     # (the toe on the outer face, the rim on the inset line), because those two lines start and
     # end at different X.
     run = abs(e_toe_x - e_rim_x)
-    o = _outer_poly_pts()
+    o = outline(oled).pts
     a2, b2 = o[2], o[3]                       # grown, straightened thumb ramp
     rx, ry = b2[0] - a2[0], b2[1] - a2[1]
     rnx = ry / math.hypot(rx, ry)             # outward normal's X component (CCW outline)
@@ -458,14 +540,14 @@ def _front_slash_crossings(rim_z: float = C.MAIN_RIM_Z) -> tuple[tuple[float, fl
         "West crease twin no longer fits on the thumb ramp — lower FRONT_FACET_RUN "
         f"(run {run:.2f} mm needs {rim_hi - toe_lo:.2f} mm of ramp)")
     toe_x = min(max(thumb_switch_midpoint_x() - run / 2, toe_lo), rim_hi - run)
-    w_rim = _sw_ramp_offset_pt_at_x(off_rim, toe_x + run)
-    w_toe = _sw_ramp_offset_pt_at_x(off_toe, toe_x)
+    w_rim = _sw_ramp_offset_pt_at_x(off_rim, toe_x + run, oled)
+    w_toe = _sw_ramp_offset_pt_at_x(off_toe, toe_x, oled)
     west_rim = (w_rim[0], w_rim[1], z_rim)
     west_toe = (w_toe[0], w_toe[1], z_toe)
     return east_rim, east_toe, west_rim, west_toe
 
 
-def _front_facet_mask(rim_z: float = C.MAIN_RIM_Z) -> Part:
+def _front_facet_mask(rim_z: float = C.MAIN_RIM_Z, oled: C.OledMode = "none") -> Part:
     """Plan REGION (extruded prism) selecting where the deep south facet applies.
 
     Bounded NORTH/EAST by the flat cap y=FRONT_FACET_Y_MASK — whose crossing of ramp E4 is the East
@@ -475,7 +557,7 @@ def _front_facet_mask(rim_z: float = C.MAIN_RIM_Z) -> Part:
     two read as exact twins; forcing the East's run makes this cut oblique enough to reach the '/'
     lean while staying clear of the flat-front corner. The ramp is straightened in `_outer_poly_pts`.
     Deep = thumb ramp → flat front → E4; thumb tip + side/back walls stay shallow."""
-    _e_rim, _e_toe, w_rim, w_toe = _front_slash_crossings(rim_z)
+    _e_rim, _e_toe, w_rim, w_toe = _front_slash_crossings(rim_z, oled)
     y_n = C.FRONT_FACET_Y_MASK
     BIG = 220.0
     dx, dy = w_rim[0] - w_toe[0], w_rim[1] - w_toe[1]   # west boundary = plan line through toe→rim
@@ -494,14 +576,14 @@ def _front_facet_mask(rim_z: float = C.MAIN_RIM_Z) -> Part:
     return cast(Part, Pos(0, 0, z0) * bp.part)
 
 
-def _apply_rim_facets(part: Part, rim_z: float) -> Part:
+def _apply_rim_facets(part: Part, rim_z: float, oled: C.OledMode = "none") -> Part:
     """Shave the drafted perimeter facet and the deeper south facet (masked to
     the front, between the two mirrored slashes). Strict PCB-frame north wall
     is now fully chamfered like the rest of the perimeter — no MCU bump
     exclusion or wedge facets."""
-    perim = _rim_facet_cutter(C.RIM_FACET_DROP, C.RIM_FACET_RUN, rim_z)
-    front = cast(Part, _rim_facet_cutter(C.FRONT_FACET_DROP, C.FRONT_FACET_RUN, rim_z)
-                 & _front_facet_mask(rim_z))
+    perim = _rim_facet_cutter(C.RIM_FACET_DROP, C.RIM_FACET_RUN, rim_z, oled)
+    front = cast(Part, _rim_facet_cutter(C.FRONT_FACET_DROP, C.FRONT_FACET_RUN, rim_z, oled)
+                 & _front_facet_mask(rim_z, oled))
     return cast(Part, part - perim - front)
 
 
@@ -510,7 +592,7 @@ def _apply_rim_facets(part: Part, rim_z: float) -> Part:
 # full-size middle band.
 # ---------------------------------------------------------------------------
 
-def _bottom_facet_frustum(drop: float, run: float) -> Solid:
+def _bottom_facet_frustum(drop: float, run: float, oled: C.OledMode = "none") -> Solid:
     """Keep frustum for the bottom facet — mirrored version of _rim_facet_frustum.
 
     Wide at Z=0? Actually NARROW at Z=0 (outer−run) and WIDER at the toe
@@ -528,7 +610,7 @@ def _bottom_facet_frustum(drop: float, run: float) -> Solid:
     z0, z1 = -e, drop + e
     # Narrowest section below the bottom, grows to outer+ slope*e above toe.
     amt0 = outer - run - slope * e
-    wire = _rounded_wire()
+    wire = _rounded_wire(oled)
     with BuildSketch(Plane(origin=(0, 0, z0))) as sk:
         face = make_face(wire)  # type: ignore[arg-type]
         face = offset(face, amount=amt0, kind=Kind.ARC)
@@ -538,7 +620,7 @@ def _bottom_facet_frustum(drop: float, run: float) -> Solid:
     return Solid(TopoDS.Solid_s(prism.Shape()))
 
 
-def _bottom_facet_cutter(drop: float, run: float) -> Part:
+def _bottom_facet_cutter(drop: float, run: float, oled: C.OledMode = "none") -> Part:
     """Wedge ring shaved from the outer-bottom edge: band minus keep frustum.
 
     Band is the full outer prism from −e to drop+e; keep frustum is narrow at
@@ -547,11 +629,11 @@ def _bottom_facet_cutter(drop: float, run: float) -> Part:
     """
     outer = C.WALL_THICKNESS + C.PCB_XY_CLEARANCE
     e = _FACET_END_EXT
-    band = offset_extruded(outer, -e, drop + e, rounded=True)
-    return cast(Part, band - _bottom_facet_frustum(drop, run))
+    band = offset_extruded(outer, -e, drop + e, rounded=True, oled=oled)
+    return cast(Part, band - _bottom_facet_frustum(drop, run, oled))
 
 
-def _apply_bottom_facets(part: Part) -> Part:
+def _apply_bottom_facets(part: Part, oled: C.OledMode = "none") -> Part:
     """Shave the drafted bottom perimeter facet and the deeper south bottom
     facet (masked to the front, between the two mirrored slashes).
 
@@ -559,11 +641,11 @@ def _apply_bottom_facets(part: Part) -> Part:
     front inside the same FRONT_FACET_Y_MASK region (including the
     SOUTH_WALL_EXTRA growth via _rounded_wire / _front_facet_mask).
     """
-    perim = _bottom_facet_cutter(C.BOTTOM_FACET_DROP, C.BOTTOM_FACET_RUN)
+    perim = _bottom_facet_cutter(C.BOTTOM_FACET_DROP, C.BOTTOM_FACET_RUN, oled)
     # Reuse the same south mask as the top (Y_MASK=22) — it covers the bottom
     # Z range as well (prism from −1 to rim_z+2).
-    front = cast(Part, _bottom_facet_cutter(C.FRONT_BOTTOM_DROP, C.FRONT_BOTTOM_RUN)
-                 & _front_facet_mask())
+    front = cast(Part, _bottom_facet_cutter(C.FRONT_BOTTOM_DROP, C.FRONT_BOTTOM_RUN, oled)
+                 & _front_facet_mask(oled=oled))
     return cast(Part, part - perim - front)
 
 
@@ -571,20 +653,25 @@ def _apply_bottom_facets(part: Part) -> Part:
 # Public entry
 # ---------------------------------------------------------------------------
 
-def build_tray(rim_z: float = C.MAIN_RIM_Z, bottom_chamfer: bool = True) -> Part:
+def build_tray(rim_z: float = C.MAIN_RIM_Z, bottom_chamfer: bool = True,
+               oled: C.OledMode = "none") -> Part:
     """Outer shell + inner cavity, walls flat at ``rim_z``.
+
+    ``oled`` (literal, default ``"none"``) selects the outer outline: OLED modes grow the
+    north wall (`C.north_wall_extra`); the cavity is the same in every mode.
 
     ``rim_z`` defaults to ``MAIN_RIM_Z`` (flush with the switch plate); the outer facet,
     +Y relief and slide-switch access all track the rim automatically."""
-    shell  = _outer_shell(rim_z)
+    shell  = _outer_shell(rim_z, oled)
     cavity = _cavity_solid(rim_z)
     hollow = cast(Part, shell - cavity)
-    faceted = _apply_rim_facets(hollow, rim_z)
-    bottom_faceted = _apply_bottom_facets(faceted)
+    faceted = _apply_rim_facets(hollow, rim_z, oled)
+    bottom_faceted = _apply_bottom_facets(faceted, oled)
     # A caller may disable the bottom counter-chamfer for another print orientation. The
     # monolithic CLI keeps the default flat underside. Must run AFTER bottom facets so
     # the tiny 0.5 mm relief applies to the new Z=0 bottom edge.
-    chamfered = _chamfer_bottom_edges(bottom_faceted) if bottom_chamfer else bottom_faceted
+    chamfered = (_chamfer_bottom_edges(bottom_faceted, oled) if bottom_chamfer
+                 else bottom_faceted)
     if isinstance(chamfered, Part):
         return chamfered
     solids = chamfered.solids()

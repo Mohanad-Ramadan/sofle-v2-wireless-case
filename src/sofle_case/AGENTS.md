@@ -24,6 +24,16 @@ with a rim flush to the switch plate.
   ramp (`_eased_ramp`); never go back to `max(x, 0)`, which put a 3-9 deg kink at the entry.
 - Phantom modules are visualization-only and must not be imported by structural
   builders.
+- OLED modes (`OledMode = "none" | "long" | "short"`): every builder takes a literal
+  `oled="none"` default (the OLED phantom and fit report require `long`/`short`) and never
+  reads `C.OLED_MODE` at runtime; only the CLI resolves it.
+  `none` must stay byte-identical (`tests/test_oled.py` pins volumes and the outline).
+  `tray.outline(oled)` and `mcu_encoder_cover.profile(side, oled)` are the cached per-mode
+  frames; `C.north_wall_extra(oled)` grows tray segs 12/14 onto one north edge. The window is
+  cut last, before the mirror. `oled_phantom.py` owns the module slab and
+  `oled_fit_report(side, oled)` (plan §4 labels; physical-frame X; nets derived from
+  `C.j3_nets`). Measured, not planned: the short-left tray USB slot starts at y 115.05
+  (`TRAY_NORTH_LOW_Y + PCB_XY_CLEARANCE - 1`). The mark is never shifted; it may cross the window.
 
 All geometry uses case coordinates with Z=0 at the printed underside. Preserve
 `PCB_TOP_Z == PCB_SEAT_Z + PCB_THICKNESS`, `PLATE_TOP_Z == PLATE_SEAT_Z +

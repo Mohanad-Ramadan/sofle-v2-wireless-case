@@ -4,6 +4,7 @@ Usage:
     python scripts/build.py right
     python scripts/build.py left --out output/
     python scripts/build.py right --show          # open in OCP CAD Viewer
+    python scripts/build.py left --oled short     # OLED window; *_oled-short.stl + fit report
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from typing import cast
 import click
 from build123d import Part, export_stl
 
+from sofle_case import constants as C
 from sofle_case.case import Side, build_case_half
 from sofle_case.mcu_encoder_cover import build_mcu_encoder_cover
 
@@ -60,19 +62,32 @@ def _export(part: Part, stem: Path, tolerance: float = STL_LINEAR_TOLERANCE,
 @click.option("--angular-tolerance", type=float, default=STL_ANGULAR_TOLERANCE, show_default=True,
               help="STL angular deflection (rad). Lower = smoother curves, larger file. "
                    "Default 0.01≈0.57° vs build123d 0.1≈5.7°.")
+@click.option("--oled", type=click.Choice(list(C.OLED_MODES)), default=C.OLED_MODE,
+              show_default=True,
+              help="OLED over the MCU: none, or the long/short header height. OLED modes "
+                   "suffix both STLs with _oled-{mode} and print the fit report.")
 def main(side: str, out_dir: Path, show_viewer: bool, show_phantoms: bool,
-         tolerance: float, angular_tolerance: float) -> None:
+         tolerance: float, angular_tolerance: float, oled: str) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     _remove_legacy_outputs(out_dir, side)
     s = cast(Side, side)
+    mode = cast(C.OledMode, oled)
+    suffix = "" if mode == "none" else f"_oled-{mode}"
 
-    click.echo(f"building {side} monolithic case... (tol={tolerance} ang={angular_tolerance})")
-    case = build_case_half(s)
-    _export(case, out_dir / f"sofle_case_{side}", tolerance=tolerance, angular_tolerance=angular_tolerance)
+    click.echo(f"building {side} monolithic case... (tol={tolerance} ang={angular_tolerance} "
+               f"oled={mode})")
+    case = build_case_half(s, oled=mode)
+    _export(case, out_dir / f"sofle_case_{side}{suffix}", tolerance=tolerance,
+            angular_tolerance=angular_tolerance)
 
     click.echo(f"building {side} MCU-encoder cover...")
-    cover = build_mcu_encoder_cover(s)
-    _export(cover, out_dir / f"sofle_cover_{side}", tolerance=tolerance, angular_tolerance=angular_tolerance)
+    cover = build_mcu_encoder_cover(s, oled=mode)
+    _export(cover, out_dir / f"sofle_cover_{side}{suffix}", tolerance=tolerance,
+            angular_tolerance=angular_tolerance)
+
+    if mode != "none":
+        from sofle_case.oled_phantom import oled_fit_report
+        click.echo(oled_fit_report(side, mode))
 
     parts = [case, cover]
     names = [f"{side}_case", f"{side}_cover"]
@@ -93,12 +108,14 @@ def main(side: str, out_dir: Path, show_viewer: bool, show_phantoms: bool,
             if side != "left":
                 return part
             from build123d import Plane, Pos, mirror
-
-            from sofle_case import constants as C
             return Pos(C.OUTER_WIDTH / 2, 0, 0) * mirror(
                 Pos(-C.OUTER_WIDTH / 2, 0, 0) * part, about=Plane.YZ)
 
-        for name, part in (("pcb+encoder+knob", _side(build_pcb_phantom(s))),
+        phantoms = [("pcb+encoder+knob", _side(build_pcb_phantom(s, oled=mode)))]
+        if mode != "none":
+            from sofle_case.oled_phantom import build_oled_phantom
+            phantoms.append(("oled", _side(build_oled_phantom(s, oled=mode))))
+        for name, part in (*phantoms,
                            ("plate", _side(build_plate_phantom())),
                            ("switches", _side(build_switch_phantom())),
                            ("knob_on_untrimmed_shaft", _side(K.place_knob(bottomed=True)))):
