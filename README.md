@@ -20,8 +20,28 @@ Each command writes `output/sofle_case_{side}.stl` and the separate removable
 `output/sofle_cover_{side}.stl`. STEP export is unsupported and has been removed.
 When rebuilding, the CLI removes only the exact known legacy monolithic STEP
 and split top/bottom artifacts for the requested side; unrelated files are
-preserved. Use `--show` to open the viewer and add
-`--phantoms` to include the hardware; phantoms are never fused or exported.
+preserved.
+
+| Option | Default | Effect |
+|---|---|---|
+| `left` / `right` | (required) | Which half to build. |
+| `--oled none\|long\|short` | `none` (`OLED_MODE`) | OLED window over the MCU; `long`/`short` set the header height. OLED modes write `sofle_case_{side}_oled-{mode}.stl` and `sofle_cover_{side}_oled-{mode}.stl` and print a fit report. |
+| `--out PATH` | `output` | Output directory (created if missing). |
+| `--show` | off | Open the built parts in OCP CAD Viewer. |
+| `--phantoms` | off | With `--show`, add view-only hardware (PCB, plate, switches, knob, and the OLED module in OLED modes). Never fused or exported. |
+| `--tolerance FLOAT` | `0.0001` | STL linear deflection (mm); lower is finer and larger. |
+| `--angular-tolerance FLOAT` | `0.01` | STL angular deflection (rad); lower gives smoother curves. |
+
+```sh
+python scripts/build.py right --oled long --show --phantoms
+```
+
+To view without exporting, run the case module directly (side and OLED mode
+are optional, defaulting to `right none`):
+
+```sh
+python -m sofle_case.case left short
+```
 
 ## Test
 

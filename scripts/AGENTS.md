@@ -24,7 +24,10 @@ Standalone CLI utilities. Two categories: the main build script (runs every time
   python scripts/build.py left
   python scripts/build.py right
   python scripts/build.py left --show   # opens OCP viewer
+  python scripts/build.py right --oled long --show --phantoms   # OLED variant + hardware
+  python scripts/build.py left --oled short --out /tmp/x       # *_oled-short.stl + fit report
   ```
+- Options: `--oled none|long|short` (default `C.OLED_MODE`), `--out PATH` (default `output`), `--show`, `--phantoms`, `--tolerance` (default 1e-4 mm), `--angular-tolerance` (default 0.01 rad). Keep README's option table in sync when adding one.
 - Parse scripts are **one-off**. Do not run them unless PCB hardware changes.
 - `build.py` uses `click` for argument parsing. Add new options with `@click.option`.
 - Output directory defaults to `output/` and is created automatically.

@@ -40,4 +40,5 @@ All geometry uses case coordinates with Z=0 at the printed underside. Preserve
 PLATE_THICKNESS`, and `MAIN_RIM_Z == PLATE_TOP_Z`.
 
 Every geometry module keeps optional `ocp_vscode` imports inside its viewer
-block. Run `pytest tests/ -x -q` after changes.
+block. `python -m sofle_case.case [left|right] [none|long|short]` shows
+the case, cover and mirrored phantoms (plus the OLED module in OLED modes). Run `pytest tests/ -x -q` after changes.
